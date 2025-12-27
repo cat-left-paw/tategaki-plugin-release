@@ -1,10 +1,37 @@
 # Tategaki Plugin（縦書き編集プラグイン）
 
-Obsidian 上で、文章を**縦書きで「見たまま」編集**できるプラグインです。
+このリポジトリは、**Obsidian 用 縦書き編集プラグイン**の配布ページです。  
+Obsidian 上で、文章を**縦書きで「見たまま」編集**できるようにします。
 
-縦書きの原稿づくりに向けて、青空文庫形式のルビ、表示テーマのカスタマイズ、ファイル追従（ほぼリアルタイム更新）などを用意しています。
+本プラグインは、現時点では Obsidian のコミュニティプラグインとして登録していません。
 
-> 本プラグインは **コミュニティプラグイン未登録**を前提とした手動配布を想定しています。
+**インストールするには、GitHub の Releases から ZIP をダウンロードしてください。**
+
+---
+
+## ダウンロード
+
+最新版の配布ファイルは Releases にあります。
+
+- https://github.com/cat-left-paw/tategaki-plugin-release/releases
+
+### 配布ファイルについて
+
+-   `*-installer.zip`  
+    インストーラー（Windows / macOS）同梱版です。**こちらを推奨します。**
+
+-   通常版 ZIP  
+    プラグインフォルダに手動でコピーしたい方向けです。
+
+---
+
+## インストール
+
+インストール手順の詳細は、以下を参照してください。
+
+-   [INSTALL.md](./INSTALL.md)
+
+---
 
 ## できること（主な機能）
 
@@ -17,6 +44,8 @@ Obsidian 上で、文章を**縦書きで「見たまま」編集**できるプ�
 -   画像の表示（標準 Markdown 画像、Obsidian の画像埋め込み）
 -   箇条書き・番号付きリストの並び替え（ショートカットで上下に移動）
 -   「ソーステキスト編集」（その場で Markdown 文字列を直接編集）
+
+---
 
 ## 大事な注意（同期の仕組みとリスク）
 
@@ -45,14 +74,6 @@ HTML タグを「文章として」含めたい場合は、次のように **コ
 -   Obsidian デスクトップ / モバイル
 -   Markdown ファイル（`.md`）
 
-## インストール
-
-このプラグインはコミュニティプラグイン未登録のため、Obsidian の画面から検索して入れることはできません。
-配布 Zip を展開し、Vault の `.obsidian/plugins/` フォルダへ手動でコピーする必要があります。
-Windows/Mac 向けにインストーラースクリプトを用意しましたので、それを利用することもできます。
-
-手順は `INSTALL.md` を参照してください（OS 別）。
-
 ## モバイルについて（注意）
 
 -   スマホなどの小さい画面では編集が難しいため、あまりおすすめしません
@@ -63,47 +84,23 @@ Windows/Mac 向けにインストーラースクリプトを用意しました�
 
 `QUICKSTART.md` を参照してください。
 
-## 更新通知（手動チェック）
+---
 
-コミュニティプラグイン未登録の場合、Obsidian 標準の更新通知は使えません。
+## 更新について
 
-本プラグインは設定画面に **「更新の確認」ボタン**を用意しており、押したときだけネットワーク通信を行って最新版情報（`latest.json`）を取得します。
+コミュニティプラグイン未登録のため、Obsidian 標準の自動更新は使えません。  
+プラグインの設定画面にある「更新の確認」から、新しいバージョンがあるかを確認できます。
 
--   `latest.json` の例:
-    ```json
-    {
-    	"version": "1.2.3",
-    	"url": "https://example.com/tategaki-plugin-1.2.3.zip",
-    	"notes": "変更点メモ（任意）"
-    }
-    ```
+更新がある場合は、Releases から新しい ZIP をダウンロードして更新してください。
 
-現在は仮 URL になっているため、配布時には `src/shared/ui/settings-tab.ts` の `UPDATE_CHECK_URL` を実際の公開 URL に差し替えてください。
+---
 
-## 寄付リンク（Buy Me a Coffee）
+## 補足
 
-気に入って使っていただけましたら、寄付をしていただくと励みになります。
+-   本リポジトリには **ソースコードは含まれていません**
+-   配布・更新のための情報（Zip/ドキュメント）を公開しています
 
-<a href="https://www.buymeacoffee.com/hidarite" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
-
-## 開発者向け（開発/ビルド）
-
-```bash
-npm install
-npm run dev        # watch
-npm run build      # production build（minify + sourcemapなし）
-npx ts-node src/tests.ts
-```
-
-配布 Zip を作る場合:
-
-```bash
-npm run package:release
-```
-
-出力は `dist/` 配下に生成され、Zip には `main.js` / `manifest.json` / `styles.css` のみが含まれます。
-
-## ドキュメント構成（予定）
+## ドキュメント構成
 
 -   `README.md`（概要）
 -   `INSTALL.md`（手動インストール手順、OS 別）
@@ -113,3 +110,18 @@ npm run package:release
 ## ライセンス
 
 `LICENSE` を参照してください。
+
+---
+
+## 作者
+
+猫乃 左手  
+GitHub: https://github.com/cat-left-paw
+
+## 寄付リンク（Buy Me a Coffee）
+
+気に入って使っていただけましたら、寄付をしていただくと励みになります。
+
+https://www.buymeacoffee.com/hidarite
+
+<a href="https://www.buymeacoffee.com/hidarite" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
