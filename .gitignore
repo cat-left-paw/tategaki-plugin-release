@@ -1,15 +1,36 @@
 *
 !.gitignore
+
+# docs
 !README.md
 !INSTALL.md
 !QUICKSTART.md
 !MANUAL.md
+!CHANGELOG.md
 !latest.json
 !LICENSE
 !LICENSE.ja
 !THIRD_PARTY_LICENSES.md
-!CHANGELOG.md
 
-# ソースコード
+# manifest / versions / build artifacts
+!manifest.json
+!versions.json
+!main.js
+!styles.css
+
+# source
 !src/
 !src/**
+
+# build reproducibility
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.ts-node.json
+!esbuild.config.mjs
+!main.ts
+!scripts/
+!scripts/**
+
+# release tools
+!version-bump.mjs
