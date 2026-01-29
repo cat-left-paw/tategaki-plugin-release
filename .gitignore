@@ -9,3 +9,7 @@
 !LICENSE.ja
 !THIRD_PARTY_LICENSES.md
 !CHANGELOG.md
+
+# ソースコード
+!src/
+!src/**
