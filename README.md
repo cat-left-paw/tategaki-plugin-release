@@ -1,193 +1,37 @@
-# Tategaki Plugin（縦書き編集プラグイン）
+# Tategaki Plugin (vertical writing editor for Obsidian)
 
-このリポジトリは、**Obsidian 用 縦書き編集プラグイン**の配布/開発ページです。  
-Obsidian 上で、文章を**縦書きで「見たまま」編集**できるようにします。
+English: `README.md` / 日本語: `README.ja.md`
 
-本プラグインは、現時点では Obsidian のコミュニティプラグインとして登録していません。
+Tategaki is a desktop-only Obsidian plugin that lets you edit and view Markdown in a vertical (tategaki) layout.
 
-※ **（新）執筆・参照モードは新方式**です。Obsidian の Markdown を直接編集するため、変換・同期はありません。
-※ TipTap版の執筆モードは互換モードとして残しています（将来的に整理予定）。
+Status:
+- Planned to be submitted to Obsidian Community Plugins (not registered yet).
 
-**インストールするには、GitHub の Releases から ZIP をダウンロードしてください。**
+## What it can do
 
----
+- Vertical writing editor (WYSIWYG-style layout)
+- New “Writing & Reference” mode: edits Obsidian Markdown directly (no conversion / no sync step)
+- Ruby (furigana) support (Aozora Bunko style), e.g. `｜漢字《かんじ》`
+- Images (standard Markdown images and Obsidian embeds)
+- Outline navigation and heading folding
+- Book mode for reading (paging)
+- Compatibility mode (TipTap-based editor) for older workflows
+- Theme settings (font, spacing, etc.)
 
-## ダウンロード
+## Installation (current)
 
-最新版の配布ファイルは Releases にあります。
-
+Until it is available in Community Plugins, install from GitHub Releases:
 - https://github.com/cat-left-paw/tategaki-plugin-release/releases
 
-### 配布ファイルについて
+See `INSTALL.md` for detailed steps: `INSTALL.md`
 
-- `*-v<version>.zip`  
-  インストーラー（Windows / macOS）とプラグイン本体、ドキュメントを同梱しています。
+## Documentation
 
----
+- Quick start: `QUICKSTART.md`
+- Manual: `MANUAL.md`
+- Changelog: `CHANGELOG.md`
+- Japanese README: `README.ja.md`
 
-## インストール
+## License
 
-インストール手順の詳細は、以下を参照してください。
-
-- [INSTALL.md](./INSTALL.md)
-
----
-
-## できること（主な機能）
-
-- **（新）執筆・参照モード**
-    - Obsidian の Markdown を直接編集（変換・同期なし）
-    - 縦書きの「見たまま編集」（縦書き/横書きの切り替え）
-    - ペアの Markdown ノートを開いておくと、編集内容を縦書きでリアルタイム参照
-    - ルビ（青空文庫形式の記法をサポート）
-        - 例: `｜漢字《かんじ》`
-    - 画像の表示（標準 Markdown 画像、Obsidian の画像埋め込み）
-    - 箇条書き・番号付きリストの並び替え（ショートカットで上下に移動）
-    - ツールバーからフォント・余白などを手軽に調整
-    - 見出しの折りたたみ、見出し（アウトライン）ジャンプ
-- **書籍モード（閲覧）**
-    - 実測ベースのページ分割とページめくりで、読書に特化した表示
-    - ルビ表示に対応
-    - 見出しアウトライン/見出しジャンプに対応
-    - ページ遷移効果（フェード等）
-- **互換モード（TipTapベースのエディタ）**
-    - v1.1.1以前の執筆モード（変換・同期あり）
-    - 検索・置換機能
-    - 「ソーステキスト編集」（その場で Markdown 文字列を直接編集）
-    - 同期バックアップ機能あり（設定でOFF可）
-    - 設定で互換モードを有効化する必要があります
-- **共通**
-    - テーマ機能（フォント/文字サイズ/行間/色などを自分好みに）
-
----
-
-## このプラグインが向いている人 / 向いていない人
-
-### 向いている人
-
-- 縦書きで小説・文章を書きたい人
-- Obsidian を「創作ツール」として使っている人
-
-### 向いていない人
-
-- Obsidian の標準編集以外を許容できない人
-
----
-
-## （新）執筆・参照モードについて
-
-（新）執筆・参照モードは、Obsidian の Markdown を直接編集する新方式です。**変換・同期の処理が不要**なため、従来の同期リスクがありません。
-
-- （新）執筆・参照モードでは同期バックアップは行いません（不要なため）
-- ペアの Markdown ノートをアクティブにすると、ビューが参照表示として追従します
-- ツールバーから設定を手軽に調整できます
-
-## 互換モードについて（TipTap版）
-
-v1.1.x 以前の TipTap ベースの編集機能は「互換モード」として引き続き利用できます。
-
-互換モードでは、Obsidian 標準の編集画面とは別の画面で文章を扱い、**変換・同期**をしながら元の Markdown ファイルへ反映します。
-
-ほとんどの場合は問題なく動作しますが、環境や内容によっては変換や同期がうまくいかず、文章の一部が欠けたり、最悪の場合ファイル内容が失われる可能性があります（可能性は高くありませんが、ゼロではありません）。
-
-互換モードを安心して使うために、次をおすすめします。
-
-- 大事な原稿は、事前にバックアップを取る（Obsidian のバックアップ、Git、複製など）
-- 初めて使うときは、コピーしたノートで試す
-- 安全に編集したい場合は、（新）執筆・参照モードを使用する
-- 同期が心配なときは同期バックアップ（.obsidian/tategaki-sync-backups）を活用する
-- 同期バックアップをOFFにする場合は、Obsidian の「Open version history」を使って復元できることを確認してください
-
-## 制限事項
-
-### （新）執筆・参照モード
-
-（新）執筆・参照モードでは、Obsidian の Markdown を直接文字マッピングして表示するため、以下の制限があります。
-
-- **ペアノート**：対（ペア）になる Obsidian のノートを開いておく必要があります
-    - ペアのノートのタブにはアイコンが表示されます
-    - ペアのノートを閉じると、縦書きビューも自動的に閉じられます
-- `<font>` や `<ruby>` などの HTML タグは、そのままプレーンテキストとして表示されます
-- マークダウン以外の、HTML タグを使った装飾は反映されません（青空文庫形式のルビは正常に表示されます）
-
-### 互換モード（TipTap版）
-
-互換モードでは、本文に `<div>` のような **HTML タグ（`<...>`）** が含まれていると、タグの種類によっては変換できず、編集画面で扱えない場合があります。
-これらが含まれるファイルを開こうとすると警告が表示されます。破棄して開く、を選択すると、非対応のタグは、除去され、そのまま同期すると、それらのタグは失われます。
-
-HTML タグを「文章として」含めたい場合は、次のように **コードブロック** へ入れてください（表示/保存が安定します）。
-
-```text
-<div>これはタグではなく文字として見せたい</div>
-```
-
-## 対応環境
-
-- Obsidian デスクトップ（Windows / macOS / Linux）
-- Markdown ファイル（`.md`）
-
-## モバイルについて（非対応）
-
-このバージョンから **モバイルは非対応** とします。  
-スマホ/タブレットで使いたい場合は、`manifest.json` の `isDesktopOnly` を `false` に変更し、プラグインを手動で配置してください（PC側に導入したプラグインと同期して使う方法もあります）。  
-ただし **動作保証・サポート対象外** です。
-
-## 使い方（最短）
-
-`QUICKSTART.md` を参照してください。
-
----
-
-## 更新について
-
-コミュニティプラグイン未登録のため、Obsidian 標準の自動更新は使えません。  
-プラグインの設定画面にある「更新の確認」から、新しいバージョンがあるかを確認できます。
-
-更新がある場合は、Releases から新しい ZIP をダウンロードして更新してください。
-
----
-
-## 補足
-
-License: Apache-2.0
-
-- 本リポジトリには **ソースコードとドキュメント** が含まれます
-- 配布用 ZIP は Releases に公開しています
-
-## ドキュメント構成
-
-- `README.md`（概要）
-- `INSTALL.md`（手動インストール手順、OS 別）
-- `QUICKSTART.md`（最短で使い始める）
-- `MANUAL.md`（機能詳細）
-- `CHANGELOG.md`（更新履歴）
-
-## ライセンス
-
-`LICENSE` を参照してください。
-
----
-
-## 作者
-
-猫乃 左手  
-GitHub: https://github.com/cat-left-paw
-
-## 寄付リンク（Buy Me a Coffee）
-
-気に入って使っていただけましたら、寄付をしていただくと励みになります。
-
-https://www.buymeacoffee.com/hidarite
-
-<a href="https://www.buymeacoffee.com/hidarite" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
-
----
-
-## 開発者向けメモ
-
-### デバッグログの有効化
-
-`data.json` の `common.debugLogging` を `true` にすると、`debugLog` / `debugWarn` が有効になります（既定は `false`）。
-
-- 例: `"common": { "debugLogging": true, ... }`
-- 反映にはプラグインの再読み込み（または Obsidian 再起動）が必要です。
+Apache-2.0 (see `LICENSE`)
