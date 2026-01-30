@@ -1,7 +1,10 @@
 # Third-Party Licenses
 
-このソフトウェアには以下のオープンソースソフトウェアが含まれています。
-各ライセンスの詳細はリンク先のリポジトリをご確認ください。
+このソフトウェア（配布物 / ビルド成果物）には、以下のオープンソースソフトウェアが含まれています。
+（主に `package.json` の runtime dependencies を基にしています）
+
+ライセンスの本文は、各パッケージに同梱されている LICENSE ファイルや、リンク先のリポジトリをご確認ください。
+依存関係の詳細は `package-lock.json` も参照できます。
 
 - @codemirror/commands 6.9.0 — MIT — https://github.com/codemirror/commands
 - @codemirror/history 0.19.2 — MIT — https://github.com/codemirror/history

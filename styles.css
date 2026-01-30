@@ -1,0 +1,4118 @@
+/* スマホの通知領域用の上部余白（スマホのみ適用） */
+:root {
+	--tategaki-safe-area-top: 0px;
+	--tategaki-reading-bottom-offset: 0px;
+}
+
+@media (hover: none) and (pointer: coarse) and (max-width: 700px) {
+	:root {
+		--tategaki-safe-area-top: max(
+			env(safe-area-inset-top, 0px),
+			var(--safe-area-inset-top, 0px),
+			var(--status-bar-height, 0px),
+			var(--header-height, 0px),
+			var(--titlebar-height, 0px),
+			24px
+		);
+		--tategaki-reading-bottom-offset: max(
+			env(safe-area-inset-bottom, 0px),
+			var(--safe-area-inset-bottom, 0px),
+			58px
+		);
+	}
+}
+
+/* ペアMarkdownViewのタブバッジ */
+.tategaki-paired-tab-badge,
+.tategaki-sot-tab-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	margin-right: 6px;
+	padding: 2px 6px;
+	border-radius: 999px;
+	border: 1px solid var(--background-modifier-border);
+	font-size: 12px;
+	line-height: 1.1;
+	color: var(--text-accent);
+	background: var(--background-modifier-hover);
+	vertical-align: middle;
+	flex-shrink: 0;
+}
+
+.tategaki-paired-tab-badge-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.tategaki-paired-tab-badge-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+.tategaki-paired-tab-badge-text {
+	font-size: 11px;
+	line-height: 1.1;
+}
+
+/* スクロールコンテナ */
+.tategaki-scroll-container {
+	width: 100%;
+	height: 100%;
+	overflow: auto;
+	position: relative;
+	box-sizing: border-box;
+	/* 固定ツールバー分の余白を確保 */
+	padding-top: 36px;
+}
+
+/* 編集・プレビュー共通の本文レイアウト */
+.tategaki-editor,
+.tategaki-wysiwyg-editor,
+.tategaki-preview {
+	writing-mode: var(--tategaki-writing-mode, vertical-rl);
+	text-orientation: mixed;
+	font-family: var(
+		--tategaki-font-family,
+		"Yu Mincho",
+		"Hiragino Mincho ProN",
+		serif
+	);
+	font-size: var(--tategaki-font-size, 18px);
+	line-height: var(--tategaki-line-height, 1.8);
+	color: var(--tategaki-text-color, var(--text-normal));
+	background-color: var(
+		--tategaki-background-color,
+		var(--background-primary)
+	);
+	padding: var(--tategaki-content-padding, 1em);
+	box-sizing: border-box;
+	white-space: pre-wrap;
+	position: relative;
+	min-width: 100%;
+	height: 100%;
+	outline: none;
+	border: 0;
+	border-radius: 0;
+	line-break: strict;
+	word-break: normal;
+	hanging-punctuation: allow-end;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror,
+.tategaki-preview p,
+.tategaki-preview div.markdown-preview-section > div {
+	line-break: strict;
+	word-break: normal;
+	hanging-punctuation: allow-end;
+}
+
+/* エディタ本体 */
+.tategaki-editor {
+	/* 縦方向のオーバーフローを防ぐ */
+	overflow-y: hidden;
+	overflow-x: visible;
+	/* ネイティブキャレットを使用 */
+	caret-color: auto;
+}
+
+/* WYSIWYGエディタホスト */
+.tategaki-wysiwyg-editor {
+	width: 100%;
+	height: 100%;
+	overflow: auto;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="horizontal-tb"] {
+	text-orientation: initial;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror {
+	writing-mode: inherit;
+	text-orientation: inherit;
+	font-family: var(
+		--tategaki-font-family,
+		"Yu Mincho",
+		"Hiragino Mincho ProN",
+		serif
+	);
+	font-size: var(--tategaki-font-size, 18px);
+	line-height: var(--tategaki-line-height, 1.8);
+	color: inherit;
+	background-color: transparent;
+	min-height: 100%;
+	caret-color: var(
+		--tategaki-caret-color,
+		var(--tategaki-text-color, var(--text-normal))
+	) !important;
+	outline: none;
+	white-space: pre-wrap;
+	padding: 1em;
+	box-sizing: border-box;
+}
+
+/* 横書きモード: 画面幅に合わせて折り返し */
+.tategaki-wysiwyg-editor[data-writing-mode="horizontal-tb"] .ProseMirror {
+	width: 100%;
+	max-width: 100%;
+	text-align: justify;
+	text-align-last: auto;
+	text-justify: inter-ideograph;
+}
+
+/* 縦書きモード: コンテンツ幅に合わせる */
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .ProseMirror {
+	width: max-content;
+	height: 100%;
+	text-align: justify;
+	text-align-last: auto;
+	text-justify: inter-ideograph;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] .ProseMirror {
+	width: max-content;
+	height: 100%;
+	text-align: justify;
+	text-align-last: auto;
+	text-justify: inter-ideograph;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror p,
+.tategaki-wysiwyg-editor .ProseMirror h1,
+.tategaki-wysiwyg-editor .ProseMirror h2,
+.tategaki-wysiwyg-editor .ProseMirror h3,
+.tategaki-wysiwyg-editor .ProseMirror h4,
+.tategaki-wysiwyg-editor .ProseMirror h5,
+.tategaki-wysiwyg-editor .ProseMirror h6,
+.tategaki-wysiwyg-editor .ProseMirror blockquote,
+.tategaki-wysiwyg-editor .ProseMirror ul,
+.tategaki-wysiwyg-editor .ProseMirror ol,
+.tategaki-wysiwyg-editor .ProseMirror pre {
+	margin: 0;
+}
+
+/* 画像（TipTap） */
+.tategaki-wysiwyg-editor .ProseMirror img {
+	display: inline-block;
+	max-width: 100%;
+	height: auto;
+	vertical-align: middle;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .ProseMirror img,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] .ProseMirror img {
+	/* 縦書きでも画像自体は横書きで表示 */
+	writing-mode: horizontal-tb;
+	/* 大きな画像が画面からはみ出さないように収める */
+	max-height: 80vh;
+	max-width: 70vw;
+	object-fit: contain;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror ul,
+.tategaki-wysiwyg-editor .ProseMirror ol {
+	padding-inline-start: 1.5em;
+	list-style-position: outside;
+}
+
+/* 縦書き時のリストスタイル */
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .ProseMirror ul,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .ProseMirror ol,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] .ProseMirror ul,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] .ProseMirror ol {
+	/* 縦書きでは inline 方向が垂直（上下）なので、padding-inline-start でインデント */
+	padding-inline-start: 1.5em;
+	padding-block-start: 0;
+	writing-mode: inherit;
+	text-orientation: inherit;
+	list-style-position: outside;
+}
+
+/* 縦書き時のリスト項目 */
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .ProseMirror li,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] .ProseMirror li {
+	writing-mode: inherit;
+	text-orientation: inherit;
+	display: list-item;
+}
+
+/* 縦書き時のリスト項目内の段落: マーカーとテキストが同じ行に並ぶように */
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .ProseMirror li > p,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] .ProseMirror li > p {
+	display: inline;
+}
+
+/* 縦書き時のネストされたリスト: 追加のインデント */
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .ProseMirror li > ul,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .ProseMirror li > ol,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] .ProseMirror li > ul,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] .ProseMirror li > ol {
+	padding-inline-start: 1.5em;
+	margin-inline-start: 0;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror h1,
+.tategaki-wysiwyg-editor .ProseMirror h2,
+.tategaki-wysiwyg-editor .ProseMirror h3,
+.tategaki-wysiwyg-editor .ProseMirror h4,
+.tategaki-wysiwyg-editor .ProseMirror h5,
+.tategaki-wysiwyg-editor .ProseMirror h6,
+.tategaki-preview h1,
+.tategaki-preview h2,
+.tategaki-preview h3,
+.tategaki-preview h4,
+.tategaki-preview h5,
+.tategaki-preview h6 {
+	line-height: var(--tategaki-line-height, 1.8);
+	font-family: var(
+		--tategaki-heading-font-family,
+		var(--tategaki-font-family, inherit)
+	);
+	color: var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, inherit)
+	);
+}
+
+.tategaki-wysiwyg-editor .ProseMirror blockquote {
+	writing-mode: inherit;
+	text-orientation: inherit;
+	border-inline-start: 4px solid var(--interactive-accent);
+	padding-inline-start: 1em;
+	margin-block: 0.5em;
+	font-style: italic;
+	text-indent: 0;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"]
+	.ProseMirror
+	blockquote {
+	border-inline-start: none;
+	border-block-start: 4px solid var(--interactive-accent);
+	padding-inline-start: 0;
+	padding-block-start: 1em;
+	text-indent: 0;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror rt {
+	user-select: none;
+}
+
+.tategaki-wysiwyg-editor.text-justify-enabled {
+	text-align: justify;
+	text-align-last: auto;
+	text-justify: inter-ideograph;
+}
+
+.tategaki-wysiwyg-editor.text-justify-enabled[data-writing-mode="vertical-rl"] {
+	text-justify: inter-ideograph;
+}
+
+.tategaki-wysiwyg-editor.text-justify-enabled[data-writing-mode="horizontal-tb"] {
+	text-justify: inter-ideograph;
+}
+
+.tategaki-wysiwyg-editor.text-justify-enabled .ProseMirror {
+	text-align: inherit;
+	text-align-last: auto;
+	text-justify: inherit;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror em {
+	font-style: italic !important;
+	background: none !important;
+	color: inherit !important;
+	padding: 0 !important;
+	border: none !important;
+	text-decoration: none !important;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror strong {
+	font-weight: 600 !important;
+	background: none !important;
+	color: inherit !important;
+	padding: 0 !important;
+	border: none !important;
+	text-decoration: none !important;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror em strong,
+.tategaki-wysiwyg-editor .ProseMirror strong em {
+	font-style: italic !important;
+	font-weight: 600 !important;
+	background: none !important;
+	color: inherit !important;
+	padding: 0 !important;
+	border: none !important;
+	text-decoration: none !important;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror mark,
+.tategaki-wysiwyg-editor .ProseMirror .tategaki-highlight,
+.tategaki-contenteditable-container mark,
+.tategaki-block mark {
+	background-color: var(--tategaki-highlight-color, rgba(255, 235, 59, 0.6));
+	padding: 0.05em 0.1em;
+	border-radius: 2px;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror code {
+	background-color: var(--background-secondary);
+	padding: 0.1em 0.3em;
+	border-radius: 3px;
+	font-family: var(--font-monospace);
+}
+
+.tategaki-wysiwyg-editor .tategaki-code-block {
+	writing-mode: horizontal-tb;
+	text-orientation: mixed;
+	background-color: var(--background-secondary);
+	color: var(--text-normal);
+	padding: 0.6em 0.75em;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	overflow: auto;
+	margin: 0.5em 0;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .tategaki-code-block,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] .tategaki-code-block {
+	writing-mode: inherit;
+	text-orientation: inherit;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"]
+	.tategaki-code-block
+	code,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"]
+	.tategaki-code-block
+	code,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"]
+	.tategaki-code-block
+	.hljs,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"]
+	.tategaki-code-block
+	.hljs {
+	writing-mode: inherit;
+	text-orientation: inherit;
+}
+
+.tategaki-wysiwyg-editor .tategaki-code-block code {
+	background: transparent;
+	padding: 0;
+	border-radius: 0;
+	font-family: var(--font-monospace);
+}
+
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs {
+	color: var(--code-normal, var(--text-normal));
+}
+
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-comment,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-quote {
+	color: var(--code-comment, var(--text-muted));
+	font-style: italic;
+}
+
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-keyword,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-selector-tag,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-literal,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-symbol,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-type {
+	color: var(--code-keyword, var(--interactive-accent, #81a1c1));
+}
+
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-function .hljs-title,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-title.function_,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-built_in,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-class .hljs-title,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-title.class_ {
+	color: var(--code-function, var(--interactive-accent, #88c0d0));
+}
+
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-string,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-meta .hljs-string,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-template-tag,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-template-variable {
+	color: var(--code-string, #a3be8c);
+}
+
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-number,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-attr,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-attribute,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-property,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-variable,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-variable.language_ {
+	color: var(--code-number, #b48ead);
+}
+
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-meta,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-meta .hljs-keyword,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-tag,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-name,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-title,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-section {
+	color: var(--code-tag, #d08770);
+}
+
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-punctuation,
+.tategaki-wysiwyg-editor .tategaki-code-block .hljs-operator {
+	color: var(--code-punctuation, var(--text-muted, #616e88));
+}
+
+.tategaki-wysiwyg-editor .tategaki-task-list {
+	list-style: none;
+	margin: 0 0 0 1.5em;
+	padding: 0;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .tategaki-task-list {
+	margin: 0 1.5em 0 0;
+}
+
+.tategaki-wysiwyg-editor .tategaki-task-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+	writing-mode: inherit;
+	text-orientation: inherit;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .tategaki-task-item {
+	flex-direction: row-reverse;
+}
+
+.tategaki-wysiwyg-editor .tategaki-task-item input[type="checkbox"] {
+	margin: 0;
+	width: 1.1em;
+	height: 1.1em;
+}
+
+.tategaki-wysiwyg-editor .tategaki-task-item-content {
+	flex: 1;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror[style*="vertical-rl"] {
+	text-orientation: mixed;
+}
+
+.tategaki-block-editor-root .tategaki-block {
+	min-height: 1.2em;
+}
+
+.tategaki-block-editor-source {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	box-sizing: border-box;
+	font-family: var(--font-monospace, monospace);
+	font-size: var(--font-ui-medium, 14px);
+	line-height: 1.6;
+	padding: 16px;
+	border: none;
+	outline: none;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	resize: none;
+	overflow: auto;
+}
+
+/* tiptapの編集可能時にキャレットが消える場合の対策（WebKit系） */
+.tategaki-wysiwyg-editor .ProseMirror[contenteditable="true"] {
+	-webkit-user-modify: read-write-plaintext-only;
+}
+
+/* 縦書き時のより自然な文字方向 */
+.tategaki-editor[style*="vertical-rl"] {
+	text-orientation: mixed;
+}
+
+.tategaki-editor:focus,
+.tategaki-wysiwyg-editor:focus,
+.tategaki-preview:focus {
+	outline: 2px solid var(--interactive-accent);
+}
+
+/* ネイティブキャレット使用時 */
+.tategaki-editor.native-caret {
+	caret-color: var(--tategaki-text-color, var(--text-normal)) !important;
+}
+
+/* ネイティブキャレット使用時はカスタムキャレットを非表示 */
+.tategaki-editor.native-caret ~ .tategaki-caret {
+	display: none !important;
+}
+
+/* カスタムキャレット */
+.tategaki-caret {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: var(--tategaki-caret-width, 3px);
+	height: var(--tategaki-caret-height, 24px);
+	background-color: var(--tategaki-caret-color, var(--text-normal));
+	border-radius: 1px;
+	pointer-events: none;
+	user-select: none;
+	animation: tategakiCaretBlink 1s step-start infinite;
+	z-index: 10;
+	display: block; /* 確実に表示するため */
+	/* 縦書き時の横線キャレット対応 */
+	transform-origin: center;
+}
+
+/* キャレットの実線表示 */
+.tategaki-caret--solid {
+	animation: none !important;
+	opacity: 1 !important;
+}
+
+@keyframes tategakiCaretBlink {
+	0% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0;
+	}
+	100% {
+		opacity: 1;
+	}
+}
+
+/* 縦書き時のスクロールバーのスタイル調整（編集 / プレビュー共通） */
+.tategaki-editor,
+.tategaki-wysiwyg-editor,
+.tategaki-preview {
+	scrollbar-width: thin;
+	scrollbar-color: var(--scrollbar-thumb-bg) var(--background-secondary);
+}
+
+.tategaki-editor::-webkit-scrollbar,
+.tategaki-wysiwyg-editor::-webkit-scrollbar,
+.tategaki-preview::-webkit-scrollbar {
+	width: 8px !important;
+	height: 8px !important;
+	display: block !important;
+}
+
+.tategaki-editor::-webkit-scrollbar:horizontal,
+.tategaki-wysiwyg-editor::-webkit-scrollbar:horizontal,
+.tategaki-preview::-webkit-scrollbar:horizontal {
+	height: 8px !important;
+	display: block !important;
+}
+
+.tategaki-editor::-webkit-scrollbar:vertical,
+.tategaki-wysiwyg-editor::-webkit-scrollbar:vertical,
+.tategaki-preview::-webkit-scrollbar:vertical {
+	width: 8px !important;
+	display: block !important;
+}
+
+.tategaki-editor::-webkit-scrollbar-track,
+.tategaki-wysiwyg-editor::-webkit-scrollbar-track,
+.tategaki-preview::-webkit-scrollbar-track {
+	background: var(--background-secondary);
+}
+
+.tategaki-editor::-webkit-scrollbar-thumb,
+.tategaki-wysiwyg-editor::-webkit-scrollbar-thumb,
+.tategaki-preview::-webkit-scrollbar-thumb {
+	background: var(--scrollbar-thumb-bg);
+	border-radius: 4px;
+}
+
+.tategaki-editor::-webkit-scrollbar-thumb:hover,
+.tategaki-wysiwyg-editor::-webkit-scrollbar-thumb:hover,
+.tategaki-preview::-webkit-scrollbar-thumb:hover {
+	background: var(--scrollbar-thumb-bg-hover);
+}
+
+/* 太いカスタムキャレット（コンテナ直下に配置されるためスコープはクラスのみ） */
+
+.tategaki-caret {
+	position: absolute;
+	left: 0;
+	top: 0;
+	/* 横線の長さと太さ */
+	width: var(--tategaki-caret-length, 1.2em);
+	height: var(--tategaki-caret-thickness, 3px);
+	background: var(--text-normal);
+	border-radius: 1px;
+	pointer-events: none;
+	user-select: none;
+	animation: tategakiCaretBlink 1s steps(1, end) infinite;
+	z-index: 10;
+}
+
+/* 点滅を止めて常時表示させたい場合に付与するクラス */
+.tategaki-caret--solid {
+	animation: none;
+	opacity: 1;
+}
+
+@keyframes tategakiCaretBlink {
+	0% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0;
+	}
+	100% {
+		opacity: 1;
+	}
+}
+
+/* ====================
+   コントロールパネル
+   ==================== */
+
+.tategaki-control-panel {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 1000;
+	background: var(--background-primary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	padding: 4px 8px;
+	width: 100%;
+
+	/* フレックスボックス設定 */
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+
+	/* 書き方向を強制的に横書きに */
+	writing-mode: horizontal-tb !important; /* 横並びのため */
+}
+
+/* 縦書きコンテナ内でのコントロールパネル位置調整 */
+.tategaki-scroll-container .tategaki-control-panel {
+	writing-mode: horizontal-tb !important;
+}
+
+/* 縦書きモード時のコントロールパネル位置調整 */
+/* 縦書き時の特別な位置調整は不要（横表示時のみ表示） */
+
+/* パネル内の要素配置 */
+.tategaki-control-panel > * {
+	flex-shrink: 0;
+	writing-mode: horizontal-tb !important;
+	white-space: nowrap;
+}
+
+/* パネル全体のフォント設定 */
+.tategaki-control-panel,
+.tategaki-control-panel *,
+.tategaki-control-panel select,
+.tategaki-control-panel option,
+.tategaki-control-panel button,
+.tategaki-control-panel input,
+.tategaki-control-panel label {
+	font-family: var(--font-ui) !important;
+	font-size: 12px;
+}
+
+/* コントロールグループ */
+.tategaki-control-group {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: nowrap;
+	flex-shrink: 0;
+	min-width: max-content;
+}
+
+.tategaki-control-group.buttons {
+	display: flex;
+	gap: 4px;
+}
+
+/* ラベルとコントロール */
+.tategaki-control-panel label {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	white-space: nowrap;
+	writing-mode: horizontal-tb !important;
+	color: var(--text-normal);
+	flex-shrink: 0;
+	min-width: max-content;
+}
+
+/* セレクトボックス */
+.tategaki-control-panel select {
+	padding: 1px 6px;
+	writing-mode: horizontal-tb !important;
+	min-width: 80px;
+	width: 80px;
+	margin-left: 2px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	border-radius: 3px;
+	flex-shrink: 0;
+}
+
+/* スライダー */
+.tategaki-control-panel input[type="range"] {
+	width: 60px;
+	margin: 0 2px;
+	flex-shrink: 0;
+}
+
+/* ボタン */
+.tategaki-control-button {
+	padding: 3px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 3px;
+	background: var(--interactive-normal);
+	color: var(--text-normal);
+	cursor: pointer;
+	transition: all 0.2s ease;
+	writing-mode: horizontal-tb !important;
+	text-orientation: mixed !important;
+	min-width: max-content;
+	height: auto;
+	white-space: nowrap;
+	font-size: 12px;
+	flex-shrink: 0;
+}
+
+.tategaki-control-button:hover {
+	background: var(--interactive-hover);
+	border-color: var(--interactive-accent);
+}
+
+.tategaki-control-button:active {
+	background: var(--interactive-active);
+	transform: translateY(1px);
+}
+
+.tategaki-control-button.active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+/* 値表示 */
+.tategaki-value {
+	color: var(--text-normal);
+	font-weight: 500;
+	min-width: 30px;
+	text-align: center;
+	padding: 2px 4px;
+	background: var(--background-secondary);
+	border-radius: 3px;
+	border: 1px solid var(--background-modifier-border);
+	font-size: 12px;
+	flex-shrink: 0;
+}
+
+/* 縦表示時の値表示 */
+/* 旧縦レイアウト関連は廃止 */
+
+/* 縦表示モード */
+/* 旧縦レイアウト関連は廃止 */
+
+/* 縦表示モード時のボタン配置 */
+/* 旧縦レイアウト関連は廃止 */
+
+/* 旧縦レイアウト関連は廃止 */
+
+/* 旧縦レイアウト関連は廃止 */
+
+/* 旧縦レイアウト関連は廃止 */
+
+/* 旧縦レイアウト関連は廃止 */
+
+/* 旧縦レイアウト関連は廃止 */
+
+/* 旧縦レイアウト関連は廃止 */
+
+/* 縦表示時のスクロールバー非表示 */
+/* 旧縦レイアウト関連は廃止 */
+
+/* 旧縦レイアウト関連は廃止 */
+
+/* 旧縦レイアウト関連は廃止 */
+
+/* スクロールバー */
+.tategaki-control-panel::-webkit-scrollbar {
+	height: 4px;
+	width: 4px;
+}
+
+.tategaki-control-panel::-webkit-scrollbar-track {
+	background: var(--background-secondary);
+	border-radius: 2px;
+}
+
+.tategaki-control-panel::-webkit-scrollbar-thumb {
+	background: var(--scrollbar-thumb-bg);
+	border-radius: 2px;
+}
+
+.tategaki-control-panel::-webkit-scrollbar-thumb:hover {
+	background: var(--scrollbar-thumb-bg-hover);
+}
+
+/* プレビュー表示 */
+
+/* ページ表示（印刷レイアウト）用のスナップスクロール */
+.tategaki-page-container {
+	/* 中央配置はレイアウト側で行う */
+}
+
+.tategaki-preview.page-mode {
+	overflow: hidden;
+	display: flex;
+	justify-content: flex-start;
+	align-items: stretch;
+}
+
+.tategaki-preview.page-mode .page {
+	scroll-snap-align: start;
+}
+
+/* 縦書き（横スクロール・逆順）のときは右端をスナップ基準にする */
+.tategaki-pages-scroller.pages-horizontal-reverse .page {
+	scroll-snap-align: end;
+}
+
+/* ページスナップ用のスクローラー */
+.tategaki-pages-scroller {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	gap: 0;
+	-webkit-overflow-scrolling: touch;
+	/* 縦書き時でも横方向にページを並べるため強制的に横書きの書字方向を採用 */
+	writing-mode: horizontal-tb !important;
+	/* スクロールバー非表示 */
+	scrollbar-width: none;
+	scroll-behavior: smooth;
+}
+.tategaki-pages-scroller.pages-horizontal-reverse {
+	flex-direction: row-reverse;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scroll-snap-type: x mandatory;
+	scroll-padding-inline: 0px; /* scrollIntoView(inline:end) の停止位置を安定化 */
+}
+.tategaki-pages-scroller.pages-vertical {
+	flex-direction: column;
+	overflow-y: auto;
+	overflow-x: hidden;
+	scroll-snap-type: y mandatory;
+}
+.tategaki-page-edge-zone {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 6%;
+	z-index: 50;
+	background: transparent;
+	/* デバッグ用に下線を残す場合は以下を有効化 */
+	/* outline: 1px dashed rgba(0,0,0,0.1); */
+}
+.tategaki-page-edge-zone.prev {
+	left: 0;
+}
+.tategaki-page-edge-zone.next {
+	right: 0;
+}
+
+.tategaki-pages-scroller::-webkit-scrollbar {
+	display: none;
+}
+
+/* 1ページの枠（ボーダー内側一杯） */
+.tategaki-pages-scroller .page {
+	flex: 0 0 100%;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	position: relative;
+	box-sizing: border-box;
+}
+
+/* ページ内の本文ラッパー（プレビューの書字方向を維持） */
+.tategaki-pages-scroller .page .page-content {
+	/* runtimeでwriting-modeを設定するのでここでは固定しない */
+	width: 100%;
+	height: 100%;
+	box-sizing: border-box;
+	overflow: hidden;
+	/* 縦書き時のテキスト配置調整 */
+	display: block;
+	position: relative;
+}
+
+/* ページ表示モードでは、縦書きに継承される break-all/anywhere を打ち消し、厳密な改行を適用 */
+.tategaki-preview.page-mode .page .page-content {
+	word-break: break-word;
+	overflow-wrap: break-word;
+	line-break: auto;
+	text-align: justify;
+	text-align-last: auto;
+}
+
+.tategaki-preview.page-mode[style*="vertical-rl"] .page .page-content {
+	text-justify: inter-character;
+}
+
+.tategaki-preview.page-mode[style*="horizontal-tb"] .page .page-content {
+	text-justify: inter-ideograph;
+}
+
+.tategaki-preview.page-mode .page .tategaki-continued-start {
+	text-indent: 0 !important;
+}
+
+/* ページをまたぐ折り返し行の両端揃えを実現するための非表示文字 */
+/* 通常のフローで折り返させるため、position: absolute は使わない */
+.tategaki-hidden-justify-char {
+	opacity: 0;
+	pointer-events: none;
+	user-select: none;
+	/* フォントサイズを継承して、正常に折り返しを発生させる */
+	/* width/height を制限せず、自然な折り返しを許可 */
+}
+
+/* 厳密な改行：空行表示用（旧実装と同じクラス名） */
+.empty-line {
+	pointer-events: none;
+}
+
+/* プレビュー内段落の余白をリセットし、空行の高さを一貫させる */
+.tategaki-preview p {
+	margin: 0;
+}
+
+/* 見出しやリストなどは既存の専用マージンを維持（下の既存ルールが適用される） */
+
+/* プレビュー内のMarkdown要素 */
+.tategaki-preview h1,
+.tategaki-preview h2,
+.tategaki-preview h3,
+.tategaki-preview h4,
+.tategaki-preview h5,
+.tategaki-preview h6 {
+	writing-mode: inherit;
+	text-orientation: inherit;
+	margin-block: 0;
+	font-weight: bold;
+	letter-spacing: var(--tategaki-letter-spacing, 0);
+}
+
+.tategaki-preview ul,
+.tategaki-preview ol {
+	writing-mode: inherit;
+	text-orientation: inherit;
+	margin-block: 0.5em;
+}
+
+.tategaki-preview li {
+	writing-mode: inherit;
+	text-orientation: inherit;
+}
+
+.tategaki-preview pre {
+	writing-mode: horizontal-tb;
+	text-orientation: mixed;
+	overflow: auto;
+	padding: 0.5em;
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	margin-block: 0.5em;
+}
+
+.tategaki-preview code {
+	background-color: var(--background-secondary);
+	padding: 0.1em 0.3em;
+	border-radius: 3px;
+	font-family: var(--font-monospace);
+}
+
+.tategaki-preview blockquote {
+	writing-mode: inherit;
+	text-orientation: inherit;
+	border-left: 4px solid var(--interactive-accent);
+	padding-left: 1em;
+	margin-block: 0.5em;
+	font-style: italic;
+	text-indent: 0;
+}
+
+.tategaki-preview[style*="vertical-rl"] blockquote,
+.tategaki-preview-container[style*="vertical-rl"] blockquote {
+	border-left: none !important;
+	border-inline-start: none !important;
+}
+
+.tategaki-preview hr {
+	border: none;
+	border-top: 2px solid var(--background-modifier-border);
+	margin: 1em 0;
+}
+
+.tategaki-preview[style*="vertical-rl"] hr {
+	border-top: none;
+	border-right: 2px solid var(--background-modifier-border);
+	margin: 0 1em;
+	height: 100%;
+	width: 0;
+}
+
+.tategaki-preview em {
+	font-style: italic !important;
+	background: none !important;
+	color: inherit !important;
+	padding: 0 !important;
+	border: none !important;
+	text-decoration: none !important;
+}
+
+.tategaki-preview strong {
+	font-weight: bold !important;
+	background: none !important;
+	color: inherit !important;
+	padding: 0 !important;
+	border: none !important;
+	text-decoration: none !important;
+}
+
+.tategaki-preview strong em,
+.tategaki-preview em strong {
+	font-style: italic !important;
+	font-weight: bold !important;
+	background: none !important;
+	color: inherit !important;
+	padding: 0 !important;
+	border: none !important;
+	text-decoration: none !important;
+}
+
+/* レンダリングエラー表示 */
+.tategaki-render-error {
+	color: var(--text-error);
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 1em;
+	margin: 1em 0;
+	writing-mode: horizontal-tb;
+	text-orientation: mixed;
+}
+
+/* 小さい画面での調整 */
+@media screen and (max-width: 768px) {
+	.tategaki-control-panel {
+		min-width: 600px;
+		padding: 6px 10px;
+		gap: 6px;
+		overflow-x: auto;
+	}
+
+	.tategaki-control-button {
+		padding: 3px 8px;
+	}
+
+	.tategaki-control-panel select {
+		min-width: 50px;
+	}
+}
+
+/* カーソルインジケーター（旧実装準拠） */
+.cursor-indicator {
+	display: inline-block;
+	width: 2px;
+	height: 1em;
+	background-color: var(--tategaki-text-color, var(--text-normal)) !important;
+	animation: cursor-blink 1s step-start infinite !important;
+	pointer-events: none;
+	position: relative;
+	vertical-align: baseline;
+}
+
+/* TipTap等: 外部キャレットは常時表示＆アクセント色 */
+.tategaki-external-caret {
+	background-color: var(
+		--tategaki-text-color,
+		var(--interactive-accent)
+	) !important;
+	animation: none !important;
+	opacity: 0.9;
+	box-shadow: 0 0 0 1px var(--tategaki-text-color, var(--interactive-accent)) !important;
+}
+
+/* 縦書き時のカーソル */
+.tategaki-preview[style*="vertical-rl"] .cursor-indicator {
+	width: 1em !important;
+	height: 2px !important;
+	display: inline-block;
+}
+
+/* TipTap（開発版）縦書き時の外部カーソル */
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .cursor-indicator {
+	width: 1em !important;
+	height: 2px !important;
+	display: inline-block;
+}
+
+.line-end-allow-end {
+	hanging-punctuation: allow-end;
+}
+
+/* 行末許容: より柔軟な行末処理 */
+.tategaki-preview.line-end-allow-end {
+	text-align: justify;
+	text-justify: inter-character;
+}
+
+/* 行末処理スタイル */
+
+/* 行末そろえ（justifyText）設定 */
+.tategaki-preview.text-justify-enabled {
+	text-align: justify;
+	text-align-last: auto;
+}
+
+/* 縦書き時の行末そろえ */
+.tategaki-preview.text-justify-enabled[style*="vertical-rl"] {
+	text-align: justify;
+	text-justify: inter-ideograph;
+}
+
+/* 横書き時の行末そろえ */
+.tategaki-preview.text-justify-enabled[style*="horizontal-tb"] {
+	text-align: justify;
+	text-justify: inter-ideograph;
+}
+
+/* 段落要素での行末そろえ適用 */
+.tategaki-preview.text-justify-enabled p,
+.tategaki-preview.text-justify-enabled div.markdown-preview-section > div {
+	text-align: justify;
+	text-align-last: auto;
+}
+
+/* 縦書き段落での行末そろえ強化 */
+.tategaki-preview.text-justify-enabled[style*="vertical-rl"] p,
+.tategaki-preview.text-justify-enabled[style*="vertical-rl"]
+	div.markdown-preview-section
+	> div {
+	text-align: justify;
+	text-justify: inter-ideograph;
+	text-align-last: auto;
+}
+
+/* 横書き段落での行末そろえ強化 */
+.tategaki-preview.text-justify-enabled[style*="horizontal-tb"] p,
+.tategaki-preview.text-justify-enabled[style*="horizontal-tb"]
+	div.markdown-preview-section
+	> div {
+	text-align: justify;
+	text-justify: inter-ideograph;
+	text-align-last: auto;
+}
+
+/* 行末そろえで短い行は左寄せ/上寄せに */
+.tategaki-preview.text-justify-enabled h1,
+.tategaki-preview.text-justify-enabled h2,
+.tategaki-preview.text-justify-enabled h3,
+.tategaki-preview.text-justify-enabled h4,
+.tategaki-preview.text-justify-enabled h5,
+.tategaki-preview.text-justify-enabled h6 {
+	text-align: start;
+	text-align-last: start;
+}
+
+/* TipTap検索ハイライト */
+.tategaki-search-match {
+	background: rgba(255, 215, 0, 0.35);
+	border-radius: 2px;
+}
+
+.tategaki-search-match-active {
+	background: rgba(255, 120, 0, 0.45);
+	border-radius: 2px;
+	outline: 1px solid rgba(255, 120, 0, 0.65);
+}
+
+/* 縦書き時の長い英字文字列の改行設定 */
+/* 既定の過剰な改行を解除（ページモードで個別に指定するため） */
+.tategaki-preview[style*="vertical-rl"] {
+	word-break: normal;
+	overflow-wrap: normal;
+	line-break: auto;
+}
+
+/* 縦書きでの英字・数字の配置調整（緩め） */
+.tategaki-preview[style*="vertical-rl"] p,
+.tategaki-preview[style*="vertical-rl"] div,
+.tategaki-preview[style*="vertical-rl"] span {
+	word-break: normal;
+	overflow-wrap: normal;
+	line-break: auto;
+	/* 手動全角スペース字下げとCSS字下げの二重化を避けるため、基本は0。必要な場面はTS側で制御 */
+	text-indent: 0;
+}
+
+@keyframes cursor-blink {
+	0% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 1;
+	}
+	51% {
+		opacity: 0;
+	}
+	100% {
+		opacity: 0;
+	}
+}
+
+/* ルビ（Ruby）スタイル - 基本設定 */
+ruby {
+	ruby-align: center;
+}
+
+/* 編集モード用のルビサイズ（標準的な0.5emに修正） */
+.tategaki-editor-root,
+.tategaki-block-editor-root,
+.tategaki-wysiwyg-editor,
+.tategaki-preview-content,
+.tategaki-preview {
+	--tategaki-ruby-size: 0.5;
+	--ruby-size: 0.5;
+}
+
+.tategaki-editor-root:not(.tategaki-ruby-plugin-active) rt,
+.tategaki-block-editor-root:not(.tategaki-ruby-plugin-active) rt,
+.tategaki-wysiwyg-editor:not(.tategaki-ruby-plugin-active) rt,
+.tategaki-block-editor-root:not(.tategaki-ruby-plugin-active)
+	.tategaki-block
+	rt {
+	font-size: calc(var(--tategaki-ruby-size, 0.5) * 1em) !important;
+	line-height: 1.2;
+}
+
+.tategaki-editor-root.tategaki-ruby-plugin-active rt,
+.tategaki-block-editor-root.tategaki-ruby-plugin-active rt,
+.tategaki-wysiwyg-editor.tategaki-ruby-plugin-active rt,
+.tategaki-block-editor-root.tategaki-ruby-plugin-active .tategaki-block rt {
+	/* JapaneseNovelRuby 有効時も Tategaki 側の設定値を優先する */
+	font-size: calc(var(--tategaki-ruby-size, 0.5) * 1em) !important;
+	line-height: 1.2;
+}
+
+/* プレビューモード用のルビサイズ */
+.tategaki-preview-content:not(.tategaki-ruby-plugin-active) rt,
+.tategaki-preview:not(.tategaki-ruby-plugin-active) rt,
+.tategaki-preview-content:not(.tategaki-ruby-plugin-active)
+	.tategaki-preview
+	rt {
+	font-size: calc(var(--tategaki-ruby-size, 0.5) * 1em) !important;
+	line-height: 1.2;
+}
+
+.tategaki-preview-content.tategaki-ruby-plugin-active rt,
+.tategaki-preview.tategaki-ruby-plugin-active rt,
+.tategaki-preview-content.tategaki-ruby-plugin-active .tategaki-preview rt {
+	/* JapaneseNovelRuby 有効時も Tategaki 側の設定値を優先する */
+	font-size: calc(var(--tategaki-ruby-size, 0.5) * 1em) !important;
+	line-height: 1.2;
+}
+
+/* 縦書き時のルビ調整 */
+.tategaki-editor-root[style*="vertical-rl"] ruby,
+.tategaki-block-editor-root[style*="vertical-rl"] ruby,
+.tategaki-preview-content[style*="vertical-rl"] ruby,
+.tategaki-preview[style*="vertical-rl"] ruby {
+	ruby-position: over;
+}
+
+.tategaki-editor-root[style*="vertical-rl"] rt,
+.tategaki-block-editor-root[style*="vertical-rl"] rt,
+.tategaki-preview-content[style*="vertical-rl"] rt,
+.tategaki-preview[style*="vertical-rl"] rt {
+	writing-mode: vertical-rl;
+	text-orientation: upright;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] ruby {
+	ruby-position: over;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] rt {
+	writing-mode: vertical-rl;
+	text-orientation: upright;
+}
+
+/* 横書き時のルビ調整 */
+.tategaki-editor-root[style*="horizontal-tb"] ruby,
+.tategaki-block-editor-root[style*="horizontal-tb"] ruby,
+.tategaki-preview-content[style*="horizontal-tb"] ruby,
+.tategaki-preview[style*="horizontal-tb"] ruby {
+	ruby-position: over;
+}
+
+.tategaki-editor-root[style*="horizontal-tb"] rt,
+.tategaki-block-editor-root[style*="horizontal-tb"] rt,
+.tategaki-preview-content[style*="horizontal-tb"] rt,
+.tategaki-preview[style*="horizontal-tb"] rt {
+	writing-mode: horizontal-tb;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="horizontal-tb"] ruby {
+	ruby-position: over;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="horizontal-tb"] rt {
+	writing-mode: horizontal-tb;
+}
+
+/* TipTap編集時の疑似ルビ（ネイティブ<ruby>/<rt>を使わない） */
+.tategaki-wysiwyg-editor .ProseMirror .tategaki-aozora-ruby {
+	position: relative;
+	display: inline-block;
+	line-height: 1;
+	letter-spacing: 0 !important;
+	writing-mode: inherit;
+	text-orientation: inherit;
+	--tategaki-ruby-offset: 0em;
+	--tategaki-ruby-side-gap: var(--tategaki-ruby-gap-vertical, 2em);
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="horizontal-tb"]
+	.ProseMirror
+	.tategaki-aozora-ruby {
+	height: 1em;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"]
+	.ProseMirror
+	.tategaki-aozora-ruby {
+	height: auto;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"]
+	.ProseMirror
+	.tategaki-aozora-ruby {
+	--tategaki-ruby-side-gap: var(--tategaki-ruby-gap-vertical, 2em);
+}
+
+.tategaki-wysiwyg-editor .ProseMirror .tategaki-aozora-ruby-rt {
+	position: absolute;
+	font-size: calc(var(--tategaki-ruby-size, 0.5) * 1em) !important;
+	line-height: 1.2;
+	letter-spacing: 0 !important;
+	white-space: nowrap;
+	user-select: none;
+	z-index: 1;
+	writing-mode: inherit;
+	text-orientation: inherit;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="horizontal-tb"]
+	.ProseMirror
+	.tategaki-aozora-ruby-rt {
+	top: 0;
+	left: 50%;
+	transform: translate(-50%, var(--tategaki-ruby-gap-horizontal, 0em));
+	writing-mode: horizontal-tb;
+	text-orientation: initial;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"]
+	.ProseMirror
+	.tategaki-aozora-ruby-rt {
+	top: 50%;
+	left: 100%;
+	right: auto;
+	transform: translate(
+		calc(var(--tategaki-ruby-side-gap, 0em) + var(--tategaki-ruby-offset)),
+		-50%
+	);
+	writing-mode: vertical-rl;
+	text-orientation: upright;
+}
+
+/* SoT派生ビューの疑似ルビ（data-ruby を使う） */
+.tategaki-sot-derived-root .tategaki-aozora-ruby {
+	position: relative;
+	display: inline-block;
+	line-height: 1;
+	letter-spacing: 0 !important;
+	writing-mode: inherit;
+	text-orientation: inherit;
+	--tategaki-ruby-offset: 0em;
+	--tategaki-ruby-side-gap: var(--tategaki-ruby-gap-vertical, 2em);
+}
+
+.tategaki-sot-derived-root .tategaki-aozora-ruby::after {
+	content: attr(data-ruby);
+	position: absolute;
+	font-size: calc(var(--tategaki-ruby-size, 0.5) * 1em) !important;
+	line-height: 1.2;
+	letter-spacing: 0 !important;
+	white-space: nowrap;
+	user-select: none;
+	pointer-events: none;
+	z-index: 1;
+	writing-mode: inherit;
+	text-orientation: inherit;
+}
+
+.tategaki-sot-derived-root[data-writing-mode="horizontal-tb"]
+	.tategaki-aozora-ruby {
+	height: 1em;
+}
+
+.tategaki-sot-derived-root[data-writing-mode="horizontal-tb"]
+	.tategaki-aozora-ruby::after {
+	top: 0;
+	left: 50%;
+	transform: translate(-50%, var(--tategaki-ruby-gap-horizontal, 0em));
+	writing-mode: horizontal-tb;
+	text-orientation: initial;
+}
+
+.tategaki-sot-derived-root[data-writing-mode="vertical-rl"]
+	.tategaki-aozora-ruby::after,
+.tategaki-sot-derived-root[data-writing-mode="vertical-lr"]
+	.tategaki-aozora-ruby::after,
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-aozora-ruby::after {
+	top: 50%;
+	left: 100%;
+	right: auto;
+	transform: translate(
+		calc(var(--tategaki-ruby-side-gap, 0em) + var(--tategaki-ruby-offset)),
+		-50%
+	);
+	writing-mode: vertical-rl;
+	text-orientation: upright;
+}
+
+/* モバイル用のルビ補正は無効化（ズレ防止のため共通値を使用） */
+
+/* ソースモード検索ハイライト */
+/* ブロックエディタ - 選択範囲の安定性向上 */
+.tategaki-block-editor-root {
+	/* ユーザー選択を有効化 */
+	user-select: text;
+	-webkit-user-select: text;
+	-moz-user-select: text;
+	-ms-user-select: text;
+	/* プレビューモードと同じフォント設定 */
+	font-family: var(
+		--tategaki-font-family,
+		"Yu Mincho",
+		"Hiragino Mincho ProN",
+		serif
+	);
+	font-size: var(--tategaki-font-size, 18px);
+	line-height: var(--tategaki-line-height, 1.8);
+	color: var(--tategaki-text-color, var(--text-normal));
+}
+
+/* エディタビューの見出しに文字間を適用 */
+.tategaki-block-editor-root h1,
+.tategaki-block-editor-root h2,
+.tategaki-block-editor-root h3,
+.tategaki-block-editor-root h4,
+.tategaki-block-editor-root h5,
+.tategaki-block-editor-root h6,
+.tategaki-block h1,
+.tategaki-block h2,
+.tategaki-block h3,
+.tategaki-block h4,
+.tategaki-block h5,
+.tategaki-block h6 {
+	letter-spacing: var(--tategaki-letter-spacing, 0);
+}
+
+/* ブロックエディタの太字・斜体スタイル */
+.tategaki-block-editor-root em,
+.tategaki-block em {
+	font-style: italic !important;
+	background: none !important;
+	color: inherit !important;
+	padding: 0 !important;
+	border: none !important;
+	text-decoration: none !important;
+}
+
+.tategaki-block-editor-root strong,
+.tategaki-block strong {
+	font-weight: 600 !important;
+	background: none !important;
+	color: inherit !important;
+	padding: 0 !important;
+	border: none !important;
+	text-decoration: none !important;
+}
+
+.tategaki-block-editor-root em strong,
+.tategaki-block-editor-root strong em,
+.tategaki-block em strong,
+.tategaki-block strong em {
+	font-style: italic !important;
+	font-weight: 600 !important;
+	background: none !important;
+	color: inherit !important;
+	padding: 0 !important;
+	border: none !important;
+	text-decoration: none !important;
+}
+
+/* 編集ビューの区切り線 */
+.tategaki-contenteditable-container hr,
+.tategaki-block hr,
+.tategaki-wysiwyg-editor hr {
+	position: relative;
+	border: none;
+	margin: 1em 0;
+	height: 1.6em;
+	min-height: 1.6em;
+}
+
+.tategaki-contenteditable-container[style*="vertical-rl"] hr,
+.tategaki-block-editor-root[data-writing-mode="vertical-rl"] hr,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] hr {
+	margin: 1em;
+	margin-top: 0.2em;
+	width: 1.6em;
+	min-width: 1.6em;
+	height: calc(100% - 0.5em);
+	min-height: calc(100% - 0.5em);
+	max-height: calc(100% - 0.5em);
+}
+
+/* 縦書きの区切り線は画面高さいっぱいに伸ばす */
+.tategaki-contenteditable-container[style*="vertical-lr"] hr,
+.tategaki-block-editor-root[data-writing-mode="vertical-lr"] hr,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] hr {
+	margin: 1em;
+	margin-top: 0.2em;
+	width: 1.6em;
+	min-width: 1.6em;
+	height: calc(100% - 0.5em);
+	min-height: calc(100% - 0.5em);
+	max-height: calc(100% - 0.5em);
+}
+
+.tategaki-contenteditable-container hr::before,
+.tategaki-block hr::before,
+.tategaki-wysiwyg-editor hr::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 50%;
+	border-top: 2px solid var(--background-modifier-border);
+	transform: translateY(-50%);
+	pointer-events: none;
+}
+
+.tategaki-contenteditable-container[style*="vertical-rl"] hr::before,
+.tategaki-block-editor-root[data-writing-mode="vertical-rl"] hr::before,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] hr::before,
+.tategaki-contenteditable-container[style*="vertical-lr"] hr::before,
+.tategaki-block-editor-root[data-writing-mode="vertical-lr"] hr::before,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] hr::before {
+	left: 50%;
+	right: auto;
+	top: 0;
+	bottom: 0;
+	border-top: none;
+	border-right: 2px solid var(--background-modifier-border);
+	transform: translateX(-50%);
+}
+
+.tategaki-wysiwyg-editor hr.ProseMirror-selectednode {
+	border-color: var(--interactive-accent);
+	box-shadow: inset 0 0 0 2px var(--interactive-accent);
+}
+
+.tategaki-wysiwyg-editor hr.ProseMirror-selectednode::before {
+	border-color: var(--interactive-accent);
+}
+
+.tategaki-block-editor-root.text-justify-enabled {
+	text-align: justify;
+	text-align-last: auto;
+	text-justify: inter-ideograph;
+}
+
+.tategaki-block-editor-root.text-justify-enabled[data-writing-mode="vertical-rl"] {
+	text-justify: inter-ideograph;
+}
+
+.tategaki-block-editor-root.text-justify-enabled[data-writing-mode="horizontal-tb"] {
+	text-justify: inter-ideograph;
+}
+
+.tategaki-block-editor-root.text-justify-enabled .tategaki-block {
+	text-align: inherit;
+	text-align-last: auto;
+}
+
+.tategaki-block {
+	/* ブロック間の選択を滑らかにする */
+	user-select: text !important;
+	-webkit-user-select: text !important;
+	/* ブロック境界での選択途切れを防ぐ */
+	cursor: text;
+	/* 選択時のアウトラインを表示 */
+	outline: none;
+	/* ブロック間の余白を削除（選択が途切れないようにする） */
+	margin: 0;
+	padding: 0;
+	/* ブロック間の視覚的な区切りは最小高さで確保 */
+	min-height: 1.2em;
+	/* 改行を保持（プレビューモードと同じ） */
+	white-space: pre-wrap;
+	/* 行の高さを継承 */
+	line-height: inherit;
+}
+
+.tategaki-block:focus {
+	outline: none;
+}
+
+/* 複数ブロック選択時のビジュアルフィードバック */
+.tategaki-block::selection {
+	background-color: var(--text-selection);
+}
+
+.tategaki-block::-moz-selection {
+	background-color: var(--text-selection);
+}
+
+/* 選択時も下線を表示 - border-bottomを使用した確実な方法 */
+/* uタグをinline-blockにしてborder-bottomで下線を表現 */
+.tategaki-block u,
+.tategaki-contenteditable-container u,
+.tategaki-block-editor-root u,
+.tategaki-wysiwyg-editor u,
+.tategaki-preview u {
+	/* text-decorationの代わりにborder-bottomを使用 */
+	text-decoration: none !important;
+	border-bottom: 1px solid currentColor;
+	display: inline;
+	padding-bottom: 1px;
+}
+
+/* 縦書き時は右側に下線（border-right）を使用 */
+.tategaki-block-editor-root[data-writing-mode="vertical-rl"] u,
+.tategaki-block-editor-root[data-writing-mode="vertical-lr"] u,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] u,
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] u,
+.tategaki-preview[style*="vertical-rl"] u,
+.tategaki-preview[style*="vertical-lr"] u {
+	border-bottom: none;
+	border-right: 1px solid currentColor;
+	padding-bottom: 0;
+	padding-right: 1px;
+}
+
+/* 選択時の背景色を調整して下線が見えやすくする */
+.tategaki-block u::selection,
+.tategaki-contenteditable-container u::selection,
+.tategaki-block-editor-root u::selection,
+.tategaki-wysiwyg-editor u::selection,
+.tategaki-preview u::selection {
+	background-color: var(--text-selection, rgba(0, 123, 255, 0.3));
+}
+
+.tategaki-block u::-moz-selection,
+.tategaki-contenteditable-container u::-moz-selection,
+.tategaki-block-editor-root u::-moz-selection,
+.tategaki-wysiwyg-editor u::-moz-selection,
+.tategaki-preview u::-moz-selection {
+	background-color: var(--text-selection, rgba(0, 123, 255, 0.3));
+}
+
+/* 空ブロック（<br>のみ）でも選択を通過できるようにする */
+.tategaki-block br {
+	/* brを選択可能な要素として扱う */
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+/* 空ブロックに最小限の内容を持たせて選択を通過可能にする */
+.tategaki-block:empty::after {
+	content: "";
+	display: inline-block;
+	width: 0;
+}
+
+/* アクティブブロックのビジュアルフィードバック（控えめ） */
+.tategaki-block--active {
+	/* 背景色は設定しない（選択の視認性を優先） */
+}
+
+/* 縦書き時の選択範囲の改善 */
+.tategaki-block-editor-root[style*="vertical-rl"] .tategaki-block {
+	/* 縦書き時の選択を滑らかにする（句読点での折り返しを防ぐため、normalに戻す） */
+	word-break: normal;
+	overflow-wrap: normal;
+	line-break: strict;
+}
+
+/* 横書き時の選択範囲の改善 */
+.tategaki-block-editor-root[style*="horizontal-tb"] .tategaki-block {
+	/* 横書き時の選択を滑らかにする */
+	word-break: break-word;
+	overflow-wrap: break-word;
+}
+
+/* ========================================
+ * Hybrid Editing: Plain Block Editing Mode
+ * ======================================== */
+
+/* プレーン編集モードのブロック */
+.tategaki-block--plain {
+	/* 装飾を削除してプレーンテキスト表示 */
+	/* 背景色は半透明オーバーレイで視覚的に区別 */
+	position: relative;
+	border: 1px solid var(--text-faint);
+	border-radius: 3px;
+	padding: 0.5em;
+	font-family: inherit;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	overflow-wrap: break-word;
+}
+
+/* 半透明の背景オーバーレイ */
+.tategaki-block--plain::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: var(--text-normal);
+	opacity: 0.05;
+	pointer-events: none;
+	z-index: -1;
+	border-radius: 2px;
+}
+
+/* プレーン編集モード時のMarkdownソース表示 */
+.tategaki-block--plain[contenteditable="true"] {
+	/* 編集可能状態の視覚的フィードバック */
+	border-color: var(--text-muted);
+	box-shadow: 0 0 0 1px var(--text-muted);
+}
+
+/* 編集中の背景オーバーレイを少し濃く */
+.tategaki-block--plain[contenteditable="true"]::before {
+	opacity: 0.08;
+}
+
+/* プレーン編集モード時のフォーカス状態 */
+.tategaki-block--plain:focus {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+}
+
+/* 縦書き時のプレーン編集モード */
+.tategaki-block-editor-root[style*="vertical-rl"] .tategaki-block--plain,
+.tategaki-block-editor-root[style*="vertical-lr"] .tategaki-block--plain {
+	/* 縦書きでもプレーンテキストは読みやすく */
+	writing-mode: inherit;
+	text-orientation: inherit;
+}
+
+/* プレーン編集モード内の全ての要素をプレーンテキスト化 */
+.tategaki-block--plain * {
+	font-family: inherit;
+	font-size: inherit;
+	font-weight: normal;
+	font-style: normal;
+	text-decoration: none;
+	color: inherit;
+	background: none;
+	border: none;
+	padding: 0;
+	margin: 0;
+}
+
+/* TipTap プレーン編集モードのオーバーレイ */
+.tategaki-wysiwyg-editor .ProseMirror .tategaki-plain-overlay-target,
+.tategaki-sot-derived-root .tategaki-plain-overlay-target {
+	color: transparent !important;
+	background: transparent !important;
+	text-shadow: none !important;
+	caret-color: transparent;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror .tategaki-plain-overlay-target *,
+.tategaki-sot-derived-root .tategaki-plain-overlay-target * {
+	color: transparent !important;
+	background: transparent !important;
+	text-decoration: none !important;
+	text-shadow: none !important;
+}
+
+.tategaki-plain-overlay {
+	position: absolute;
+	z-index: 2;
+	border: none;
+	padding: 0;
+	margin: 0;
+	background-color: transparent;
+	color: inherit;
+	caret-color: currentColor;
+	font-family: inherit;
+	font-size: inherit;
+	font-weight: inherit;
+	font-style: inherit;
+	line-height: inherit;
+	letter-spacing: inherit;
+	text-align: inherit;
+	writing-mode: inherit;
+	box-sizing: border-box;
+	resize: none;
+	outline: none;
+	white-space: pre-wrap;
+	word-break: break-word;
+	overflow: auto;
+}
+
+.tategaki-plain-overlay:focus {
+	background-color: var(--background-primary-alt);
+	background-color: color-mix(
+		in srgb,
+		var(--tategaki-background-color, var(--background-primary)) 85%,
+		var(--background-primary-alt) 15%
+	);
+}
+
+/* TipTap プレーン編集モード用テキストエリア */
+.tategaki-plain-edit-textarea {
+	width: 100%;
+	height: 100%;
+	min-height: 300px;
+	padding: 16px;
+	font-family: var(--font-monospace);
+	font-size: var(--font-text-size);
+	line-height: var(--line-height-normal);
+	background-color: var(--background-primary-alt);
+	border: 1px dashed var(--interactive-accent);
+	border-radius: 4px;
+	resize: vertical;
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	box-sizing: border-box;
+	color: var(--text-normal);
+}
+
+.tategaki-plain-edit-textarea:focus {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 1px;
+	border-color: var(--interactive-accent);
+}
+
+.tategaki-external-caret {
+	border-radius: 1px;
+	background: var(--interactive-accent, #1e90ff);
+	opacity: 0.85;
+}
+
+.tategaki-external-caret[data-orientation="vertical"] {
+	transform: translateX(-1px);
+}
+
+.tategaki-external-caret[data-orientation="horizontal"] {
+	transform: translateY(-1px);
+}
+
+/* リンクのexternal-linkアイコンを非表示 */
+.tategaki-preview a.external-link,
+.tategaki-preview a.external-link:visited,
+.tategaki-preview a.external-link:hover,
+.tategaki-preview a.external-link.external-link {
+	background-image: none !important;
+	padding-inline-end: 0 !important;
+	padding-inline-start: 0 !important;
+}
+
+.tategaki-contenteditable-container a[href^="http://"],
+.tategaki-contenteditable-container a[href^="https://"],
+.tategaki-block a[href^="http://"],
+.tategaki-block a[href^="https://"] {
+	background-image: none !important;
+	padding-inline-end: 0 !important;
+	padding-inline-start: 0 !important;
+}
+
+.tategaki-preview a.external-link::after,
+.tategaki-contenteditable-container a[href^="http://"]::after,
+.tategaki-contenteditable-container a[href^="https://"]::after,
+.tategaki-block a[href^="http://"]::after,
+.tategaki-block a[href^="https://"]::after {
+	display: none !important;
+	content: none !important;
+}
+
+/* ====================
+   フロントマター表示
+   ==================== */
+
+.tategaki-frontmatter {
+	display: block;
+	width: auto;
+	height: auto;
+	writing-mode: inherit;
+	text-orientation: inherit;
+	margin-bottom: 3em;
+}
+
+.tategaki-tiptap-compat-editor-host .tategaki-frontmatter {
+	margin: 0;
+	padding: 1em;
+	box-sizing: border-box;
+}
+
+.tategaki-frontmatter[style*="vertical-rl"] {
+	margin-bottom: 0;
+	margin-left: 3em;
+	margin-right: 0;
+}
+
+.tategaki-block-editor-root[style*="vertical-rl"] .tategaki-frontmatter {
+	margin-bottom: 0;
+	margin-left: 3em;
+	margin-right: 0;
+}
+
+.tategaki-preview-container[style*="vertical-rl"] .tategaki-frontmatter {
+	margin-bottom: 0;
+	margin-left: 3em;
+	margin-right: 0;
+}
+
+/* 書籍モードでのフロントマター余白 */
+.tategaki-page .tategaki-frontmatter {
+	margin-bottom: 3em;
+}
+
+.tategaki-page[data-writing-mode="vertical-rl"] .tategaki-frontmatter,
+.tategaki-reading-paged-pages-container.pages-horizontal-reverse
+	.tategaki-frontmatter {
+	margin-bottom: 0;
+	margin-left: 3em;
+	margin-right: 0;
+}
+
+/* 上付き要素（タイトル系）*/
+.tategaki-frontmatter-top {
+	display: block;
+	writing-mode: inherit;
+	text-orientation: inherit;
+	margin-block-end: 1em;
+}
+
+/* 地付き要素（著者系）*/
+.tategaki-frontmatter-bottom {
+	display: block;
+	writing-mode: inherit;
+	text-orientation: inherit;
+	text-align: end;
+}
+
+/* タイトル (H1, 上付き) */
+.tategaki-frontmatter-title {
+	font-size: 2em;
+	font-weight: bold;
+	margin: 0;
+	padding: 0;
+	writing-mode: inherit;
+	text-orientation: inherit;
+	font-family: var(
+		--tategaki-heading-font-family,
+		var(--tategaki-font-family, inherit)
+	);
+	color: var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, inherit)
+	);
+}
+
+/* サブタイトル、原題 (H2, 上付き) */
+.tategaki-frontmatter-subtitle,
+.tategaki-frontmatter-original-title {
+	font-size: 1.5em;
+	font-weight: bold;
+	margin: 0.5em 0 0 0;
+	padding: 0;
+	writing-mode: inherit;
+	text-orientation: inherit;
+	font-family: var(
+		--tategaki-heading-font-family,
+		var(--tategaki-font-family, inherit)
+	);
+	color: var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, inherit)
+	);
+}
+
+/* 著者、共著者 (H4, 地付き) */
+.tategaki-frontmatter-author,
+.tategaki-frontmatter-co-author {
+	font-size: 1em;
+	font-weight: normal;
+	margin-block-start: 0.5em;
+	margin-block-end: 0;
+	padding: 0;
+	writing-mode: inherit;
+	text-orientation: inherit;
+	text-align: end;
+	font-family: var(
+		--tategaki-heading-font-family,
+		var(--tategaki-font-family, inherit)
+	);
+	color: var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, inherit)
+	);
+}
+
+/* 訳者、共訳者 (H5, 地付き) */
+.tategaki-frontmatter-translator,
+.tategaki-frontmatter-co-translator {
+	font-size: 0.875em;
+	font-weight: normal;
+	margin-block-start: 0.5em;
+	margin-block-end: 0;
+	padding: 0;
+	writing-mode: inherit;
+	text-orientation: inherit;
+	text-align: end;
+	font-family: var(
+		--tategaki-heading-font-family,
+		var(--tategaki-font-family, inherit)
+	);
+	color: var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, inherit)
+	);
+}
+
+/* プレビューモードで地付き要素を強制的に右寄せ */
+.tategaki-preview .tategaki-frontmatter-author,
+.tategaki-preview .tategaki-frontmatter-co-author,
+.tategaki-preview .tategaki-frontmatter-translator,
+.tategaki-preview .tategaki-frontmatter-co-translator {
+	text-align: end !important;
+	display: block !important;
+	margin-inline-start: 0 !important;
+	margin-inline-end: 0 !important;
+}
+
+/* エディタモードでフロントマターのYAMLテキストを非表示 */
+.tategaki-block-editor-root .tategaki-block:first-child {
+	/* フロントマター表示がある場合、最初のブロックがYAMLの場合は確認が必要 */
+}
+
+/* フロントマターのYAML部分を検出して非表示 */
+.tategaki-block-editor-root
+	> .tategaki-frontmatter
+	~ .tategaki-block:first-of-type {
+	/* フロントマター直後の最初のブロックがYAMLの場合 */
+}
+.tategaki-empty-line {
+	display: block;
+	height: calc(var(--tategaki-line-height, 1.8) * 1em);
+	min-height: calc(var(--tategaki-line-height, 1.8) * 1em);
+	width: 100%;
+	margin: 0;
+	padding: 0;
+	line-height: inherit;
+}
+
+.tategaki-preview[style*="vertical-rl"] .tategaki-empty-line,
+.tategaki-editor[style*="vertical-rl"] .tategaki-empty-line {
+	width: calc(var(--tategaki-line-height, 1.8) * 1em);
+	min-width: calc(var(--tategaki-line-height, 1.8) * 1em);
+	height: calc(var(--tategaki-line-height, 1.8) * 1em);
+	min-height: calc(var(--tategaki-line-height, 1.8) * 1em);
+}
+
+/* 補助入力パネル */
+.tategaki-auxiliary-input {
+	display: flex;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	padding: 8px;
+	gap: 8px;
+	z-index: 100; /* キャレットより上 */
+	opacity: 0.95;
+	box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+/* 横書き時（下部配置） */
+.tategaki-auxiliary-input.is-horizontal {
+	flex-direction: row;
+	align-items: flex-start;
+	width: 100%;
+	height: 100px; /* 初期高さ */
+	min-height: 60px;
+	overflow: hidden;
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	border-bottom: none;
+	border-left: none;
+	border-right: none;
+}
+
+/* 縦書き時（左側配置） */
+.tategaki-auxiliary-input.is-vertical {
+	flex-direction: column;
+	align-items: stretch;
+	height: 100%;
+	width: 125px; /* 初期幅（元の半分） */
+	min-width: 80px;
+	overflow: hidden;
+	position: absolute;
+	top: 0;
+	left: 0;
+	border-top: none;
+	border-left: none;
+	border-bottom: none;
+}
+
+.tategaki-auxiliary-textarea {
+	flex: 1;
+	resize: none !important;
+	height: 100%;
+	width: 100%;
+	font-family: var(--tategaki-font-family, var(--font-text)) !important;
+	font-size: var(--tategaki-font-size, 18px) !important;
+	line-height: var(--tategaki-line-height, 1.6) !important;
+	background-color: var(
+		--tategaki-background-color,
+		var(--background-primary)
+	) !important;
+	color: var(--tategaki-text-color, var(--text-normal)) !important;
+	border: 1px solid var(--background-modifier-border);
+	padding: 8px;
+	box-sizing: border-box;
+}
+
+.tategaki-auxiliary-textarea::selection {
+	background-color: var(
+		--tategaki-accent-color,
+		var(--text-accent)
+	) !important;
+	color: var(
+		--tategaki-background-color,
+		var(--background-primary)
+	) !important;
+}
+
+.tategaki-auxiliary-buttons {
+	display: flex;
+	gap: 8px;
+}
+
+.tategaki-auxiliary-input.is-horizontal .tategaki-auxiliary-buttons {
+	flex-direction: column;
+}
+
+.tategaki-auxiliary-input.is-vertical .tategaki-auxiliary-buttons {
+	flex-direction: row;
+	justify-content: flex-end;
+	margin-bottom: 8px;
+	order: -1; /* ボタンを上に */
+}
+
+.tategaki-auxiliary-input.is-vertical .tategaki-auxiliary-textarea {
+	writing-mode: vertical-rl;
+	text-orientation: mixed;
+}
+
+.tategaki-auxiliary-input.is-horizontal .tategaki-auxiliary-textarea {
+	writing-mode: horizontal-tb;
+	text-orientation: mixed;
+}
+
+/* 補助入力用擬似キャレット */
+.tategaki-auxiliary-caret {
+	position: absolute;
+	background: var(--tategaki-text-color, var(--text-normal));
+	opacity: 0.9;
+	pointer-events: none;
+	user-select: none;
+	z-index: 1200;
+	width: 2px;
+	height: 1.4em;
+	animation: tategakiAuxCaretBlink 1s step-start infinite;
+	border-radius: 1px;
+}
+
+.tategaki-auxiliary-caret.vertical {
+	width: 1.4em;
+	height: 3px;
+}
+
+@keyframes tategakiAuxCaretBlink {
+	0% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0;
+	}
+	100% {
+		opacity: 1;
+	}
+}
+
+/* リサイズバー */
+.tategaki-auxiliary-resize-bar {
+	position: absolute;
+	background: transparent;
+	z-index: 1201;
+}
+
+.tategaki-auxiliary-resize-bar.vertical {
+	top: 0;
+	right: 0;
+	width: 8px;
+	height: 100%;
+	cursor: ew-resize;
+}
+
+.tategaki-auxiliary-resize-bar.horizontal {
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 8px;
+	cursor: ns-resize;
+}
+
+.tategaki-auxiliary-resize-bar:not(.visible) {
+	display: none;
+}
+
+/* 設定モーダルの背景マスクを薄くする */
+.tategaki-settings-modal-container .modal-bg {
+	opacity: 0.15 !important;
+}
+
+/* ========================================
+   実測ページネーション（Reading Mode）
+   ======================================== */
+
+/* ページコンテナ全体 */
+.tategaki-reading-paged-container {
+	background: var(--tategaki-background-color, var(--background-primary));
+	overflow: hidden;
+	position: relative;
+}
+
+/* ページビューポート（スクロール可能領域） */
+.tategaki-reading-paged-viewport {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	overflow-x: hidden;
+	overflow-y: auto;
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+	overscroll-behavior: none;
+	z-index: 10;
+	background: var(--tategaki-background-color, var(--background-primary));
+}
+
+.tategaki-reading-paged-viewport.pages-horizontal-reverse {
+	overflow-x: auto;
+	overflow-y: hidden;
+	scroll-snap-type: x mandatory;
+	scroll-padding-inline: 0px;
+}
+
+.tategaki-reading-paged-viewport.pages-vertical {
+	overflow-y: auto;
+	overflow-x: hidden;
+	scroll-snap-type: y mandatory;
+}
+
+.tategaki-reading-paged-viewport::-webkit-scrollbar {
+	width: 0;
+	height: 0;
+}
+
+/* ページコンテナ（フレックスボックス） */
+.tategaki-reading-paged-pages-container {
+	display: flex;
+	flex-direction: column;
+	gap: var(--tategaki-reading-page-gap, 20px);
+	width: 100%;
+	min-height: 100%;
+	background: var(--tategaki-background-color, var(--background-primary));
+}
+
+.tategaki-reading-paged-pages-container.pages-horizontal-reverse {
+	flex-direction: row-reverse;
+	gap: var(--tategaki-reading-page-gap, 20px);
+	width: max-content;
+	height: 100%;
+	min-height: 100%;
+}
+
+.tategaki-reading-paged-pages-container.pages-vertical {
+	flex-direction: column;
+}
+
+/* 個別ページ */
+.tategaki-page {
+	width: 100%;
+	max-width: var(--tategaki-reading-page-width, 800px);
+	height: var(--tategaki-viewport-height, 600px);
+	box-sizing: border-box;
+	padding: var(--tategaki-reading-padding-top, 40px)
+		var(--tategaki-reading-padding-right, 60px)
+		var(--tategaki-reading-padding-bottom, 40px)
+		var(--tategaki-reading-padding-left, 60px);
+	writing-mode: var(--tategaki-writing-mode, vertical-rl);
+	text-orientation: mixed;
+	direction: ltr;
+	background: var(--tategaki-background-color, var(--background-primary));
+	overflow: hidden;
+	font-family: var(--tategaki-font-family, var(--font-text));
+	font-size: var(--tategaki-font-size, 16px);
+	line-height: var(--tategaki-line-height, 1.8);
+	letter-spacing: var(--tategaki-letter-spacing, 0);
+	color: var(--tategaki-text-color, var(--text-normal));
+	white-space: normal;
+}
+
+.tategaki-reading-paged-pages-container.pages-horizontal-reverse
+	.tategaki-page {
+	flex: 0 0 var(--tategaki-reading-page-width, 800px);
+	width: var(--tategaki-reading-page-width, 800px);
+	scroll-snap-align: end;
+}
+
+.tategaki-reading-paged-pages-container.pages-vertical .tategaki-page {
+	scroll-snap-align: start;
+}
+
+/* 縦書きモードのページ */
+.tategaki-page[data-writing-mode="vertical-rl"] {
+	text-align: justify;
+	text-align-last: start;
+	text-justify: inter-ideograph;
+}
+
+/* 横書きモードのページ */
+.tategaki-page[data-writing-mode="horizontal-tb"] {
+	writing-mode: horizontal-tb;
+	text-orientation: initial;
+	text-align: justify;
+	text-align-last: start;
+	text-justify: inter-ideograph;
+}
+
+/* ProseMirror統合 */
+.tategaki-page .ProseMirror {
+	writing-mode: inherit;
+	text-orientation: inherit;
+	font-family: inherit;
+	font-size: inherit;
+	line-height: inherit;
+	letter-spacing: inherit;
+	color: inherit;
+	background-color: transparent;
+	padding: 0 !important;
+	margin: 0 !important;
+	min-height: auto;
+	white-space: normal;
+	width: auto;
+	max-width: 100%;
+}
+
+/* ページコンテンツ */
+.tategaki-page .page-content {
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	writing-mode: inherit;
+	text-orientation: inherit;
+	word-break: break-word;
+	overflow-wrap: break-word;
+	line-break: auto;
+	text-align: justify;
+	text-align-last: start;
+}
+
+.tategaki-page h1,
+.tategaki-page h2,
+.tategaki-page h3,
+.tategaki-page h4,
+.tategaki-page h5,
+.tategaki-page h6 {
+	text-align: start;
+	text-align-last: start;
+}
+
+.tategaki-page .page-content p,
+.tategaki-page .page-content li,
+.tategaki-page .page-content blockquote,
+.tategaki-page .page-content h1,
+.tategaki-page .page-content h2,
+.tategaki-page .page-content h3,
+.tategaki-page .page-content h4,
+.tategaki-page .page-content h5,
+.tategaki-page .page-content h6 {
+	text-align-last: start;
+}
+
+.tategaki-page .page-content .tategaki-continued-block {
+	text-align-last: justify;
+}
+
+/* ルビの設定 */
+.tategaki-reading-paged-container .tategaki-page ruby {
+	ruby-align: center;
+	ruby-position: over;
+	font-size: inherit !important; /* Japanese-novel-rubyの影響を受けないようにする */
+}
+
+/* ルビのベーステキスト（親文字）のサイズをリセット */
+.tategaki-reading-paged-container .tategaki-page ruby rb,
+.tategaki-reading-paged-container .tategaki-page ruby > :not(rt) {
+	font-size: 1em !important;
+}
+
+/* 書籍モードのルビサイズ - Japanese-novel-ruby プラグインの設定よりも優先 */
+/* セレクタの詳細度を最大限に上げて、Japanese-novel-rubyの影響を完全に無効化 */
+.tategaki-reading-paged-container .tategaki-page[data-page] rt,
+.tategaki-reading-paged-container .tategaki-page[data-page] .page-content rt,
+.tategaki-reading-paged-container .tategaki-page rt {
+	all: revert !important; /* ブラウザのデフォルトスタイルに戻す */
+	/* 必要なプロパティを再設定 */
+	font-size: calc(var(--tategaki-ruby-size, 0.5) * 1em) !important;
+	line-height: 1.2 !important;
+	writing-mode: inherit !important;
+	text-orientation: inherit !important;
+}
+
+/* ========================================
+ * ページ遷移効果（書籍モード用）
+ * ======================================== */
+
+/* フェード効果 */
+.tategaki-reading-paged-pages-container.page-transition-fade-out {
+	animation: tategaki-page-fade-out 200ms ease-in forwards;
+}
+
+.tategaki-reading-paged-pages-container.page-transition-fade-in {
+	animation: tategaki-page-fade-in 200ms ease-out forwards;
+}
+
+@keyframes tategaki-page-fade-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+@keyframes tategaki-page-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/* ブラー効果 */
+.tategaki-reading-paged-pages-container.page-transition-blur-out {
+	animation: tategaki-page-blur-out 200ms ease-in forwards;
+}
+
+.tategaki-reading-paged-pages-container.page-transition-blur-in {
+	animation: tategaki-page-blur-in 250ms ease-out forwards;
+}
+
+@keyframes tategaki-page-blur-out {
+	from {
+		opacity: 1;
+		filter: blur(0);
+	}
+	to {
+		opacity: 0;
+		filter: blur(8px);
+	}
+}
+
+@keyframes tategaki-page-blur-in {
+	from {
+		opacity: 0;
+		filter: blur(8px);
+	}
+	to {
+		opacity: 1;
+		filter: blur(0);
+	}
+}
+
+/* マスクを使った擬似スライド効果（スクロールと独立） */
+.page-transition-mask {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background: var(--tategaki-background-color, var(--background-primary));
+	z-index: 100;
+	pointer-events: none;
+}
+
+/* 縦書き: 右→左にマスクを流す（次ページが左から出てくる印象） */
+.page-transition-mask.slide-horizontal {
+	animation: tategaki-mask-slide-horizontal 350ms ease-out forwards;
+}
+
+@keyframes tategaki-mask-slide-horizontal {
+	from {
+		transform: translateX(0);
+	}
+	to {
+		transform: translateX(-100%);
+	}
+}
+
+/* 縦書き戻る: 左→右にマスクを流す（前ページが右から出てくる印象） */
+.page-transition-mask.slide-horizontal-reverse {
+	animation: tategaki-mask-slide-horizontal-reverse 200ms ease-out forwards;
+}
+
+@keyframes tategaki-mask-slide-horizontal-reverse {
+	from {
+		transform: translateX(0);
+	}
+	to {
+		transform: translateX(100%);
+	}
+}
+
+/* 横書き: 上→下にマスクを流す（次ページが下から出てくる印象） */
+.page-transition-mask.slide-vertical {
+	animation: tategaki-mask-slide-vertical 350ms ease-out forwards;
+}
+
+@keyframes tategaki-mask-slide-vertical {
+	from {
+		transform: translateY(0);
+	}
+	to {
+		transform: translateY(100%);
+	}
+}
+
+/* 横書き戻る: 下→上にマスクを流す（前ページが上から出てくる印象） */
+.page-transition-mask.slide-vertical-reverse {
+	animation: tategaki-mask-slide-vertical-reverse 200ms ease-out forwards;
+}
+
+@keyframes tategaki-mask-slide-vertical-reverse {
+	from {
+		transform: translateY(0);
+	}
+	to {
+		transform: translateY(-100%);
+	}
+}
+
+/* 段落・見出しのマージンリセット */
+.tategaki-page .ProseMirror p,
+.tategaki-page p,
+.tategaki-page .ProseMirror div,
+.tategaki-page div,
+.tategaki-page .ProseMirror h1,
+.tategaki-page h1,
+.tategaki-page .ProseMirror h2,
+.tategaki-page h2,
+.tategaki-page .ProseMirror h3,
+.tategaki-page h3,
+.tategaki-page .ProseMirror h4,
+.tategaki-page h4,
+.tategaki-page .ProseMirror h5,
+.tategaki-page h5,
+.tategaki-page .ProseMirror h6,
+.tategaki-page h6 {
+	margin: 0 !important;
+	padding: 0 !important;
+}
+
+/* 書籍モード内のフロントマター余白を復元 */
+.tategaki-page .tategaki-frontmatter {
+	margin-bottom: 3em !important;
+}
+
+.tategaki-page[data-writing-mode="vertical-rl"] .tategaki-frontmatter,
+.tategaki-page[style*="vertical-rl"] .tategaki-frontmatter {
+	margin-bottom: 0 !important;
+	margin-left: 3em !important;
+	margin-right: 0 !important;
+}
+
+/* 空の段落を非表示 */
+.tategaki-page .page-content > p:empty,
+.tategaki-page .page-content > div:empty {
+	display: none;
+}
+
+/* SoT派生編集ビュー（v1.2.0 実験） */
+.tategaki-sot-derived-root {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	overflow: auto;
+	scroll-behavior: auto;
+	box-sizing: border-box;
+	padding: 16px;
+	background-color: var(
+		--tategaki-background-color,
+		var(--background-primary)
+	);
+	color: var(--tategaki-text-color, var(--text-normal));
+	font-family: var(--tategaki-font-family, var(--font-text));
+	font-size: var(--tategaki-font-size, 18px);
+	line-height: var(--tategaki-line-height, 1.8);
+	writing-mode: var(--tategaki-writing-mode, vertical-rl);
+	text-orientation: mixed;
+	word-break: break-word;
+	overflow-wrap: anywhere;
+}
+
+.tategaki-sot-loading-overlay {
+	position: absolute;
+	inset: 0;
+	display: none;
+	align-items: center;
+	justify-content: center;
+	background: var(--background-primary);
+	color: var(--text-muted);
+	z-index: 1200;
+	pointer-events: all;
+	opacity: 0.9;
+}
+
+.tategaki-sot-loading-message {
+	font-size: 0.95em;
+	letter-spacing: 0.08em;
+}
+
+.tategaki-sot-derived-root[data-writing-mode="horizontal-tb"] {
+	text-orientation: initial;
+	padding-inline-start: 28px;
+}
+
+.tategaki-sot-derived-content {
+	position: relative;
+	min-height: 100%;
+}
+
+.tategaki-sot-selection-layer {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	pointer-events: none;
+	z-index: 1095;
+}
+
+.tategaki-sot-selection-rect {
+	position: absolute;
+	background-color: var(--text-selection, rgba(0, 123, 255, 0.3));
+	border-radius: 2px;
+}
+
+.tategaki-sot-outline-panel {
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 280px;
+	background: color-mix(in srgb, var(--background-primary) 80%, transparent);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	border-left: 1px solid var(--background-modifier-border);
+	z-index: 1204;
+	overflow: auto;
+	padding: 8px 0;
+}
+
+.tategaki-sot-outline-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-weight: 600;
+	position: sticky;
+	top: 0;
+	background: color-mix(in srgb, var(--background-primary) 90%, transparent);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	z-index: 1;
+}
+
+.tategaki-sot-outline-title {
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.tategaki-sot-outline-close {
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 14px;
+	padding: 2px 4px;
+	border-radius: 4px;
+}
+
+.tategaki-sot-outline-close:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.tategaki-sot-outline-list {
+	padding: 6px 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.tategaki-sot-outline-item {
+	padding: 6px 12px;
+	cursor: pointer;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-size: 12px;
+}
+
+.tategaki-sot-outline-item:hover {
+	background: var(--background-modifier-hover);
+}
+
+.tategaki-sot-outline-empty {
+	padding: 8px 12px;
+	color: var(--text-muted);
+	font-size: 12px;
+}
+
+.tategaki-sot-run {
+	white-space: pre-wrap;
+	word-break: break-word;
+	overflow-wrap: anywhere;
+}
+
+.tategaki-sot-toolbar-button {
+	font-size: 12px;
+	padding: 2px 8px;
+	border-radius: 6px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	cursor: pointer;
+}
+
+.tategaki-sot-toolbar-button.is-active {
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.tategaki-md-strong {
+	font-weight: 700;
+}
+
+.tategaki-md-em {
+	font-style: italic;
+}
+
+.tategaki-md-code {
+	font-family: var(--font-monospace);
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 3px;
+	padding: 0 0.15em;
+}
+
+/* 縦書き時：インラインコード内も文字を横倒しにして統一感を出す */
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-md-code {
+	text-orientation: sideways;
+}
+
+.tategaki-md-strike {
+	text-decoration: line-through;
+}
+
+.tategaki-md-highlight {
+	background-color: rgba(255, 221, 0, 0.25);
+}
+
+.tategaki-md-underline {
+	text-decoration: underline;
+	text-decoration-color: color-mix(
+		in srgb,
+		var(--text-normal) 70%,
+		transparent
+	);
+	text-underline-offset: 0.12em;
+	text-decoration-thickness: 0.08em;
+}
+
+.tategaki-md-inline-widget {
+	display: inline-block;
+	vertical-align: middle;
+}
+
+.tategaki-md-math-inline-widget {
+	color: var(--text-normal);
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 70%,
+		transparent
+	);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 0.05em 0.35em;
+	/* 数式は常に横書きでレンダリング */
+	writing-mode: horizontal-tb;
+	text-orientation: mixed;
+	white-space: normal;
+}
+
+.tategaki-md-math-inline-widget.is-fallback {
+	font-family: var(--font-monospace);
+	font-style: italic;
+}
+
+.tategaki-md-link {
+	color: var(--link-color);
+	text-decoration: underline;
+	text-decoration-color: color-mix(
+		in srgb,
+		var(--link-color) 60%,
+		transparent
+	);
+	text-underline-offset: 0.12em;
+	text-decoration-thickness: 0.08em;
+	cursor: pointer;
+}
+
+.tategaki-md-link:hover {
+	text-decoration-color: var(--link-color);
+}
+
+.tategaki-md-image,
+.tategaki-md-embed {
+	display: inline-block;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 0 0.35em;
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 75%,
+		transparent
+	);
+	color: var(--text-normal);
+	cursor: pointer;
+}
+
+.tategaki-md-image::before {
+	content: "IMG";
+	font-family: var(--font-monospace);
+	font-size: 0.75em;
+	color: var(--text-muted);
+	letter-spacing: 0.02em;
+	margin-inline-end: 0.35em;
+}
+
+.tategaki-md-embed::before {
+	content: "EMB";
+	font-family: var(--font-monospace);
+	font-size: 0.75em;
+	color: var(--text-muted);
+	letter-spacing: 0.02em;
+	margin-inline-end: 0.35em;
+}
+
+.tategaki-md-footnote-ref {
+	position: relative;
+	display: inline-block;
+	font-size: 0.75em;
+	color: transparent;
+	text-decoration: none;
+	vertical-align: super;
+}
+
+.tategaki-md-footnote-ref::after {
+	content: attr(data-footnote-number);
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	color: var(--text-muted);
+	text-align: center;
+	text-decoration: underline;
+	text-decoration-color: color-mix(
+		in srgb,
+		var(--text-muted) 60%,
+		transparent
+	);
+	text-underline-offset: 0.12em;
+	text-decoration-thickness: 0.08em;
+}
+
+.tategaki-md-footnote-inline {
+	display: inline-block;
+	font-size: 0.75em;
+	color: var(--text-muted);
+	border: none;
+	padding: 0;
+	background: transparent;
+	text-decoration: underline;
+	text-decoration-color: color-mix(
+		in srgb,
+		var(--text-muted) 60%,
+		transparent
+	);
+	text-underline-offset: 0.12em;
+	text-decoration-thickness: 0.08em;
+}
+
+.tategaki-md-footnote-inline::before {
+	content: "^[";
+}
+
+.tategaki-md-footnote-inline::after {
+	content: "]";
+}
+
+.tategaki-sot-derived-root[data-writing-mode="horizontal-tb"]
+	.tategaki-md-footnote-inline {
+	vertical-align: super;
+}
+
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-md-footnote-inline {
+	text-align: right;
+}
+
+.tategaki-sot-line.tategaki-md-image-widget {
+	padding: 0.2em 0.4em;
+}
+
+.tategaki-md-image-widget-inner {
+	display: block;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	padding: 0.5em;
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 70%,
+		transparent
+	);
+	max-width: 100%;
+	max-inline-size: 100%;
+}
+
+.tategaki-md-image-widget-img {
+	display: block;
+	width: auto;
+	height: auto;
+	max-width: 100%;
+	max-height: 80vh;
+	border-radius: 10px;
+	object-fit: contain;
+	background: color-mix(in srgb, var(--background-primary) 80%, transparent);
+}
+
+.tategaki-md-image-widget-caption {
+	display: block;
+	margin-top: 0.35em;
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+.tategaki-sot-line.tategaki-md-embed-widget {
+	padding: 0.2em 0.4em;
+}
+
+.tategaki-md-embed-widget-inner {
+	display: block;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	padding: 0.5em;
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 70%,
+		transparent
+	);
+	max-width: 100%;
+	max-height: 80vh;
+	overflow: auto;
+}
+
+.tategaki-md-embed-widget-loading {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 0.5em;
+}
+
+.tategaki-md-embed-widget-content {
+	/* Obsidianプレビューの埋め込みに近い見た目に寄せる */
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.tategaki-sot-line.tategaki-md-math-hidden {
+	display: none;
+}
+
+.tategaki-sot-line.tategaki-md-math-widget {
+	padding: 0.2em 0.4em;
+}
+
+.tategaki-md-math-widget-inner {
+	display: block;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	padding: 0.5em;
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 70%,
+		transparent
+	);
+	max-inline-size: 100%;
+	max-block-size: 80vh;
+	overflow: auto;
+	/* 数式は横書きで表示（縦書き本文内でも） */
+	writing-mode: horizontal-tb;
+	text-orientation: mixed;
+}
+
+.tategaki-md-math-widget-loading {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 0.5em;
+}
+
+.tategaki-md-math-widget-content {
+	white-space: normal;
+}
+
+.tategaki-sot-line {
+	display: block;
+	width: 100%;
+}
+
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-line {
+	width: fit-content;
+	min-width: 1em;
+}
+
+.tategaki-sot-line.tategaki-md-heading {
+	position: relative;
+	font-weight: 700;
+	font-family: var(
+		--tategaki-heading-font-family,
+		var(--tategaki-font-family, inherit)
+	);
+	color: var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, inherit)
+	);
+	overflow: visible;
+}
+
+.tategaki-sot-line.tategaki-md-heading-hidden {
+	display: none;
+}
+
+.tategaki-md-heading-toggle {
+	position: absolute;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 0.9em;
+	height: 0.9em;
+	color: var(--tategaki-text-color, var(--text-normal));
+	font-size: 1em;
+	line-height: 1;
+	cursor: pointer;
+	pointer-events: auto;
+	user-select: none;
+	opacity: 0;
+	transform: scale(0.9);
+	transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+	z-index: 2;
+}
+
+/* アイコンのサイズ調整 */
+.tategaki-md-heading-toggle svg {
+	width: 0.85em;
+	height: 0.85em;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+}
+
+/* ホバー時・フォーカス時の表示 */
+.tategaki-sot-line[data-heading-foldable="1"]:hover .tategaki-md-heading-toggle,
+.tategaki-sot-line[data-heading-foldable="1"] .tategaki-md-heading-toggle:hover,
+.tategaki-sot-line[data-heading-foldable="1"]
+	.tategaki-md-heading-toggle:focus-visible {
+	opacity: 0.8;
+	transform: scale(1);
+	color: var(--tategaki-text-color, var(--text-normal));
+}
+
+/* 折りたたまれている見出しには常にトグルを表示 */
+.tategaki-sot-line[data-heading-collapsed="1"][data-heading-foldable="1"]
+	.tategaki-md-heading-toggle {
+	opacity: 0.5;
+	transform: scale(0.95);
+}
+
+/* 折りたたまれている見出しのellipsisインジケーター */
+.tategaki-md-heading-ellipsis {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1em;
+	height: 1em;
+	margin-inline-start: 0.3em;
+	color: var(--tategaki-text-color, var(--text-normal));
+	opacity: 0.8;
+	pointer-events: auto;
+	user-select: none;
+	cursor: help;
+	position: relative;
+	transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tategaki-md-heading-ellipsis svg {
+	width: 0.9em;
+	height: 0.9em;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+}
+
+.tategaki-md-heading-ellipsis:hover {
+	opacity: 1;
+	color: var(--tategaki-text-color, var(--text-normal));
+}
+
+/* 縦書き時にSVGアイコンのみを90度回転（ツールチップに影響しないように） */
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-md-heading-ellipsis
+	svg {
+	transform: rotate(90deg);
+}
+
+/* 折りたたみプレビューのツールチップ */
+.tategaki-collapse-preview-tooltip {
+	position: fixed;
+	background: rgba(0, 0, 0, 0.9);
+	color: #ffffff;
+	padding: 6px 10px;
+	border-radius: 4px;
+	font-size: 12px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	max-width: 300px;
+	min-width: 80px;
+	word-wrap: break-word;
+	z-index: 10000;
+	pointer-events: none;
+	font-family: var(--font-interface);
+	font-weight: normal;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+	writing-mode: horizontal-tb;
+	text-orientation: mixed;
+	text-align: left;
+}
+
+/* 横書き: トグルは左側 */
+.tategaki-sot-derived-root[data-writing-mode="horizontal-tb"]
+	.tategaki-md-heading-toggle {
+	left: -1.2em;
+	top: 0.1em;
+}
+
+/* 縦書き（右から左）: トグルは右側 */
+.tategaki-sot-derived-root[data-writing-mode="vertical-rl"]
+	.tategaki-md-heading-toggle {
+	right: -0.1em;
+	top: -0.6em;
+}
+
+/* 縦書き（左から右）: トグルは左側 */
+.tategaki-sot-derived-root[data-writing-mode="vertical-lr"]
+	.tategaki-md-heading-toggle {
+	left: -0.1em;
+	top: -0.6em;
+}
+
+.tategaki-sot-line.tategaki-md-heading-1 {
+	font-size: 1.6em;
+}
+
+.tategaki-sot-line.tategaki-md-heading-2 {
+	font-size: 1.45em;
+}
+
+.tategaki-sot-line.tategaki-md-heading-3 {
+	font-size: 1.3em;
+}
+
+.tategaki-sot-line.tategaki-md-heading-4 {
+	font-size: 1.2em;
+}
+
+.tategaki-sot-line.tategaki-md-heading-5 {
+	font-size: 1.1em;
+}
+
+.tategaki-sot-line.tategaki-md-heading-6 {
+	font-size: 1.05em;
+}
+
+.tategaki-sot-line.tategaki-md-blockquote {
+	background-color: var(--background-secondary);
+	border-radius: 6px;
+	padding: 0.15em 0.35em;
+	padding-inline-start: calc(
+		var(--tategaki-sot-blockquote-indent, 1em) *
+			var(--tategaki-sot-blockquote-depth, 0)
+	);
+}
+
+.tategaki-sot-line.tategaki-md-callout {
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 80%,
+		transparent
+	);
+	border: 1px solid var(--background-modifier-border);
+	border-inline-start: 3px solid var(--interactive-accent);
+	border-radius: 10px;
+	padding: 0.25em 0.6em;
+}
+
+.tategaki-sot-line.tategaki-md-callout-title {
+	font-weight: 700;
+}
+
+.tategaki-sot-line.tategaki-md-callout-title::before {
+	content: attr(data-callout-type);
+	display: inline-block;
+	font-family: var(--font-monospace);
+	font-size: 0.8em;
+	color: var(--text-muted);
+	opacity: 0.9;
+	margin-inline-end: 0.6em;
+}
+
+.tategaki-sot-line.tategaki-md-callout-hidden {
+	display: none;
+}
+
+.tategaki-sot-line.tategaki-md-callout-widget {
+	padding: 0.2em 0.4em;
+}
+
+.tategaki-md-callout-widget-inner {
+	display: block;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	padding: 0.5em;
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 70%,
+		transparent
+	);
+	max-inline-size: 100%;
+	max-block-size: 80vh;
+	overflow: auto;
+	/* Calloutはプレビュー互換の横書きで表示 */
+	writing-mode: horizontal-tb;
+	text-orientation: mixed;
+}
+
+.tategaki-md-callout-widget-loading {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 0.5em;
+}
+
+.tategaki-md-callout-widget-content {
+	white-space: normal;
+}
+
+.tategaki-md-callout-widget-content .callout-title,
+.tategaki-md-callout-widget-content .callout-fold {
+	cursor: pointer;
+}
+
+.tategaki-md-callout-widget-content .callout.is-collapsed .callout-content {
+	display: none;
+}
+
+.tategaki-sot-line.tategaki-md-footnote-def {
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 70%,
+		transparent
+	);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 0.15em 0.5em;
+}
+
+.tategaki-sot-line.tategaki-md-footnote-def::before {
+	content: "[^" attr(data-footnote-id) "]" attr(data-footnote-number);
+	display: inline-block;
+	font-family: var(--font-monospace);
+	font-size: 0.8em;
+	color: var(--text-muted);
+	opacity: 0.9;
+	margin-inline-end: 0.6em;
+}
+
+.tategaki-sot-line.tategaki-md-codeblock {
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 85%,
+		transparent
+	);
+	border-left: 1px solid var(--background-modifier-border);
+	border-right: 1px solid var(--background-modifier-border);
+	padding-inline: 0.5em;
+	padding-block: 0;
+	border-radius: 0;
+}
+
+.tategaki-sot-line.tategaki-md-codeblock .tategaki-sot-run {
+	font-family: var(--font-monospace);
+	font-size: 0.95em;
+}
+
+.tategaki-sot-line.tategaki-md-codeblock-part-single {
+	border-top: 1px solid var(--background-modifier-border);
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding-block: 0.25em;
+}
+
+.tategaki-sot-line.tategaki-md-codeblock-part-start {
+	border-top: 1px solid var(--background-modifier-border);
+	border-radius: 8px 8px 0 0;
+	padding-block-start: 0.25em;
+}
+
+.tategaki-sot-line.tategaki-md-codeblock-part-middle {
+	border-top: 0;
+	border-bottom: 0;
+}
+
+.tategaki-sot-line.tategaki-md-codeblock-part-end {
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-radius: 0 0 8px 8px;
+	padding-block-end: 0.25em;
+}
+
+/* 縦書き時：コードブロック内は文字を横倒しにして「横書きっぽく」見せる */
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-line.tategaki-md-codeblock {
+	text-orientation: sideways;
+}
+
+/* 縦書き時：コードブロックの「まとまり」は横方向に伸びるため、枠線/角丸も横方向に揃える */
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-line.tategaki-md-codeblock {
+	border-top: 1px solid var(--background-modifier-border);
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-left: 0;
+	border-right: 0;
+}
+
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-line.tategaki-md-codeblock-part-single {
+	border-left: 1px solid var(--background-modifier-border);
+	border-right: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+}
+
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-line.tategaki-md-codeblock-part-start {
+	border-top: 1px solid var(--background-modifier-border);
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-right: 1px solid var(--background-modifier-border);
+	border-left: 0;
+	border-radius: 0 8px 8px 0;
+	padding-block: 0.25em;
+	padding-inline: 0.5em;
+}
+
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-line.tategaki-md-codeblock-part-middle {
+	border-top: 1px solid var(--background-modifier-border);
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-left: 0;
+	border-right: 0;
+	padding-block: 0;
+	padding-inline: 0.5em;
+}
+
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-line.tategaki-md-codeblock-part-end {
+	border-top: 1px solid var(--background-modifier-border);
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-left: 1px solid var(--background-modifier-border);
+	border-right: 0;
+	border-radius: 8px 0 0 8px;
+	padding-block: 0.25em;
+	padding-inline: 0.5em;
+}
+
+/* 縦書き（vertical-lr）は左右が逆になるため、開始/終了の角丸を入れ替える */
+.tategaki-sot-derived-root[data-writing-mode="vertical-lr"]
+	.tategaki-sot-line.tategaki-md-codeblock-part-start {
+	border-right: 0;
+	border-left: 1px solid var(--background-modifier-border);
+	border-radius: 8px 0 0 8px;
+}
+
+.tategaki-sot-derived-root[data-writing-mode="vertical-lr"]
+	.tategaki-sot-line.tategaki-md-codeblock-part-end {
+	border-left: 0;
+	border-right: 1px solid var(--background-modifier-border);
+	border-radius: 0 8px 8px 0;
+}
+
+.tategaki-sot-line.tategaki-md-codeblock.hljs {
+	color: var(--code-normal, var(--text-normal));
+}
+
+.tategaki-sot-line.tategaki-md-codeblock .hljs-comment,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-quote {
+	color: var(--code-comment, var(--text-muted));
+	font-style: italic;
+}
+
+.tategaki-sot-line.tategaki-md-codeblock .hljs-keyword,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-selector-tag,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-literal,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-symbol,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-type {
+	color: var(--code-keyword, var(--interactive-accent, #81a1c1));
+}
+
+.tategaki-sot-line.tategaki-md-codeblock .hljs-function .hljs-title,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-title.function_,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-built_in,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-class .hljs-title,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-title.class_ {
+	color: var(--code-function, var(--interactive-accent, #88c0d0));
+}
+
+.tategaki-sot-line.tategaki-md-codeblock .hljs-string,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-meta .hljs-string,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-template-tag,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-template-variable {
+	color: var(--code-string, #a3be8c);
+}
+
+.tategaki-sot-line.tategaki-md-codeblock .hljs-number,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-attr,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-attribute,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-property,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-variable,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-variable.language_ {
+	color: var(--code-number, #b48ead);
+}
+
+.tategaki-sot-line.tategaki-md-codeblock .hljs-meta,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-meta .hljs-keyword,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-tag,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-name,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-title,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-section {
+	color: var(--code-tag, #d08770);
+}
+
+.tategaki-sot-line.tategaki-md-codeblock .hljs-punctuation,
+.tategaki-sot-line.tategaki-md-codeblock .hljs-operator {
+	color: var(--code-punctuation, var(--text-muted, #616e88));
+}
+
+.tategaki-sot-line.tategaki-md-codeblock-fence {
+	min-height: 1em;
+}
+
+.tategaki-sot-line.tategaki-md-codeblock-fence::before {
+	content: attr(data-code-info);
+	display: inline-block;
+	font-family: var(--font-monospace);
+	font-size: 0.8em;
+	color: var(--text-muted);
+	opacity: 0.9;
+}
+
+.tategaki-sot-line.tategaki-md-frontmatter {
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 70%,
+		transparent
+	);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 0.15em 0.5em;
+}
+
+.tategaki-sot-line.tategaki-md-frontmatter .tategaki-sot-run {
+	font-family: var(--font-monospace);
+	font-size: 0.9em;
+}
+
+.tategaki-sot-line.tategaki-md-frontmatter-fence {
+	min-height: 1em;
+}
+
+.tategaki-sot-line.tategaki-md-frontmatter-fence::before {
+	content: "frontmatter";
+	display: inline-block;
+	font-family: var(--font-monospace);
+	font-size: 0.8em;
+	color: var(--text-muted);
+	opacity: 0.9;
+}
+
+.tategaki-sot-line.tategaki-md-frontmatter-hidden {
+	display: none;
+}
+
+.tategaki-sot-line.tategaki-md-table {
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 70%,
+		transparent
+	);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 10px;
+	padding: 0.2em 0.5em;
+}
+
+.tategaki-md-table-row-container {
+	display: inline-flex;
+	gap: 0.35em;
+}
+
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-md-table-row-container {
+	flex-direction: column;
+}
+
+.tategaki-sot-derived-root[data-writing-mode="horizontal-tb"]
+	.tategaki-md-table-row-container {
+	flex-direction: row;
+}
+
+.tategaki-md-table-cell {
+	display: inline-block;
+	padding: 0.12em 0.45em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--background-primary) 80%, transparent);
+}
+
+.tategaki-sot-line.tategaki-md-table-header .tategaki-md-table-cell {
+	font-weight: 700;
+}
+
+.tategaki-sot-line.tategaki-md-table-sep {
+	min-block-size: 0.6em;
+}
+
+.tategaki-sot-line.tategaki-md-table-hidden {
+	display: none;
+}
+
+.tategaki-sot-line.tategaki-md-table-widget {
+	padding: 0.2em 0.4em;
+}
+
+.tategaki-md-table-widget-inner {
+	display: block;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	padding: 0.5em;
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 70%,
+		transparent
+	);
+	max-inline-size: 100%;
+	max-block-size: 80vh;
+	overflow: auto;
+	/* Tableはプレビュー互換の横書きで表示 */
+	writing-mode: horizontal-tb;
+	text-orientation: mixed;
+}
+
+.tategaki-md-table-widget-loading {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 0.5em;
+}
+
+.tategaki-md-table-widget-content {
+	white-space: normal;
+}
+
+.tategaki-sot-line.tategaki-md-deflist-hidden {
+	display: none;
+}
+
+.tategaki-sot-line.tategaki-md-deflist-widget {
+	padding: 0.2em 0.4em;
+}
+
+.tategaki-md-deflist-widget-inner {
+	display: block;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	padding: 0.5em;
+	background: color-mix(
+		in srgb,
+		var(--background-secondary) 70%,
+		transparent
+	);
+	max-inline-size: 100%;
+	max-block-size: 80vh;
+	overflow: auto;
+	writing-mode: horizontal-tb;
+	text-orientation: mixed;
+}
+
+.tategaki-md-deflist-widget-loading {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 0.5em;
+}
+
+.tategaki-md-deflist-widget-content {
+	white-space: normal;
+}
+
+.tategaki-md-table-sep-line {
+	display: block;
+	inline-size: 100%;
+	block-size: 1px;
+	background: var(--background-modifier-border);
+	opacity: 0.9;
+}
+
+.tategaki-sot-line.tategaki-md-list {
+	position: relative;
+	/* 縦書きではインライン方向（上下）に字下げする */
+	padding-inline-start: calc(
+		var(--tategaki-sot-list-indent, 1.2em) *
+			var(--tategaki-sot-list-depth, 0)
+	);
+}
+
+.tategaki-sot-line.tategaki-md-list::before {
+	content: "";
+	display: inline-block;
+	opacity: 0.85;
+	color: var(--text-muted);
+	margin-inline-end: 0.35em;
+}
+
+.tategaki-sot-line.tategaki-md-list[data-md-kind="olist"]::before {
+	content: attr(data-list-marker);
+	width: auto;
+	height: auto;
+	background: none;
+	border: 0;
+	opacity: 0.85;
+}
+
+.tategaki-sot-line.tategaki-md-list[data-md-kind="list"]::before {
+	width: 0.42em;
+	height: 0.42em;
+	border-radius: 999px;
+	opacity: 0.95;
+	transform: translateY(0.05em);
+}
+
+.tategaki-sot-line.tategaki-md-list[data-md-kind="list"][data-list-bullet="0"]::before {
+	background: color-mix(in srgb, var(--text-normal) 70%, var(--text-muted));
+	border: 0;
+}
+
+.tategaki-sot-line.tategaki-md-list[data-md-kind="list"][data-list-bullet="1"]::before {
+	background: transparent;
+	border: 2px solid
+		color-mix(in srgb, var(--text-normal) 55%, var(--text-muted));
+}
+
+/* タスクリストはクリック可能な実DOMで描画する */
+.tategaki-sot-line.tategaki-md-list[data-md-kind="task"]::before {
+	display: none;
+	margin-inline-end: 0;
+}
+
+.tategaki-md-task-box {
+	display: inline-block;
+	width: 0.9em;
+	height: 0.9em;
+	border-radius: 4px;
+	border: 2px solid
+		color-mix(
+			in srgb,
+			var(--text-muted) 55%,
+			var(--background-modifier-border)
+		);
+	background: var(--background-primary);
+	box-sizing: border-box;
+	opacity: 1;
+	color: var(--text-normal);
+	transform: translateY(0.05em);
+	margin-inline-end: 0.35em;
+	cursor: pointer;
+	pointer-events: auto;
+}
+
+.tategaki-sot-line.tategaki-md-task[data-task-checked="1"]
+	.tategaki-md-task-box {
+	border-color: var(--interactive-accent);
+	background: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%234a90e2' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' d='M3 8.5l3 3L13 4.5'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: center;
+	background-size: 80% 80%;
+}
+
+.tategaki-sot-line.tategaki-md-task[data-task-checked="1"] .tategaki-sot-run {
+	text-decoration: line-through;
+	text-decoration-thickness: 2px;
+	text-decoration-color: color-mix(
+		in srgb,
+		var(--text-muted) 75%,
+		transparent
+	);
+}
+
+.tategaki-sot-line.tategaki-md-hr {
+	position: relative;
+	min-height: 1em;
+}
+
+.tategaki-sot-line.tategaki-md-hr::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 50%;
+	height: 1px;
+	background: var(--background-modifier-border);
+	opacity: 0.9;
+}
+
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-line.tategaki-md-hr {
+	min-height: 1em;
+	min-width: 1em;
+}
+
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-line.tategaki-md-hr::before {
+	top: 0;
+	bottom: 0;
+	left: 50%;
+	right: auto;
+	width: 1px;
+	height: auto;
+}
+
+.tategaki-sot-text {
+	white-space: pre-wrap;
+	word-break: break-word;
+	overflow-wrap: anywhere;
+}
+
+/* CEモードの空行用入力プレースホルダー */
+/* IMEが正しい位置に未確定文字を表示するため、display: inlineで幅を取らない */
+.tategaki-sot-ce-input-placeholder {
+	display: inline;
+	font-size: inherit;
+	line-height: inherit;
+	color: var(--tategaki-text-color, var(--text-normal));
+	caret-color: var(--tategaki-text-color, var(--text-normal));
+}
+
+.tategaki-sot-derived-root[data-ce-ime="1"] ::selection {
+	background: transparent;
+	color: inherit;
+}
+
+.tategaki-sot-derived-root[data-ce-ime="1"][data-ce-ime-native-caret="0"]
+	.tategaki-sot-ce-input-placeholder {
+	caret-color: transparent;
+}
+
+.tategaki-sot-eol {
+	display: inline-block;
+	/* 縦書きでは幅が行の高さ、heightが文字幅相当 */
+	width: 1em;
+	height: 0.5em;
+	opacity: 0;
+	user-select: none;
+	pointer-events: auto;
+	vertical-align: top;
+}
+
+.tategaki-sot-derived-root[data-ce-ime="1"] .tategaki-sot-eol {
+	opacity: 1;
+	color: transparent;
+	caret-color: var(--tategaki-text-color, var(--text-normal));
+	pointer-events: none;
+	user-select: none;
+}
+
+.tategaki-sot-derived-root[data-ce-ime="1"] .tategaki-sot-pending-spacer {
+	caret-color: transparent;
+	pointer-events: none;
+	user-select: none;
+}
+
+.tategaki-sot-derived-root[data-ce-ime="1"][data-ce-ime-native-caret="0"]
+	.tategaki-sot-eol {
+	caret-color: transparent;
+}
+
+.tategaki-sot-derived-root[data-writing-mode="horizontal-tb"]
+	.tategaki-sot-eol {
+	width: 0.5em;
+	height: calc(var(--tategaki-line-height, 1.8) * 1em);
+	vertical-align: baseline;
+}
+
+.tategaki-sot-caret {
+	position: absolute;
+	background: var(
+		--tategaki-caret-color,
+		var(--tategaki-accent-color, var(--interactive-accent))
+	);
+	border-radius: 999px;
+	pointer-events: none;
+	user-select: none;
+	z-index: 1100;
+}
+
+.tategaki-sot-caret {
+	animation: tategaki-caret-blink 1s steps(1, end) infinite;
+}
+
+@keyframes tategaki-caret-blink {
+	0% {
+		opacity: 1;
+	}
+	49% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0;
+	}
+	100% {
+		opacity: 0;
+	}
+}
+.tategaki-sot-pending {
+	position: absolute;
+	pointer-events: none;
+	user-select: none;
+	contain: layout size;
+	white-space: pre;
+	color: var(--tategaki-text-color, var(--text-normal));
+	font-family: var(--tategaki-font-family, var(--font-text));
+	font-size: var(--tategaki-font-size, 18px);
+	line-height: var(--tategaki-line-height, 1.8);
+	writing-mode: inherit;
+	text-orientation: inherit;
+	z-index: 1099;
+}
+
+.tategaki-sot-pending-spacer {
+	display: inline;
+	white-space: pre-wrap;
+	word-break: break-word;
+	overflow-wrap: anywhere;
+	color: transparent;
+	pointer-events: none;
+	user-select: none;
+	font-family: var(--tategaki-font-family, var(--font-text));
+	font-size: var(--tategaki-font-size, 18px);
+	line-height: var(--tategaki-line-height, 1.8);
+	writing-mode: inherit;
+	text-orientation: inherit;
+}
+
+/* 縦書き用オーバーレイtextarea */
+.tategaki-sot-overlay-textarea {
+	position: absolute;
+	z-index: 1101;
+	/* クリックは背面に通し、選択操作を妨げない */
+	pointer-events: none;
+	/* 縦書きでは複数列分の幅、高さはCSS変数で制御 */
+	width: 10em;
+	height: var(--overlay-textarea-height, 50vh);
+	padding: 0;
+	margin: 0;
+	/* DEBUG: 背景だけ表示（枠線は無し） */
+	border: 0 !important;
+	border-radius: 0;
+	outline: none !important;
+	resize: none !important;
+	background: transparent !important;
+	color: var(--tategaki-text-color, var(--text-normal)) !important;
+	caret-color: transparent !important;
+	caret-shape: block;
+	-webkit-text-fill-color: var(
+		--tategaki-text-color,
+		var(--text-normal)
+	) !important;
+	overflow: hidden;
+	box-sizing: border-box;
+	font-family: var(--tategaki-font-family, var(--font-text)) !important;
+	font-size: var(--tategaki-font-size, 18px) !important;
+	line-height: var(--tategaki-line-height, 1.8) !important;
+	letter-spacing: var(--tategaki-letter-spacing, 0em) !important;
+	writing-mode: inherit;
+	text-orientation: inherit;
+	/* 折り返しを有効化 */
+	white-space: pre-wrap;
+	/* 本文・pending spacer と同じ折り返し規則に合わせる */
+	word-break: break-word;
+	overflow-wrap: anywhere;
+}
+
+/* IME変換中は視認性を少し上げる */
+.tategaki-sot-overlay-textarea.tategaki-ime-visible {
+	background: transparent !important;
+}
+
+.tategaki-sot-overlay-textarea.tategaki-show-native-caret {
+	caret-color: var(
+		--tategaki-caret-color,
+		var(--tategaki-accent-color, var(--interactive-accent))
+	) !important;
+}
+
+/* 横書き時のスタイル */
+.tategaki-sot-derived-root[data-writing-mode="horizontal-tb"]
+	.tategaki-sot-overlay-textarea {
+	/* 横書きでは幅を十分に、高さは1行分 */
+	width: 50vw;
+	max-width: 80vw;
+	height: 2em;
+	max-height: none;
+}
+
+.tategaki-sot-overlay-textarea:hover,
+.tategaki-sot-overlay-textarea:focus,
+.tategaki-sot-overlay-textarea:active {
+	background: transparent !important;
+	border: 0 !important;
+	outline: none !important;
+	box-shadow: none !important;
+}
+
+/* IME表示中はhover/focusでも背景を維持 */
+.tategaki-sot-overlay-textarea.tategaki-ime-visible:hover,
+.tategaki-sot-overlay-textarea.tategaki-ime-visible:focus,
+.tategaki-sot-overlay-textarea.tategaki-ime-visible:active {
+	background: transparent !important;
+}
+
+/* 軽量プレースホルダー（仮想化行）のスタイル */
+/* テキストを含まず、1行分のサイズを設定してメモリ消費を抑える */
+
+/* 横書き時: 高さを1行分（line-height）に設定 */
+.tategaki-sot-derived-root[data-writing-mode="horizontal-tb"]
+	.tategaki-sot-line-virtual {
+	min-height: calc(1em * var(--tategaki-line-height, 1.8));
+	height: auto;
+}
+
+/* 縦書き時: 幅を1行分（line-height）に設定 */
+/* 縦書きでは1行の幅は文字数に関係なく、概ねline-heightに近い */
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-line-virtual {
+	min-width: calc(1em * var(--tategaki-line-height, 1.8));
+	width: auto;
+}
+
+/* 仮想行プレースホルダー: スクロール中に行の存在を示すバー */
+.tategaki-sot-virtual-placeholder {
+	display: block;
+	background: currentColor;
+	opacity: 0.05;
+	border-radius: 10px;
+	filter: blur(1px);
+}
+
+/* 横書き時: プレースホルダーの高さをフォントサイズに合わせる */
+.tategaki-sot-derived-root[data-writing-mode="horizontal-tb"]
+	.tategaki-sot-virtual-placeholder {
+	width: calc(var(--placeholder-chars, 20) * 0.6em);
+	height: 1em;
+	max-width: 100%;
+}
+
+/* 縦書き時: プレースホルダーの幅をフォントサイズに合わせる */
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-virtual-placeholder {
+	width: 1em;
+	height: calc(var(--placeholder-chars, 20) * 0.8em);
+	max-height: 100%;
+}

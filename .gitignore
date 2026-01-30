@@ -1,4 +1,6 @@
 *
+src/**/.DS_Store
+scripts/**/.DS_Store
 !.gitignore
 
 # docs
@@ -11,6 +13,7 @@
 !LICENSE
 !LICENSE.ja
 !THIRD_PARTY_LICENSES.md
+!NOTICE
 
 # manifest / versions / build artifacts
 !manifest.json
