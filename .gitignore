@@ -1,6 +1,4 @@
 *
-src/**/.DS_Store
-scripts/**/.DS_Store
 !.gitignore
 
 # docs
@@ -37,3 +35,5 @@ scripts/**/.DS_Store
 
 # release tools
 !version-bump.mjs
+
+.DS_Store
