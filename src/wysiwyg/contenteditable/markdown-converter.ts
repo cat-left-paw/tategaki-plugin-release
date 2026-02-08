@@ -1,4 +1,9 @@
-import { convertAozoraRubySyntaxToHtml, convertRubyElementsToAozora } from "../../shared/aozora-ruby";
+import {
+	applyAozoraRubyToElement,
+	convertAozoraRubySyntaxToHtml,
+	convertRubyElementsToAozora,
+} from "../../shared/aozora-ruby";
+import type { App, Component } from "obsidian";
 
 /**
  * Markdown ↔ HTML Converter for ContentEditable Editor
@@ -6,84 +11,198 @@ import { convertAozoraRubySyntaxToHtml, convertRubyElementsToAozora } from "../.
  */
 export interface MarkdownToHtmlOptions {
 	enableRuby?: boolean;
+	app?: App;
+	sourcePath?: string;
+	component?: Component;
 }
 
 export class MarkdownConverter {
-    /**
-     * Convert Markdown to HTML
-     * Preserves existing HTML tags (like <ruby>, <span style="">, etc.)
-     */
-    static markdownToHtml(markdown: string, options: MarkdownToHtmlOptions = {}): string {
-        if (!markdown) return '';
+	private static obsidianModule:
+		| typeof import("obsidian")
+		| null
+		| undefined;
 
-        let html = markdown;
-        const enableRuby = options.enableRuby ?? true;
+	private static async loadObsidianModule(): Promise<
+		typeof import("obsidian") | null
+	> {
+		if (this.obsidianModule !== undefined) {
+			return this.obsidianModule;
+		}
+		try {
+			this.obsidianModule = await import("obsidian");
+		} catch {
+			this.obsidianModule = null;
+		}
+		return this.obsidianModule;
+	}
 
-        // Preserve HTML tags by replacing them with placeholders
-        const htmlTags: string[] = [];
-        html = html.replace(/(<[^>]+>)/g, (match) => {
-            const index = htmlTags.length;
-            htmlTags.push(match);
-            return `\u200B\u200BHTMLTAG${index}\u200B\u200B`;
-        });
+	/**
+	 * Convert Markdown to HTML
+	 * ObsidianのMarkdownRendererを優先し、利用できない場合は従来ロジックにフォールバック
+	 */
+	static async markdownToHtml(
+		markdown: string,
+		options: MarkdownToHtmlOptions = {}
+	): Promise<string> {
+		if (!markdown) return "";
 
-        // Convert markdown syntax to HTML
-        // Headers (must be at the start of a line)
-        html = html.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
-        html = html.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
-        html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
-        html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
-        html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
-        html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
+		const enableRuby = options.enableRuby ?? true;
+		const app =
+			options.app ??
+			(typeof window !== "undefined" ? (window as any).app : null);
+		const sourcePath = options.sourcePath ?? "";
 
-        // Blockquotes
-        html = html.replace(/^>\s+(.+)$/gm, '<blockquote>$1</blockquote>');
+		if (!app || typeof document === "undefined") {
+			return this.legacyMarkdownToHtml(markdown, { enableRuby });
+		}
 
-        // Horizontal rules
-        html = html.replace(/^---$/gm, '<hr>');
-        html = html.replace(/^\*\*\*$/gm, '<hr>');
+		const obsidianModule = await this.loadObsidianModule();
+		if (!obsidianModule) {
+			return this.legacyMarkdownToHtml(markdown, { enableRuby });
+		}
 
-        // Code blocks (must be processed before inline code and lists)
-        html = this.processCodeBlocks(html);
+		const { MarkdownRenderer, MarkdownRenderChild } = obsidianModule;
+		const container = document.createElement("div");
+		const renderChild =
+			options.component ?? new MarkdownRenderChild(container);
+		const shouldDispose = !options.component;
 
-        // Lists - Process line by line to handle nesting
-        html = this.processLists(html);
+		try {
+			await MarkdownRenderer.render(
+				app,
+				markdown,
+				container,
+				sourcePath,
+				renderChild
+			);
+		} catch {
+			if (shouldDispose) {
+				renderChild.unload();
+			}
+			return this.legacyMarkdownToHtml(markdown, { enableRuby });
+		}
 
-        // Bold (strong)
-        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+		if (enableRuby) {
+			applyAozoraRubyToElement(container);
+		}
 
-        // Italic (em)
-        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-        html = html.replace(/_(.+?)_/g, '<em>$1</em>');
+		let html = this.extractRenderedHtml(container);
+		if (!enableRuby) {
+			// 青空文庫形式のまま表示（追加の「｜」は付与しない）
+			html = convertRubyElementsToAozora(html, { addDelimiter: false });
+		}
 
-        // Strikethrough
-        html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
+		if (shouldDispose) {
+			renderChild.unload();
+		}
 
-        // Highlight (Obsidian syntax: ==text==)
-        html = html.replace(/==(.+?)==/g, '<mark>$1</mark>');
+		return html;
+	}
 
-        // Code (inline)
-        html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+	private static extractRenderedHtml(container: HTMLElement): string {
+		const nodes = Array.from(container.childNodes);
+		if (nodes.length === 0) {
+			return "";
+		}
+		if (nodes.length === 1) {
+			const only = nodes[0];
+			if (only instanceof HTMLElement && only.tagName === "P") {
+				return only.innerHTML;
+			}
+		}
+		return nodes
+			.map((node) => {
+				if (node instanceof HTMLElement) {
+					return node.outerHTML;
+				}
+				if (node.nodeType === Node.TEXT_NODE) {
+					return node.textContent ?? "";
+				}
+				return "";
+			})
+			.join("");
+	}
 
-        // Links
-        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+	private static legacyMarkdownToHtml(
+		markdown: string,
+		options: MarkdownToHtmlOptions = {}
+	): string {
+		if (!markdown) return "";
 
-        // Images
-        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+		let html = markdown;
+		const enableRuby = options.enableRuby ?? true;
 
-        // Restore HTML tags before line processing
-        htmlTags.forEach((tag, index) => {
-            const placeholder = `\u200B\u200BHTMLTAG${index}\u200B\u200B`;
-            while (html.includes(placeholder)) {
-                html = html.replace(placeholder, tag);
-            }
-        });
+		// Preserve HTML tags by replacing them with placeholders
+		const htmlTags: string[] = [];
+		html = html.replace(/(<[^>]+>)/g, (match) => {
+			const index = htmlTags.length;
+			htmlTags.push(match);
+			return `\u200B\u200BHTMLTAG${index}\u200B\u200B`;
+		});
 
-        // Process lines - preserve leading spaces for indentation
-        const lines = html.split('\n');
-        const processedLines: string[] = [];
-        
+		// Convert markdown syntax to HTML
+		// Headers (must be at the start of a line)
+		html = html.replace(/^######\s+(.+)$/gm, "<h6>$1</h6>");
+		html = html.replace(/^#####\s+(.+)$/gm, "<h5>$1</h5>");
+		html = html.replace(/^####\s+(.+)$/gm, "<h4>$1</h4>");
+		html = html.replace(/^###\s+(.+)$/gm, "<h3>$1</h3>");
+		html = html.replace(/^##\s+(.+)$/gm, "<h2>$1</h2>");
+		html = html.replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
+
+		// Blockquotes
+		html = html.replace(/^>\s+(.+)$/gm, "<blockquote>$1</blockquote>");
+
+		// Horizontal rules
+		html = html.replace(/^---$/gm, "<hr>");
+		html = html.replace(/^\*\*\*$/gm, "<hr>");
+
+		// Code blocks (must be processed before inline code and lists)
+		html = this.processCodeBlocks(html);
+
+		// Lists - Process line by line to handle nesting
+		html = this.processLists(html);
+
+		// Bold (strong)
+		html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+		html = html.replace(/__(.+?)__/g, "<strong>$1</strong>");
+
+		// Italic (em)
+		html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+		html = html.replace(/_(.+?)_/g, "<em>$1</em>");
+
+		// Strikethrough
+		html = html.replace(/~~(.+?)~~/g, "<del>$1</del>");
+
+		// Highlight (Obsidian syntax: ==text==)
+		html = html.replace(/==(.+?)==/g, "<mark>$1</mark>");
+
+		// Code (inline)
+		html = html.replace(/`(.+?)`/g, "<code>$1</code>");
+
+		// Links
+		html = html.replace(
+			/\[([^\]]+)\]\(([^)]+)\)/g,
+			'<a href="$2">$1</a>'
+		);
+
+		// Images
+		html = html.replace(
+			/!\[([^\]]*)\]\(([^)]+)\)/g,
+			'<img src="$2" alt="$1">'
+		);
+
+		// Restore HTML tags before line processing
+		htmlTags.forEach((tag, index) => {
+			const placeholder = `\u200B\u200BHTMLTAG${index}\u200B\u200B`;
+			while (html.includes(placeholder)) {
+				html = html.replace(placeholder, tag);
+			}
+		});
+
+		// Process lines - preserve leading spaces for indentation
+		const lines = html.split("\n");
+		const processedLines: string[] = [];
+
 		for (let i = 0; i < lines.length; i++) {
 			const line = lines[i];
 			const trimmed = line.trim();
@@ -91,16 +210,19 @@ export class MarkdownConverter {
 			// Strict preview break placeholder: convert back to <br> without doubling
 			const strictBreakMatch = trimmed.match(/^⦦TATEGAKI-BREAKS:(\d+)⦧$/);
 			if (strictBreakMatch) {
-				const breakCount = Math.max(0, parseInt(strictBreakMatch[1], 10) || 0);
+				const breakCount = Math.max(
+					0,
+					parseInt(strictBreakMatch[1], 10) || 0
+				);
 				if (breakCount > 0) {
-					processedLines.push('<br>'.repeat(breakCount));
+					processedLines.push("<br>".repeat(breakCount));
 				}
 				continue;
 			}
 
 			// Empty line - add <br> to create visual space
 			if (!trimmed) {
-				processedLines.push('<br>');
+				processedLines.push("<br>");
 				continue;
 			}
 
@@ -115,9 +237,9 @@ export class MarkdownConverter {
 			let processedLine = trimmed;
 			if (leadingSpaces) {
 				const spaces = leadingSpaces[1]
-					.replace(/ /g, '&nbsp;')
-					.replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;')
-					.replace(/\u3000/g, '\u3000'); // 全角スペースはそのまま保持
+					.replace(/ /g, "&nbsp;")
+					.replace(/\t/g, "&nbsp;&nbsp;&nbsp;&nbsp;")
+					.replace(/\u3000/g, "\u3000"); // 全角スペースはそのまま保持
 				processedLine = spaces + trimmed;
 			}
 
@@ -127,21 +249,21 @@ export class MarkdownConverter {
 			if (i < lines.length - 1) {
 				const nextLine = lines[i + 1]?.trim();
 				if (nextLine) {
-					processedLines.push('<br>');
+					processedLines.push("<br>");
 				}
 			}
 		}
-        
-        html = processedLines.join('');
-        if (enableRuby) {
-            html = convertAozoraRubySyntaxToHtml(html);
-        } else {
-            // 青空文庫形式のまま表示（追加の「｜」は付与しない）
-            html = convertRubyElementsToAozora(html, { addDelimiter: false });
-        }
 
-        return html;
-    }
+		html = processedLines.join("");
+		if (enableRuby) {
+			html = convertAozoraRubySyntaxToHtml(html);
+		} else {
+			// 青空文庫形式のまま表示（追加の「｜」は付与しない）
+			html = convertRubyElementsToAozora(html, { addDelimiter: false });
+		}
+
+		return html;
+	}
 
     /**
      * Process lists with proper nesting support

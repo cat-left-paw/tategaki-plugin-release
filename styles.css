@@ -1382,6 +1382,12 @@ ruby {
 	writing-mode: horizontal-tb;
 }
 
+/* ページ分割計測時はルビを無視する */
+.tategaki-pagination-ignore-ruby rt,
+.tategaki-pagination-ignore-ruby .tategaki-aozora-ruby-rt {
+	display: none !important;
+}
+
 /* TipTap編集時の疑似ルビ（ネイティブ<ruby>/<rt>を使わない） */
 .tategaki-wysiwyg-editor .ProseMirror .tategaki-aozora-ruby {
 	position: relative;
@@ -2490,6 +2496,9 @@ ruby {
 
 .tategaki-page .page-content .tategaki-continued-block {
 	text-align-last: justify;
+}
+.tategaki-page .page-content .tategaki-continued-block-short-last {
+	text-align-last: start;
 }
 
 /* ルビの設定 */
@@ -3762,8 +3771,8 @@ ruby {
 .tategaki-sot-line.tategaki-md-list::before {
 	content: "";
 	display: inline-block;
-	opacity: 0.85;
-	color: var(--text-muted);
+	opacity: 1;
+	color: currentColor;
 	margin-inline-end: 0.35em;
 }
 
@@ -3773,7 +3782,7 @@ ruby {
 	height: auto;
 	background: none;
 	border: 0;
-	opacity: 0.85;
+	opacity: 1;
 }
 
 .tategaki-sot-line.tategaki-md-list[data-md-kind="list"]::before {
@@ -3785,14 +3794,13 @@ ruby {
 }
 
 .tategaki-sot-line.tategaki-md-list[data-md-kind="list"][data-list-bullet="0"]::before {
-	background: color-mix(in srgb, var(--text-normal) 70%, var(--text-muted));
+	background: currentColor;
 	border: 0;
 }
 
 .tategaki-sot-line.tategaki-md-list[data-md-kind="list"][data-list-bullet="1"]::before {
 	background: transparent;
-	border: 2px solid
-		color-mix(in srgb, var(--text-normal) 55%, var(--text-muted));
+	border: 2px solid currentColor;
 }
 
 /* タスクリストはクリック可能な実DOMで描画する */
@@ -3887,11 +3895,19 @@ ruby {
 	font-size: inherit;
 	line-height: inherit;
 	color: var(--tategaki-text-color, var(--text-normal));
-	caret-color: var(--tategaki-text-color, var(--text-normal));
+	caret-color: var(
+		--tategaki-caret-color,
+		var(--tategaki-text-color, var(--text-normal))
+	);
 }
 
 .tategaki-sot-derived-root[data-ce-ime="1"] ::selection {
-	background: transparent;
+	background-color: var(--text-selection, rgba(0, 123, 255, 0.3));
+	color: inherit;
+}
+
+.tategaki-sot-derived-root[data-ce-ime="1"] ::-moz-selection {
+	background-color: var(--text-selection, rgba(0, 123, 255, 0.3));
 	color: inherit;
 }
 
@@ -3914,7 +3930,10 @@ ruby {
 .tategaki-sot-derived-root[data-ce-ime="1"] .tategaki-sot-eol {
 	opacity: 1;
 	color: transparent;
-	caret-color: var(--tategaki-text-color, var(--text-normal));
+	caret-color: var(
+		--tategaki-caret-color,
+		var(--tategaki-text-color, var(--text-normal))
+	);
 	pointer-events: none;
 	user-select: none;
 }
@@ -3935,6 +3954,23 @@ ruby {
 	width: 0.5em;
 	height: calc(var(--tategaki-line-height, 1.8) * 1em);
 	vertical-align: baseline;
+}
+
+.tategaki-sot-derived-root[data-native-selection="1"] {
+	user-select: text;
+	-webkit-user-select: text;
+	-moz-user-select: text;
+	-ms-user-select: text;
+}
+
+.tategaki-sot-derived-root[data-native-selection="1"] ::selection {
+	background-color: var(--text-selection, rgba(0, 123, 255, 0.3));
+	color: inherit;
+}
+
+.tategaki-sot-derived-root[data-native-selection="1"] ::-moz-selection {
+	background-color: var(--text-selection, rgba(0, 123, 255, 0.3));
+	color: inherit;
 }
 
 .tategaki-sot-caret {
@@ -4090,6 +4126,47 @@ ruby {
 	.tategaki-sot-line-virtual {
 	min-width: calc(1em * var(--tategaki-line-height, 1.8));
 	width: auto;
+}
+
+.tategaki-sot-derived-root.tategaki-fast-scroll .tategaki-sot-line {
+	position: relative;
+}
+
+.tategaki-sot-derived-root.tategaki-fast-scroll .tategaki-sot-line,
+.tategaki-sot-derived-root.tategaki-fast-scroll .tategaki-sot-line * {
+	color: transparent !important;
+}
+
+.tategaki-sot-derived-root.tategaki-fast-scroll
+	.tategaki-sot-line::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 0;
+	display: block;
+	background: var(--text-normal);
+	opacity: 0.14;
+	border-radius: 10px;
+	filter: none;
+	pointer-events: none;
+}
+
+.tategaki-sot-derived-root.tategaki-fast-scroll[data-writing-mode="horizontal-tb"]
+	.tategaki-sot-line::after {
+	width: calc(var(--placeholder-chars, 20) * 0.6em);
+	height: 1em;
+	max-width: 100%;
+}
+
+.tategaki-sot-derived-root.tategaki-fast-scroll:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-line::after {
+	width: 1em;
+	height: calc(var(--placeholder-chars, 20) * 0.8em);
+	max-height: 100%;
+}
+
+.tategaki-sot-derived-root.tategaki-fast-scroll .tategaki-sot-selection-layer {
+	opacity: 0.45;
 }
 
 /* 仮想行プレースホルダー: スクロール中に行の存在を示すバー */

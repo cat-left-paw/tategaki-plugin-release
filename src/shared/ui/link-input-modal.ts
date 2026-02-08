@@ -117,13 +117,13 @@ export class LinkInputModal extends Modal {
 				this.close();
 			});
 
-		// 挿入ボタン
-		const insertButton = new ButtonComponent(buttonContainer)
-			.setButtonText("挿入")
-			.setClass("mod-cta")
-			.onClick(() => {
-				this.submitLink();
-			});
+			// 挿入ボタン
+			new ButtonComponent(buttonContainer)
+				.setButtonText("挿入")
+				.setClass("mod-cta")
+				.onClick(() => {
+					this.submitLink();
+				});
 
 		// Enterキーで挿入
 		this.urlInput?.inputEl.addEventListener('keydown', (e) => {

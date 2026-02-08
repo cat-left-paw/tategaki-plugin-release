@@ -13,7 +13,7 @@ export class RubyInputModal extends Modal {
 	private rubyInput: TextComponent | null = null;
 	private dotToggle: ToggleComponent | null = null;
 	private selectedText: string;
-	private isComposing: boolean = false;
+	private isComposing = false;
 
 	constructor(
 		app: App,

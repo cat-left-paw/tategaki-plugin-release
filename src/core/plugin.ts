@@ -13,7 +13,10 @@ import {
 	TIPTAP_COMPAT_VIEW_TYPE_LEGACY,
 } from "../wysiwyg/tiptap-compat-view";
 import { TATEGAKI_READING_VIEW_TYPE } from "../preview/reading-view";
-import { TATEGAKI_SOT_WYSIWYG_VIEW_TYPE } from "../wysiwyg/sot-wysiwyg-view";
+import {
+	SoTWysiwygView,
+	TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
+} from "../wysiwyg/sot-wysiwyg-view";
 import { moveSyncBackupsToTrash, SYNC_BACKUP_ROOT } from "../shared/sync-backup";
 import { debugWarn, setDebugLogging } from "../shared/logger";
 
@@ -198,20 +201,40 @@ export default class TategakiV2Plugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: "open-tategaki-sot-wysiwyg-view",
-			name: "縦書きSoT編集ビューを開く（実験）",
-			callback: async () => {
-				const file = this.app.workspace.getActiveFile();
-				if (!file) {
-					new Notice("対象ファイルが見つかりません。", 2500);
-					return;
-				}
-				await this.modeManager.openSoTWysiwygView(file, {
-					openOnRightSide: true,
-				});
-			},
+			id: "tategaki-sot-list-move-up",
+			name: "SoT: リスト項目を上へ移動",
+			callback: () => this.runSoTListOutlinerAction("move-up"),
 		});
 
+		this.addCommand({
+			id: "tategaki-sot-list-move-down",
+			name: "SoT: リスト項目を下へ移動",
+			callback: () => this.runSoTListOutlinerAction("move-down"),
+		});
+
+	}
+
+	private getActiveSoTView(): SoTWysiwygView | null {
+		const active = this.app.workspace.getActiveViewOfType(SoTWysiwygView);
+		if (active) return active;
+		const leaves = this.app.workspace.getLeavesOfType(
+			TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
+		);
+		for (const leaf of leaves) {
+			const view = leaf.view;
+			if (view instanceof SoTWysiwygView) {
+				return view;
+			}
+		}
+		return null;
+	}
+
+	private runSoTListOutlinerAction(
+		action: "move-up" | "move-down",
+	): void {
+		const view = this.getActiveSoTView();
+		if (!view) return;
+		view.runListOutlinerAction(action);
 	}
 
 	async moveSyncBackupsToTrash(): Promise<void> {
@@ -727,7 +750,7 @@ export default class TategakiV2Plugin extends Plugin {
 	 */
 	async createThemeFromCurrentSettings(
 		name: string,
-		description: string = "ユーザー作成テーマ"
+		description = "ユーザー作成テーマ"
 	): Promise<ThemePreset> {
 		const themeId = `theme-${Date.now()}`;
 

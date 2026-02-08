@@ -7,12 +7,11 @@ import {
 	Notice,
 } from "obsidian";
 import TategakiV2Plugin from "../../core/plugin";
-import {
-	TategakiV2Settings,
-	PRESET_THEME_IDS,
-	PageTransitionEffect,
-} from "../../types/settings";
-import { compareSemver } from "../version";
+	import {
+		TategakiV2Settings,
+		PRESET_THEME_IDS,
+	} from "../../types/settings";
+	import { compareSemver } from "../version";
 
 const UPDATE_CHECK_URL =
 	"https://raw.githubusercontent.com/cat-left-paw/tategaki-plugin-release/main/latest.json";

@@ -77,6 +77,7 @@ export class CommandContextMenu {
 
 	private addInlineSection(menu: Menu): void {
 		const hasSelection = this.adapter.hasSelection?.() ?? false;
+		const inlineAllowed = this.adapter.isInlineSelectionAllowed?.() ?? true;
 		const items = [
 			{
 				title: "太字",
@@ -116,7 +117,7 @@ export class CommandContextMenu {
 				menuItem
 					.setTitle(item.title)
 					.setIcon(item.icon)
-					.setDisabled(!hasSelection)
+					.setDisabled(!hasSelection || !inlineAllowed)
 					.onClick(() => {
 						item.action?.();
 					});
@@ -198,9 +199,13 @@ export class CommandContextMenu {
 	private addInsertSection(menu: Menu): void {
 		let added = false;
 		if (this.adapter.insertRuby) {
+			const hasSelection = this.adapter.hasSelection?.() ?? false;
+			const inlineAllowed =
+				this.adapter.isInlineSelectionAllowed?.() ?? true;
 			menu.addItem((item) => {
 				item.setTitle("ルビ挿入")
 					.setIcon("gem")
+					.setDisabled(!hasSelection || !inlineAllowed)
 					.onClick(() => {
 						this.adapter.insertRuby?.();
 					});

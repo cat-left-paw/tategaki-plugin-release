@@ -10,6 +10,9 @@ export type SoTRenderPipelineContext = {
 	getPluginSettings: () => TategakiV2Settings;
 	getHideFrontmatter: () => boolean;
 	getWritingMode: () => WritingMode;
+	isSelectionActive?: () => boolean;
+	getSelectionHintLines?: () => number[];
+	resyncSelection?: () => void;
 	parseFrontmatter: (doc: string) => { frontmatter: FrontmatterData | null };
 	setFrontmatterDetected: (value: boolean) => void;
 	computeLineRangesFromLines: (lines: string[]) => LineRange[];
@@ -45,27 +48,43 @@ export class SoTRenderPipeline {
 	private virtualQueue: Array<{ index: number; element: HTMLElement }> = [];
 	private virtualQueued = new Set<number>();
 	private virtualQueueRaf: number | null = null;
+	private virtualizeRaf: number | null = null;
+	private virtualizeIndex = 0;
+	private lastVirtualizeAt = 0;
+	private lastSelectionResyncAt = 0;
+	private preciseScanTimer: number | null = null;
+	private preciseScanRaf: number | null = null;
 	private scrollingActive = false;
 	private scrollHoldTimer: number | null = null;
 	private resumeAfterScrollRaf: number | null = null;
+	private selectionScrollRaf: number | null = null;
 
 	constructor(context: SoTRenderPipelineContext) {
 		this.context = context;
 	}
 
-	suspend(): void {
-		this.cancelScheduledRender();
-		this.cancelChunkedRender();
-		this.cancelVirtualQueue();
-		this.cancelScrollHold();
-		this.disconnectVirtualObserver();
-		this.virtualQueue = [];
-		this.virtualQueued.clear();
-		this.scrollingActive = false;
+	isVirtualizedRenderEnabled(): boolean {
+		return this.virtualEnabled;
+	}
+
+	resumeVirtualUpdates(): void {
+		if (!this.virtualEnabled) return;
+		if (this.isSelectionActive()) return;
+		if (this.virtualQueue.length > 0) {
+			this.scheduleVirtualQueue();
+		}
+		this.onScrollSettled();
 	}
 
 	dispose(): void {
-		this.suspend();
+		this.cancelScheduledRender();
+		this.cancelChunkedRender();
+		this.cancelVirtualQueue();
+		this.cancelVirtualize();
+		this.cancelPreciseScan();
+		this.cancelScrollHold();
+		this.cancelSelectionScrollRender();
+		this.disconnectVirtualObserver();
 	}
 
 	cancelScheduledRender(): void {
@@ -87,8 +106,39 @@ export class SoTRenderPipeline {
 		this.scrollingActive = false;
 	}
 
+	private cancelSelectionScrollRender(): void {
+		if (this.selectionScrollRaf !== null) {
+			window.cancelAnimationFrame(this.selectionScrollRaf);
+			this.selectionScrollRaf = null;
+		}
+	}
+
+	private cancelPreciseScan(): void {
+		if (this.preciseScanTimer !== null) {
+			window.clearTimeout(this.preciseScanTimer);
+			this.preciseScanTimer = null;
+		}
+		if (this.preciseScanRaf !== null) {
+			window.cancelAnimationFrame(this.preciseScanRaf);
+			this.preciseScanRaf = null;
+		}
+	}
+
+	private isSelectionActive(): boolean {
+		return this.context.isSelectionActive?.() ?? false;
+	}
+
 	notifyScrollActivity(isLargeScroll: boolean): void {
 		if (!this.virtualEnabled) return;
+		if (this.isSelectionActive()) {
+			this.scheduleSelectionScrollRender();
+		}
+		this.cancelPreciseScan();
+		const now = performance.now();
+		if (now - this.lastVirtualizeAt > 120) {
+			this.lastVirtualizeAt = now;
+			this.scheduleVirtualizeDistantLines(true);
+		}
 		if (!isLargeScroll) return;
 		this.scrollingActive = true;
 		if (this.scrollHoldTimer !== null) {
@@ -99,6 +149,17 @@ export class SoTRenderPipeline {
 			this.scrollingActive = false;
 			this.scheduleResumeAfterScroll();
 		}, 140);
+	}
+
+	private scheduleSelectionScrollRender(): void {
+		if (this.selectionScrollRaf !== null) return;
+		this.selectionScrollRaf = window.requestAnimationFrame(() => {
+			this.selectionScrollRaf = null;
+			this.renderVisibleVirtualLinesImmediate(true, {
+				maxLines: 16,
+				budgetMs: 4,
+			});
+		});
 	}
 
 	scheduleRender(force = false): void {
@@ -126,6 +187,7 @@ export class SoTRenderPipeline {
 		this.renderGeneration = generation;
 		this.cancelChunkedRender();
 		this.cancelVirtualQueue();
+		this.cancelVirtualize();
 
 		const scrollTop = rootEl.scrollTop;
 		const scrollLeft = rootEl.scrollLeft;
@@ -212,6 +274,7 @@ export class SoTRenderPipeline {
 		this.disconnectVirtualObserver();
 		this.virtualObserver = new IntersectionObserver(
 			(entries) => {
+				if (this.isSelectionActive()) return;
 				if (this.scrollingActive) return;
 				for (const entry of entries) {
 					if (!entry.isIntersecting) continue;
@@ -292,6 +355,7 @@ export class SoTRenderPipeline {
 	}
 
 	private scheduleVirtualQueue(): void {
+		if (this.isSelectionActive()) return;
 		if (this.virtualQueueRaf !== null) return;
 		this.virtualQueueRaf = window.requestAnimationFrame(() => {
 			this.virtualQueueRaf = null;
@@ -299,7 +363,210 @@ export class SoTRenderPipeline {
 		});
 	}
 
+	private scheduleVirtualizeDistantLines(
+		allowDuringSelection = false
+	): void {
+		if (!this.virtualEnabled) return;
+		if (!allowDuringSelection && this.isSelectionActive()) return;
+		if (this.virtualizeRaf !== null) return;
+		this.virtualizeRaf = window.requestAnimationFrame(() => {
+			this.virtualizeRaf = null;
+			this.virtualizeDistantLines(allowDuringSelection);
+		});
+	}
+
+	private virtualizeDistantLines(allowDuringSelection = false): void {
+		if (!this.virtualEnabled) return;
+		if (!allowDuringSelection && this.isSelectionActive()) return;
+		const rootEl = this.context.getDerivedRootEl();
+		const contentEl = this.context.getDerivedContentEl();
+		if (!rootEl || !contentEl) return;
+		const lineRanges = this.context.getLineRanges();
+		const total = lineRanges.length;
+		if (total === 0) return;
+
+		const visible = this.getApproxVisibleLineRange(rootEl, total);
+		const buffer = total >= 8000 ? 120 : 200;
+		const safeStart = Math.max(0, visible.start - buffer);
+		const safeEnd = Math.min(total - 1, visible.end + buffer);
+		const hintLines = this.context.getSelectionHintLines?.() ?? [];
+		const hintBuffer = total >= 8000 ? 4 : 8;
+		const isHintProtected = (index: number): boolean =>
+			hintLines.some(
+				(line) =>
+					Number.isFinite(line) &&
+					Math.abs(index - line) <= hintBuffer
+			);
+		const offset = this.getLineElementOffset(contentEl);
+		const children = contentEl.children;
+		const startTime = performance.now();
+		const budgetMs = 8;
+
+		if (this.virtualizeIndex >= total) {
+			this.virtualizeIndex = 0;
+		}
+
+		for (
+			;
+			this.virtualizeIndex < total &&
+			performance.now() - startTime < budgetMs;
+			this.virtualizeIndex += 1
+		) {
+			if (
+				(this.virtualizeIndex >= safeStart &&
+					this.virtualizeIndex <= safeEnd) ||
+				isHintProtected(this.virtualizeIndex)
+			) {
+				continue;
+			}
+			const element = children[
+				this.virtualizeIndex + offset
+			] as HTMLElement | null;
+			if (!element || !element.isConnected) continue;
+			if (element.dataset.virtual === "1") continue;
+			const range = lineRanges[this.virtualizeIndex];
+			if (!range) continue;
+			this.context.renderLineLight(
+				element,
+				range,
+				this.virtualizeIndex
+			);
+			if (this.virtualObserver) {
+				this.virtualObserver.observe(element);
+			}
+		}
+
+		if (this.virtualizeIndex < total) {
+			this.scheduleVirtualizeDistantLines(allowDuringSelection);
+			return;
+		}
+		this.virtualizeIndex = 0;
+	}
+
+	private getLineElementOffset(contentEl: HTMLElement): number {
+		const first = contentEl.firstElementChild;
+		return first?.classList.contains("tategaki-frontmatter") ? 1 : 0;
+	}
+
+	private schedulePreciseScan(): void {
+		if (this.isSelectionActive()) return;
+		if (this.preciseScanTimer !== null || this.preciseScanRaf !== null) {
+			return;
+		}
+		this.preciseScanTimer = window.setTimeout(() => {
+			this.preciseScanTimer = null;
+			this.preciseScanRaf = window.requestAnimationFrame(() => {
+				this.preciseScanRaf = null;
+				this.runPreciseScan();
+			});
+		}, 80);
+	}
+
+	private runPreciseScan(): void {
+		if (this.isSelectionActive()) return;
+		if (this.scrollingActive) return;
+		const hasMore = this.renderVisibleVirtualLinesPrecise({
+			maxLines: 40,
+			budgetMs: 8,
+		});
+		if (hasMore) {
+			this.schedulePreciseScan();
+		}
+	}
+
+	private renderVisibleVirtualLinesPrecise(options: {
+		maxLines?: number;
+		budgetMs?: number;
+	}): boolean {
+		const rootEl = this.context.getDerivedRootEl();
+		const contentEl = this.context.getDerivedContentEl();
+		if (!rootEl || !contentEl) return false;
+		const rootRect = rootEl.getBoundingClientRect();
+		const lineRanges = this.context.getLineRanges();
+		const virtualLines = contentEl.querySelectorAll<HTMLElement>(
+			".tategaki-sot-line-virtual[data-virtual=\"1\"]"
+		);
+		const visibleLines: HTMLElement[] = [];
+		for (const lineEl of Array.from(virtualLines)) {
+			if (!lineEl.isConnected) continue;
+			const rect = lineEl.getBoundingClientRect();
+			const visible =
+				rect.bottom >= rootRect.top &&
+				rect.top <= rootRect.bottom &&
+				rect.right >= rootRect.left &&
+				rect.left <= rootRect.right;
+			if (visible) {
+				visibleLines.push(lineEl);
+			}
+		}
+
+		const budgetMs = options.budgetMs ?? Number.POSITIVE_INFINITY;
+		const maxLines = options.maxLines ?? Number.POSITIVE_INFINITY;
+		const startTime = performance.now();
+		let rendered = 0;
+
+		for (const lineEl of visibleLines) {
+			if (!lineEl.isConnected) continue;
+			if (lineEl.dataset.virtual !== "1") continue;
+			const index = Number.parseInt(lineEl.dataset.line ?? "", 10);
+			if (!Number.isFinite(index)) continue;
+			const range = lineRanges[index];
+			if (!range) continue;
+			this.virtualQueued.delete(index);
+			const queueIdx = this.virtualQueue.findIndex(
+				(q) => q.index === index
+			);
+			if (queueIdx !== -1) {
+				this.virtualQueue.splice(queueIdx, 1);
+			}
+			if (this.virtualObserver) {
+				this.virtualObserver.unobserve(lineEl);
+			}
+			lineEl.removeAttribute("data-virtual");
+			lineEl.classList.remove("tategaki-sot-line-virtual");
+			this.context.renderLine(lineEl, range, index);
+			rendered += 1;
+			if (rendered >= maxLines) break;
+			if (performance.now() - startTime >= budgetMs) break;
+		}
+
+		if (rendered >= maxLines || performance.now() - startTime >= budgetMs) {
+			return true;
+		}
+		for (const lineEl of visibleLines) {
+			if (!lineEl.isConnected) continue;
+			if (lineEl.dataset.virtual === "1") return true;
+		}
+		return false;
+	}
+
+	private getApproxVisibleLineRange(
+		rootEl: HTMLElement,
+		totalLines: number
+	): { start: number; end: number } {
+		const computed = window.getComputedStyle(rootEl);
+		const fontSize = Number.parseFloat(computed.fontSize) || 16;
+		const lineHeight =
+			Number.parseFloat(computed.lineHeight) || fontSize * 1.8;
+		const extent = Math.max(lineHeight, fontSize);
+		const isVertical = computed.writingMode !== "horizontal-tb";
+		const viewport = isVertical ? rootEl.clientWidth : rootEl.clientHeight;
+		let scrollPos = isVertical ? rootEl.scrollLeft : rootEl.scrollTop;
+		if (isVertical && scrollPos < 0) {
+			scrollPos = -scrollPos;
+		}
+		const firstVisible = Math.floor(Math.max(0, scrollPos) / extent);
+		const visibleCount = Math.ceil(viewport / extent);
+		const start = Math.max(0, Math.min(totalLines - 1, firstVisible));
+		const end = Math.max(
+			start,
+			Math.min(totalLines - 1, firstVisible + visibleCount)
+		);
+		return { start, end };
+	}
+
 	private flushVirtualQueue(): void {
+		if (this.isSelectionActive()) return;
 		if (this.scrollingActive) return;
 		const start = performance.now();
 		const budgetMs = 10;
@@ -341,14 +608,30 @@ export class SoTRenderPipeline {
 		this.resetVirtualQueue();
 	}
 
-	private scheduleResumeAfterScroll(): void {
+	private cancelVirtualize(): void {
+		if (this.virtualizeRaf !== null) {
+			window.cancelAnimationFrame(this.virtualizeRaf);
+			this.virtualizeRaf = null;
+		}
+		this.virtualizeIndex = 0;
+	}
+
+	private scheduleResumeAfterScroll(
+		allowDuringSelection = false,
+		options: { maxLines?: number; budgetMs?: number } = {}
+	): void {
+		if (!allowDuringSelection && this.isSelectionActive()) return;
 		if (this.resumeAfterScrollRaf !== null) return;
 		this.resumeAfterScrollRaf = window.requestAnimationFrame(() => {
 			this.resumeAfterScrollRaf = null;
-			const hasMore = this.renderVisibleVirtualLinesImmediate();
+			const hasMore = this.renderVisibleVirtualLinesImmediate(
+				allowDuringSelection,
+				options
+			);
 			this.scheduleVirtualQueue();
+			this.scheduleVirtualizeDistantLines();
 			if (hasMore) {
-				this.scheduleResumeAfterScroll();
+				this.scheduleResumeAfterScroll(allowDuringSelection, options);
 			}
 		});
 	}
@@ -356,45 +639,51 @@ export class SoTRenderPipeline {
 	onScrollSettled(): void {
 		if (!this.virtualEnabled) return;
 		if (this.scrollingActive) return;
+		if (this.isSelectionActive()) {
+			this.scheduleResumeAfterScroll(true, {
+				maxLines: 120,
+				budgetMs: 12,
+			});
+			return;
+		}
 		this.scheduleResumeAfterScroll();
+		this.schedulePreciseScan();
 	}
 
-	private renderVisibleVirtualLinesImmediate(): boolean {
+	private renderVisibleVirtualLinesImmediate(
+		allowDuringSelection = false,
+		options: { maxLines?: number; budgetMs?: number } = {}
+	): boolean {
+		if (!allowDuringSelection && this.isSelectionActive()) return false;
 		const rootEl = this.context.getDerivedRootEl();
 		const contentEl = this.context.getDerivedContentEl();
 		if (!rootEl || !contentEl) return false;
-		const rootRect = rootEl.getBoundingClientRect();
 		const lineRanges = this.context.getLineRanges();
-		const virtualLines = contentEl.querySelectorAll<HTMLElement>(
-			".tategaki-sot-line-virtual[data-virtual=\"1\"]"
-		);
+		const total = lineRanges.length;
+		if (total === 0) return false;
+		const approx = this.getApproxVisibleLineRange(rootEl, total);
+		const buffer = total >= 8000 ? 8 : 12;
+		const start = Math.max(0, approx.start - buffer);
+		const end = Math.min(total - 1, approx.end + buffer);
+		const offset = this.getLineElementOffset(contentEl);
+		const children = contentEl.children;
 
-		const visibleLines: HTMLElement[] = [];
-		for (const lineEl of Array.from(virtualLines)) {
-			if (!lineEl.isConnected) continue;
-			const rect = lineEl.getBoundingClientRect();
-			const visible =
-				rect.bottom >= rootRect.top &&
-				rect.top <= rootRect.bottom &&
-				rect.right >= rootRect.left &&
-				rect.left <= rootRect.right;
-			if (visible) {
-				visibleLines.push(lineEl);
-			}
-		}
+		const budgetMs = options.budgetMs ?? Number.POSITIVE_INFINITY;
+		const maxLines = options.maxLines ?? Number.POSITIVE_INFINITY;
+		const startTime = performance.now();
+		let rendered = 0;
 
-		// ビューポート内の仮想行を即座にレンダリング（予算制限なし）
-		for (const lineEl of visibleLines) {
-			if (!lineEl.isConnected) continue;
+		// ビューポート内（推定）の仮想行を即座にレンダリング
+		for (let i = start; i <= end; i += 1) {
+			const lineEl = children[i + offset] as HTMLElement | null;
+			if (!lineEl || !lineEl.isConnected) continue;
 			if (lineEl.dataset.virtual !== "1") continue;
-			const index = Number.parseInt(lineEl.dataset.line ?? "", 10);
-			if (!Number.isFinite(index)) continue;
-			const range = lineRanges[index];
+			const range = lineRanges[i];
 			if (!range) continue;
 			// キューから削除
-			this.virtualQueued.delete(index);
+			this.virtualQueued.delete(i);
 			const queueIdx = this.virtualQueue.findIndex(
-				(q) => q.index === index
+				(q) => q.index === i
 			);
 			if (queueIdx !== -1) {
 				this.virtualQueue.splice(queueIdx, 1);
@@ -405,22 +694,28 @@ export class SoTRenderPipeline {
 			}
 			lineEl.removeAttribute("data-virtual");
 			lineEl.classList.remove("tategaki-sot-line-virtual");
-			this.context.renderLine(lineEl, range, index);
+			this.context.renderLine(lineEl, range, i);
+			rendered += 1;
+			if (rendered >= maxLines) break;
+			if (performance.now() - startTime >= budgetMs) break;
+		}
+
+		if (allowDuringSelection && this.isSelectionActive() && rendered > 0) {
+			const now = performance.now();
+			if (now - this.lastSelectionResyncAt > 120) {
+				this.lastSelectionResyncAt = now;
+				this.context.resyncSelection?.();
+			}
 		}
 
 		// まだ残っている可視仮想行があるかチェック
-		const remaining = contentEl.querySelectorAll<HTMLElement>(
-			".tategaki-sot-line-virtual[data-virtual=\"1\"]"
-		);
-		for (const lineEl of Array.from(remaining)) {
-			if (!lineEl.isConnected) continue;
-			const rect = lineEl.getBoundingClientRect();
-			const visible =
-				rect.bottom >= rootRect.top &&
-				rect.top <= rootRect.bottom &&
-				rect.right >= rootRect.left &&
-				rect.left <= rootRect.right;
-			if (visible) return true;
+		if (rendered >= maxLines || performance.now() - startTime >= budgetMs) {
+			return true;
+		}
+		for (let i = start; i <= end; i += 1) {
+			const lineEl = children[i + offset] as HTMLElement | null;
+			if (!lineEl || !lineEl.isConnected) continue;
+			if (lineEl.dataset.virtual === "1") return true;
 		}
 		return false;
 	}

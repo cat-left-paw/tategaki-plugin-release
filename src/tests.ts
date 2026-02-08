@@ -422,7 +422,7 @@ export class TategakiTestSuite {
 
 		try {
 			const markdown = "｜漢字《かんじ》と狐《きつね》";
-			const html = MarkdownConverter.markdownToHtml(markdown);
+			const html = await MarkdownConverter.markdownToHtml(markdown);
 			if (!html.includes("<ruby>漢字<rt>かんじ</rt></ruby>") || !html.includes("<ruby>狐<rt>きつね</rt></ruby>")) {
 				throw new Error("markdownToHtml がルビを変換できません");
 			}
@@ -463,7 +463,7 @@ export class TategakiTestSuite {
 
 		try {
 			const markdown = "第一段落\n\n第二段落";
-			const model = markdownToDocument(markdown);
+			const model = await markdownToDocument(markdown);
 			const blocks = model.getBlocks();
 			if (blocks.length !== 2) {
 				throw new Error(`段落数が不正: expected 2, got ${blocks.length}`);
@@ -476,7 +476,7 @@ export class TategakiTestSuite {
 
 			// プレースホルダーが残らないことを検証（XHTML由来の属性付きHTMLを想定）
 			const htmlHeavyMarkdown = '<div class="note" data-type="info">本文<span style="color:red">強調</span><ruby>漢字<rt>かんじ</rt></ruby></div>';
-			const richModel = markdownToDocument(htmlHeavyMarkdown);
+			const richModel = await markdownToDocument(htmlHeavyMarkdown);
 			const richRoundTrip = documentToMarkdown(richModel);
 			if (/__PRESERVED_TAG_\d+__/.test(richRoundTrip) || richRoundTrip.includes('HTMLTAG')) {
 				throw new Error('HTMLプレースホルダーがMarkdownに残存しています');
@@ -486,7 +486,7 @@ export class TategakiTestSuite {
 			}
 
 			const html = documentToHtml(model);
-			const restored = htmlToDocument(html);
+			const restored = await htmlToDocument(html);
 			if (restored.getBlocks().length !== blocks.length) {
 				throw new Error("HTML変換でブロック数が変化");
 			}
@@ -514,7 +514,7 @@ export class TategakiTestSuite {
 		const startTime = performance.now();
 
 		try {
-			const singleTokens = this.simulatePreviewTokens(
+			const singleTokens = await this.simulatePreviewTokens(
 				"前文\n\n## 見出し\n本文"
 			);
 			const singleCounts = this.countEmptyLinesAroundHeading(singleTokens);
@@ -529,7 +529,7 @@ export class TategakiTestSuite {
 				);
 			}
 
-			const doubleTokens = this.simulatePreviewTokens(
+			const doubleTokens = await this.simulatePreviewTokens(
 				"前文\n\n\n## 見出し\n\n\n本文"
 			);
 			const doubleCounts = this.countEmptyLinesAroundHeading(doubleTokens);
@@ -749,14 +749,16 @@ export class TategakiTestSuite {
 					message: `TipTap引用空行テスト失敗: ${error.message}`,
 					duration,
 				});
-			} finally {
-				try {
-					if (host.parentElement) {
-						host.parentElement.removeChild(host);
+				} finally {
+					try {
+						if (host.parentElement) {
+							host.parentElement.removeChild(host);
+						}
+					} catch (_error) {
+						// noop: テスト用DOMの後始末失敗は無視
 					}
-				} catch (_error) {}
+				}
 			}
-		}
 
 	private async testTipTapCompatRubyCaretNavigation(): Promise<void> {
 		const testName = "TipTap開発版のルビ行キャレット移動";
@@ -837,7 +839,7 @@ export class TategakiTestSuite {
 		}
 	}
 
-	private simulatePreviewTokens(markdown: string): string[] {
+	private async simulatePreviewTokens(markdown: string): Promise<string[]> {
 		const processed = markdown.replace(/\n{2,}/g, (match) => {
 			const newlineCount = match.length;
 			const blankLines = Math.max(1, newlineCount - 1);
@@ -874,7 +876,7 @@ export class TategakiTestSuite {
 					tokens.push("html");
 				}
 			} else {
-				const html = MarkdownConverter.markdownToHtml(line).trim();
+				const html = (await MarkdownConverter.markdownToHtml(line)).trim();
 				if (/^<h[1-6]\b/i.test(html)) {
 					tokens.push("heading");
 				} else {

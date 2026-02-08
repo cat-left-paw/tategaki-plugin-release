@@ -113,7 +113,7 @@ export class BlockContentEditableEditor {
 	// 新しいCodeMirrorベースのソースモード
 	private codeMirrorAdapter: SourceCodeMirrorAdapter | null = null;
 	private codeMirrorContainer: HTMLElement | null = null;
-	private originalMarkdown: string = ""; // 元のMarkdown文字列を保持（ソースモード用）
+	private originalMarkdown = ""; // 元のMarkdown文字列を保持（ソースモード用）
 
 	// 廃止予定: 古いtextareaベースのソースモード（まだ一部のメソッドで使用中）
 	private sourceTextarea: HTMLTextAreaElement | null = null;
@@ -191,8 +191,8 @@ export class BlockContentEditableEditor {
 			this.hybridManager = new BlockHybridManager({
 				getModel: () => this.model,
 				getBlockElement: (id) => this.renderer?.getBlockElement(id) || null,
-				markdownToHtml: (md) => {
-					const doc = markdownToDocument(md, {
+				markdownToHtml: async (md) => {
+					const doc = await markdownToDocument(md, {
 						enableRuby: this.enableRuby,
 					});
 					return doc.getBlocks()[0]?.html || "";
@@ -233,20 +233,20 @@ export class BlockContentEditableEditor {
 		this.isInitialized = true;
 	}
 
-	setMarkdown(markdown: string): void {
+	async setMarkdown(markdown: string): Promise<void> {
 		this.history = [];
 		this.redoStack = [];
 		this.originalMarkdown = markdown; // 元のMarkdownを保持
-		this.setModel(
-			markdownToDocument(markdown, { enableRuby: this.enableRuby }),
-			{
-				ensureActive: true,
-				forceActive: true,
-				render: true,
-				emitUpdate: false,
-				recordHistory: false,
-			}
-		);
+		const model = await markdownToDocument(markdown, {
+			enableRuby: this.enableRuby,
+		});
+		this.setModel(model, {
+			ensureActive: true,
+			forceActive: true,
+			render: true,
+			emitUpdate: false,
+			recordHistory: false,
+		});
 		if (this.sourceMode && this.sourceTextarea) {
 			this.sourceTextarea.value = markdown;
 		}
@@ -287,10 +287,11 @@ export class BlockContentEditableEditor {
 		return documentToMarkdown(this.model);
 	}
 
-	setHTML(html: string): void {
+	async setHTML(html: string): Promise<void> {
 		this.history = [];
 		this.redoStack = [];
-		this.setModel(htmlToDocument(html), {
+		const model = await htmlToDocument(html);
+		this.setModel(model, {
 			ensureActive: true,
 			forceActive: true,
 			render: true,
@@ -302,9 +303,9 @@ export class BlockContentEditableEditor {
 		}
 	}
 
-	getHTML(): string {
+	async getHTML(): Promise<string> {
 		if (this.sourceMode && this.sourceTextarea) {
-			return MarkdownConverter.markdownToHtml(this.sourceTextarea.value, {
+			return await MarkdownConverter.markdownToHtml(this.sourceTextarea.value, {
 				enableRuby: this.enableRuby,
 			});
 		}
@@ -402,7 +403,7 @@ export class BlockContentEditableEditor {
 			) {
 				const blockId = this.sourceEditingBlockId;
 				const lineIndex = this.sourceEditingLineIndex;
-				this.stopEditingSourceLine(true);
+				void this.stopEditingSourceLine(true);
 				requestAnimationFrame(() => {
 					this.startEditingSourceLine(blockId, lineIndex);
 				});
@@ -554,11 +555,12 @@ export class BlockContentEditableEditor {
 
 	toggleSourceMode(): boolean {
 		if (this.sourceMode) {
-			this.switchToWYSIWYGMode();
+			void this.switchToWYSIWYGMode();
+			return false;
 		} else {
 			this.switchToSourceMode();
+			return true;
 		}
-		return this.sourceMode;
 	}
 
 	private enterSourceMode(): void {
@@ -763,7 +765,7 @@ export class BlockContentEditableEditor {
 	/**
 	 * ソースモード → WYSIWYGモード切替
 	 */
-	private switchToWYSIWYGMode(): void {
+	private async switchToWYSIWYGMode(): Promise<void> {
 		if (!this.codeMirrorAdapter || !this.codeMirrorContainer) {
 			console.error("CodeMirror adapter not initialized");
 			return;
@@ -771,14 +773,14 @@ export class BlockContentEditableEditor {
 
 		// 1. ソースモードからMarkdownを取得して保存
 		const markdown = this.codeMirrorAdapter.getMarkdown();
-		this.originalMarkdown = markdown; // 編集後のMarkdownを保持
+			this.originalMarkdown = markdown; // 編集後のMarkdownを保持
 
-		// 2. エディタの位置を保存
-		const position = this.codeMirrorAdapter.savePosition();
+			// 2. エディタの位置を保存
+			void this.codeMirrorAdapter.savePosition();
 
 		// 3. Markdownからモデルを再構築
 		// 完全に新規モデルを作成（ブロックIDは新規生成される）
-		const newModel = markdownToDocument(markdown, {
+		const newModel = await markdownToDocument(markdown, {
 			enableRuby: this.enableRuby,
 		});
 
@@ -1243,7 +1245,7 @@ export class BlockContentEditableEditor {
 		this.startEditingSourceLine(blockId, 0);
 	}
 
-	private stopEditingSourceLine(apply: boolean): void {
+	private async stopEditingSourceLine(apply: boolean): Promise<void> {
 		if (
 			this.sourceEditingBlockId === null ||
 			this.sourceEditingLineIndex === null
@@ -1275,9 +1277,9 @@ export class BlockContentEditableEditor {
 				const newBlockMarkdown = lines.join("\n");
 
 				// ブロックを更新
-					const newDoc = markdownToDocument(newBlockMarkdown, {
-						enableRuby: this.enableRuby,
-					});
+				const newDoc = await markdownToDocument(newBlockMarkdown, {
+					enableRuby: this.enableRuby,
+				});
 				const newBlocks = newDoc.getBlocks();
 
 				if (newBlocks.length === 1) {
@@ -1358,7 +1360,7 @@ export class BlockContentEditableEditor {
 			this.sourceEditingBlockId !== null &&
 			this.sourceEditingLineIndex !== null
 		) {
-			this.stopEditingSourceLine(true);
+			void this.stopEditingSourceLine(true);
 		}
 
 		this.sourceEditingBlockId = blockId;
@@ -1445,13 +1447,13 @@ export class BlockContentEditableEditor {
 			if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
 				e.preventDefault();
 				// 現在の編集を保存して次の行へ
-				this.stopEditingSourceLine(true);
+				void this.stopEditingSourceLine(true);
 				requestAnimationFrame(() => {
 					this.startEditingSourceLine(blockId, lineIndex + 1);
 				});
 			} else if (e.key === "Escape") {
 				e.preventDefault();
-				this.stopEditingSourceLine(false);
+				void this.stopEditingSourceLine(false);
 			}
 		});
 
@@ -1462,7 +1464,7 @@ export class BlockContentEditableEditor {
 					this.sourceEditingBlockId === blockId &&
 					this.sourceEditingLineIndex === lineIndex
 				) {
-					this.stopEditingSourceLine(true);
+					void this.stopEditingSourceLine(true);
 				}
 			}, 100);
 		});
@@ -1494,14 +1496,17 @@ export class BlockContentEditableEditor {
 		}
 		this.sourceUpdateTimer = window.setTimeout(() => {
 			this.sourceUpdateTimer = null;
-			this.updateSourceBlock(blockId, markdown);
+			void this.updateSourceBlock(blockId, markdown);
 		}, 500);
 	}
 
-		private updateSourceBlock(blockId: string, markdown: string): void {
-			const newDoc = markdownToDocument(markdown, {
-				enableRuby: this.enableRuby,
-			});
+	private async updateSourceBlock(
+		blockId: string,
+		markdown: string
+	): Promise<void> {
+		const newDoc = await markdownToDocument(markdown, {
+			enableRuby: this.enableRuby,
+		});
 		const newBlocks = newDoc.getBlocks();
 		const currentBlock = this.model.getBlockById(blockId);
 
@@ -1543,7 +1548,7 @@ export class BlockContentEditableEditor {
 
 	private stopEditingSourceBlock(apply: boolean): void {
 		// この メソッドは廃止予定 - stopEditingSourceLine を使用
-		this.stopEditingSourceLine(apply);
+		void this.stopEditingSourceLine(apply);
 	}
 
 	private restoreWysiwygScrollPosition(centerActiveBlock: boolean): void {
@@ -2034,21 +2039,14 @@ export class BlockContentEditableEditor {
 						"list-item",
 						"important"
 					);
-					const blockDiv = liElement.querySelector(
-						".tategaki-block[data-block-type='listItem']"
-					) as HTMLElement | null;
-					if (blockDiv) {
-						// リストアイテムの深さを取得
-						const depthAttr =
-							liElement.dataset.listDepth ??
-							blockDiv.dataset.blockDepth ??
-							"0";
-						const itemDepth = Number.parseInt(depthAttr, 10) || 0;
-
-						blockDiv.style.setProperty(
-							"display",
-							"block",
-							"important"
+						const blockDiv = liElement.querySelector(
+							".tategaki-block[data-block-type='listItem']"
+						) as HTMLElement | null;
+						if (blockDiv) {
+							blockDiv.style.setProperty(
+								"display",
+								"block",
+								"important"
 						);
 						blockDiv.style.setProperty(
 							"width",
@@ -2689,15 +2687,15 @@ export class BlockContentEditableEditor {
 				};
 			}
 			currentOffset += length;
-		}
+			}
 
-		return block.lastChild
-			? {
-					node: block.lastChild,
-					offset: (block.lastChild.textContent ?? "").length,
-			  }
-			: { node: block, offset: block.childNodes.length };
-	}
+			return block.lastChild
+				? {
+						node: block.lastChild,
+						offset: (block.lastChild.textContent ?? "").length,
+					}
+				: { node: block, offset: block.childNodes.length };
+		}
 
 	private getBlockTextLength(block: HTMLElement): number {
 		return typeof (block as any).innerText === "string"
@@ -2887,7 +2885,7 @@ export class BlockContentEditableEditor {
 		if (!this.hybridManager) {
 			return;
 		}
-		this.hybridManager.endPlainEdit(blockId, save);
+		void this.hybridManager.endPlainEdit(blockId, save);
 	}
 
 	/**

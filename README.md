@@ -2,7 +2,8 @@
 
 English: `README.md` / 日本語: `README.ja.md`
 
-Tategaki is a desktop-only Obsidian plugin that lets you edit and view Markdown in a vertical (tategaki) layout.
+Tategaki is a desktop-first Obsidian plugin that lets you edit and view Markdown in a vertical (tategaki) layout.
+Desktop only. Mobile is not supported.
 
 Status:
 - Planned to be submitted to Obsidian Community Plugins (not registered yet).
@@ -16,6 +17,7 @@ Status:
 - Outline navigation and heading folding
 - Book mode for reading (paging)
 - Compatibility mode (TipTap-based editor) for older workflows
+  - Maintained for now, alongside the new Writing & Reference mode
 - Theme settings (font, spacing, etc.)
 
 ## Installation (current)

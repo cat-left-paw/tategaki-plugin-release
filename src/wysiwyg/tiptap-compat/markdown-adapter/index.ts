@@ -5,13 +5,14 @@ import {
 } from "../../../shared/aozora-ruby";
 import type { TategakiV2Settings } from "../../../types/settings";
 
-const BLANK_LINE_MARKER = "\u2060";
-type MarkdownItConstructor = typeof import("markdown-it");
-const MarkdownItCtor: MarkdownItConstructor = require("markdown-it");
-const markdownRenderer = new MarkdownItCtor({
-	html: true,
-	breaks: false,
-	linkify: false,
+	const BLANK_LINE_MARKER = "\u2060";
+	type MarkdownItConstructor = typeof import("markdown-it");
+	// eslint-disable-next-line @typescript-eslint/no-var-requires
+	const MarkdownItCtor: MarkdownItConstructor = require("markdown-it");
+	const markdownRenderer = new MarkdownItCtor({
+		html: true,
+		breaks: false,
+		linkify: false,
 	typographer: false,
 });
 
@@ -111,21 +112,21 @@ class TipTapMarkdownAdapter implements MarkdownAdapter {
 }
 
 export function protectIndentation(markdown: string): string {
-	const listItemPattern = /^([ \t　]*)([-*+]|[0-9]+[.)])\s+/;
-	const headingIndentPattern = /^([ \t]{0,3}#{1,6}[ \t])([ \t　]+)(.*)$/;
+	const listItemPattern = /^([ \t\u3000]*)([-*+]|[0-9]+[.)])\s+/;
+	const headingIndentPattern = /^([ \t]{0,3}#{1,6}[ \t])([ \t\u3000]+)(.*)$/;
 	const segments = splitByFencedCodeBlocks(markdown);
 	const protectedSegments = segments.map((segment) => {
 		if (!segment.convert) {
 			return segment.text;
 		}
 
-		const lines = segment.text.split("\n");
-		let inList = false;
+			const lines = segment.text.split("\n");
+			let inList = false;
 
-		const protectedLines = lines.map((line) => {
-			const trimmed = line.trim();
-			const isListItem = listItemPattern.test(line);
-			const isIndentedLine = /^[ \t　]+\S/.test(line);
+			const protectedLines = lines.map((line) => {
+				const trimmed = line.trim();
+				const isListItem = listItemPattern.test(line);
+				const isIndentedLine = /^[ \t\u3000]+\S/.test(line);
 
 			if (isListItem) {
 				inList = true;
@@ -142,24 +143,24 @@ export function protectIndentation(markdown: string): string {
 				inList = false;
 			}
 
-			const headingMatch = headingIndentPattern.exec(line);
-			if (headingMatch) {
-				const protectedSpaces = headingMatch[2]
-					.split("")
-					.map((char) => (char === "　" ? "&#12288;" : "&nbsp;"))
-					.join("");
-				return `${headingMatch[1]}${protectedSpaces}${headingMatch[3]}`;
-			}
+				const headingMatch = headingIndentPattern.exec(line);
+				if (headingMatch) {
+					const protectedSpaces = headingMatch[2]
+						.split("")
+						.map((char) => (char === "\u3000" ? "&#12288;" : "&nbsp;"))
+						.join("");
+					return `${headingMatch[1]}${protectedSpaces}${headingMatch[3]}`;
+				}
 
-			return line.replace(/^([ 　]+)/, (match) => {
-				const protectedSpaces = match
-					.split("")
-					.map((char) => {
-						if (char === "　") {
-							return "&#12288;";
-						}
-						return "&nbsp;";
-					})
+				return line.replace(/^([ \u3000]+)/, (match) => {
+					const protectedSpaces = match
+						.split("")
+						.map((char) => {
+							if (char === "\u3000") {
+								return "&#12288;";
+							}
+							return "&nbsp;";
+						})
 					.join("");
 				return protectedSpaces;
 			});
@@ -205,10 +206,11 @@ export function normalizeMarkdownForTipTap(
 		contextFilePath: options?.contextFilePath ?? null,
 		resolveImageSrc: options?.resolveImageSrc,
 	});
-	return renderStrictMarkdownToTipTapHtml(processed, enableRuby, {
+	const html = renderStrictMarkdownToTipTapHtml(processed, enableRuby, {
 		contextFilePath: options?.contextFilePath ?? null,
 		resolveImageSrc: options?.resolveImageSrc,
 	});
+	return sanitizeTipTapHtml(html);
 }
 
 function preprocessMarkdown(
@@ -367,7 +369,9 @@ function renderStrictMarkdownToTipTapHtml(
 	}
 
 	const html = blocks.join("\n");
-	const withImages = rewriteHtmlImagesForTipTap(html, options);
+	// sanitize before touching DOM to avoid firing onerror/onload in temp documents
+	const preSanitized = stripDangerousHtml(html);
+	const withImages = rewriteHtmlImagesForTipTap(preSanitized, options);
 	if (enableRuby) {
 		return withImages;
 	}
@@ -503,7 +507,7 @@ export function renderInlineMarkdownToTipTapHtml(
 ): string {
 	const enableRuby = options.enableRuby !== false;
 	const converted = convertInlineSyntaxToTipTapHtml(text, enableRuby);
-	return markdownRenderer.renderInline(converted);
+	return sanitizeTipTapHtml(markdownRenderer.renderInline(converted));
 }
 
 function convertAozoraRubyTextToTipTapHtml(text: string): string {
@@ -526,6 +530,114 @@ function convertAozoraRubyTextToTipTapHtml(text: string): string {
 	});
 	converted = convertObsidianHighlightSyntaxToTipTapHtml(converted);
 	return converted;
+}
+
+function sanitizeTipTapHtml(html: string): string {
+	const stripped = stripDangerousHtml(html);
+	const hasDomParser =
+		typeof DOMParser !== "undefined" &&
+		typeof document !== "undefined";
+	if (!hasDomParser) {
+		return sanitizeTipTapHtmlFallback(stripped);
+	}
+
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(stripped, "text/html");
+
+	const disallowedTags = new Set([
+		"script",
+		"iframe",
+		"object",
+		"embed",
+		"svg",
+		"math",
+		"link",
+		"meta",
+		"style",
+	]);
+
+	const isSafeUrl = (value: string, attrName: string, tagName: string): boolean => {
+		const trimmed = value.trim();
+		if (!trimmed) return true;
+		if (trimmed.startsWith("#")) return true;
+		if (/^[./]/.test(trimmed)) return true;
+
+		const lowered = trimmed.toLowerCase();
+		if (lowered.startsWith("javascript:")) return false;
+		if (lowered.startsWith("vbscript:")) return false;
+		if (lowered.startsWith("data:")) {
+			return (
+				attrName === "src" &&
+				tagName === "img" &&
+				lowered.startsWith("data:image/")
+			);
+		}
+		if (
+			lowered.startsWith("http:") ||
+			lowered.startsWith("https:") ||
+			lowered.startsWith("app:") ||
+			lowered.startsWith("obsidian:") ||
+			lowered.startsWith("file:")
+		) {
+			return true;
+		}
+		return true;
+	};
+
+	const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
+	const toRemove: Element[] = [];
+	let node = walker.nextNode();
+	while (node) {
+		const el = node as Element;
+		const tagName = el.tagName.toLowerCase();
+		if (disallowedTags.has(tagName)) {
+			toRemove.push(el);
+			node = walker.nextNode();
+			continue;
+		}
+		for (const attr of Array.from(el.attributes)) {
+			const name = attr.name.toLowerCase();
+			if (name.startsWith("on")) {
+				el.removeAttribute(attr.name);
+				continue;
+			}
+			if (name === "href" || name === "src" || name === "xlink:href") {
+				if (!isSafeUrl(attr.value, name, tagName)) {
+					el.removeAttribute(attr.name);
+				}
+			}
+		}
+		node = walker.nextNode();
+	}
+
+	for (const el of toRemove) {
+		el.remove();
+	}
+
+	return doc.body.innerHTML;
+}
+
+function sanitizeTipTapHtmlFallback(html: string): string {
+	return stripDangerousHtml(html);
+}
+
+function stripDangerousHtml(html: string): string {
+	let sanitized = html;
+	sanitized = sanitized.replace(
+		/<\s*(script|svg|math|iframe|object|embed|link|meta|style)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi,
+		""
+	);
+	sanitized = sanitized.replace(
+		/<\s*(script|svg|math|iframe|object|embed|link|meta|style)[^>]*\/\s*>/gi,
+		""
+	);
+	sanitized = sanitized.replace(/\son\w+\s*=\s*(['"]).*?\1/gi, "");
+	sanitized = sanitized.replace(/\son\w+\s*=\s*[^>\s]+/gi, "");
+	sanitized = sanitized.replace(
+		/\s(href|src|xlink:href)\s*=\s*(['"])\s*(?:javascript|vbscript):[\s\S]*?\2/gi,
+		""
+	);
+	return sanitized;
 }
 
 function convertObsidianHighlightSyntaxToTipTapHtml(text: string): string {

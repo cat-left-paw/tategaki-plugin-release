@@ -244,12 +244,14 @@ export class TategakiReadingView extends ItemView {
 
 		if (!this.filePath) {
 			window.setTimeout(() => {
-				if (!this.filePath) {
-					try {
-						this.leaf.detach();
-					} catch (_) {}
-					return;
-				}
+					if (!this.filePath) {
+						try {
+							this.leaf.detach();
+						} catch (_) {
+							// noop: detach失敗は無視
+						}
+						return;
+					}
 				this.registerFileWatchers();
 				this.scheduleRender();
 			}, 0);
@@ -734,14 +736,16 @@ export class TategakiReadingView extends ItemView {
 				if (!(file instanceof TFile)) {
 					return;
 				}
-				if (this.filePath && file.path === this.filePath) {
-					this.filePath = null;
-					try {
-						this.leaf.detach();
-					} catch (_) {}
-				}
-			})
-		);
+					if (this.filePath && file.path === this.filePath) {
+						this.filePath = null;
+						try {
+							this.leaf.detach();
+						} catch (_) {
+							// noop: detach失敗は無視
+						}
+					}
+				})
+			);
 	}
 
 	private scheduleRender(): void {
@@ -838,13 +842,15 @@ export class TategakiReadingView extends ItemView {
 		if (!this.pager) {
 			return;
 		}
-		try {
-			this.pager.destroy();
-		} catch (_) {}
-		this.pager = null;
-		this.outlineItems = [];
-		if (this.outlinePanelEl) {
-			this.renderOutline(this.outlinePanelEl);
+			try {
+				this.pager.destroy();
+			} catch (_) {
+				// noop: 破棄失敗は無視
+			}
+			this.pager = null;
+			this.outlineItems = [];
+			if (this.outlinePanelEl) {
+				this.renderOutline(this.outlinePanelEl);
 		}
 	}
 

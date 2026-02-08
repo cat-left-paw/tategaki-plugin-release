@@ -14,13 +14,12 @@ import {
 	type MarkdownSyncEditor,
 	type SyncState,
 } from "../contenteditable/sync-manager";
-import {
-	areMarkdownContentsEquivalent,
-	writeSyncBackupPair,
-	type BackupReason,
-} from "../../shared/sync-backup";
-import { BackupTriggerDetector } from "../../shared/backup-trigger";
-import { debugWarn } from "../../shared/logger";
+	import {
+		areMarkdownContentsEquivalent,
+		writeSyncBackupPair,
+	} from "../../shared/sync-backup";
+	import { BackupTriggerDetector } from "../../shared/backup-trigger";
+	import { debugWarn } from "../../shared/logger";
 
 interface BlockSyncManagerOptions {
 	app: App;

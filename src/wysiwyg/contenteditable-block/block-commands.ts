@@ -7,12 +7,11 @@
 
 import { DocumentModel, BlockNode } from "./block-model";
 import { BlockRenderer } from "./block-renderer";
-import {
-	getSelectedBlockIds,
-	saveSelection,
-	restoreSelection,
-	SavedSelection,
-} from "./utils/selection-utils";
+	import {
+		getSelectedBlockIds,
+		saveSelection,
+		restoreSelection,
+	} from "./utils/selection-utils";
 
 export type FormatCommand =
 	| "bold"
@@ -340,23 +339,19 @@ export class BlockCommandManager {
 		}
 	}
 
-	private transformHeadingHtml(html: string, block: BlockNode, level: number): { html: string; isHeading: boolean; changed: boolean } {
-		const trimmed = html.trim();
-		// 属性を含む見出しタグにもマッチするように正規表現を修正
-		const match = trimmed.match(/^<h([1-6])(?:\s[^>]*)?>[\s\S]*<\/h\1>$/i);
-		let content: string;
-		let currentLevel: number | null = null;
+		private transformHeadingHtml(html: string, block: BlockNode, level: number): { html: string; isHeading: boolean; changed: boolean } {
+			const trimmed = html.trim();
+			// 属性を含む見出しタグにもマッチするように正規表現を修正
+			const match = trimmed.match(/^<h([1-6])(?:\s[^>]*)?>[\s\S]*<\/h\1>$/i);
+			let content: string;
 
-		if (match) {
-			// 見出しタグの内容を抽出（属性を除外）
-			const headingLevel = parseInt(match[1], 10);
-			currentLevel = headingLevel;
-			// <h[1-6] ...>と</h[1-6]>を除去して内容を取得
-			content = trimmed.replace(/^<h[1-6](?:\s[^>]*)?>|<\/h[1-6]>$/gi, '');
-		} else {
-			content = trimmed;
-			currentLevel = this.getCurrentHeadingLevel(block, null);
-		}
+			if (match) {
+				// 見出しタグの内容を抽出（属性を除外）
+				// <h[1-6] ...>と</h[1-6]>を除去して内容を取得
+				content = trimmed.replace(/^<h[1-6](?:\s[^>]*)?>|<\/h[1-6]>$/gi, '');
+			} else {
+				content = trimmed;
+			}
 
 		// レベル0は見出し解除
 		if (level <= 0) {
@@ -388,13 +383,14 @@ export class BlockCommandManager {
 		return null;
 	}
 
-	private updateBlockMetadataForHeading(metadata: BlockNode["metadata"], level: number | null): BlockNode["metadata"] {
-		if (level === null) {
-			const { headingLevel: _removed, ...rest } = metadata;
-			return { ...rest };
+		private updateBlockMetadataForHeading(metadata: BlockNode["metadata"], level: number | null): BlockNode["metadata"] {
+			if (level === null) {
+				const next = { ...metadata };
+				delete next.headingLevel;
+				return next;
+			}
+			return { ...metadata, headingLevel: level };
 		}
-		return { ...metadata, headingLevel: level };
-	}
 
 	private applyBlockquoteCommand(blockIds: string[]): void {
 		let newModel = this.model;
@@ -459,13 +455,15 @@ export class BlockCommandManager {
 		};
 	}
 
-	private updateBlockMetadataForBlockquote(metadata: BlockNode["metadata"], isBlockquote: boolean): BlockNode["metadata"] {
-		const { blockquoteDepth: _removed, headingLevel: _headingRemoved, ...rest } = metadata;
-		if (!isBlockquote) {
-			return { ...rest };
+		private updateBlockMetadataForBlockquote(metadata: BlockNode["metadata"], isBlockquote: boolean): BlockNode["metadata"] {
+			const rest = { ...metadata };
+			delete rest.blockquoteDepth;
+			delete rest.headingLevel;
+			if (!isBlockquote) {
+				return rest;
+			}
+			return { ...rest, blockquoteDepth: 1 };
 		}
-		return { ...rest, blockquoteDepth: 1 };
-	}
 
 	/**
 	 * ブロックのHTMLを更新

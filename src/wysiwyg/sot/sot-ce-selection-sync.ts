@@ -149,7 +149,50 @@ export class SoTCeSelectionSync {
 		offset: number
 	): number | null {
 		const sotEditor = this.context.getSotEditor();
-		if (!node || !sotEditor) return null;
+		const contentEl = this.context.getDerivedContentEl();
+		if (!node || !sotEditor || !contentEl) return null;
+		if (node === contentEl) {
+			const children = Array.from(contentEl.children) as HTMLElement[];
+			const childCount = children.length;
+			const findLine = (
+				start: number,
+				step: number
+			): HTMLElement | null => {
+				for (
+					let i = start;
+					i >= 0 && i < childCount;
+					i += step
+				) {
+					const el = children[i];
+					if (el?.classList.contains("tategaki-sot-line")) {
+						return el;
+					}
+				}
+				return null;
+			};
+			if (childCount === 0) return 0;
+			if (offset <= 0) {
+				const firstLine = findLine(0, 1);
+				const from = Number.parseInt(firstLine?.dataset.from ?? "", 10);
+				return Number.isFinite(from) ? from : 0;
+			}
+			if (offset >= childCount) {
+				const lastLine = findLine(childCount - 1, -1);
+				const to = Number.parseInt(lastLine?.dataset.to ?? "", 10);
+				return Number.isFinite(to) ? to : sotEditor.getDoc().length;
+			}
+			const nextLine = findLine(offset, 1);
+			if (nextLine) {
+				const from = Number.parseInt(nextLine.dataset.from ?? "", 10);
+				if (Number.isFinite(from)) return from;
+			}
+			const prevLine = findLine(offset - 1, -1);
+			if (prevLine) {
+				const to = Number.parseInt(prevLine.dataset.to ?? "", 10);
+				if (Number.isFinite(to)) return to;
+			}
+			return null;
+		}
 		const element =
 			node instanceof Element ? node : node.parentElement ?? null;
 		if (!element) return null;

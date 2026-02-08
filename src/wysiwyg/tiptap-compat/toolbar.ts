@@ -776,12 +776,14 @@ export class TipTapCompatToolbar {
 	 * Undo/Redo により、過去のノード属性（writingMode）が復元されて
 	 * ホストの書字方向と不整合になるケースがあるため、実行後に再同期する。
 	 */
-	private reapplyCurrentWritingMode(): void {
-		const mode = this.options.getWritingMode?.() ?? "vertical-rl";
-		try {
-			this.editor.commands.setWritingMode(mode);
-		} catch (_) {}
-	}
+		private reapplyCurrentWritingMode(): void {
+			const mode = this.options.getWritingMode?.() ?? "vertical-rl";
+			try {
+				this.editor.commands.setWritingMode(mode);
+			} catch (_) {
+				// noop: 書字方向の再適用失敗は無視
+			}
+		}
 
 	updateSyncStatus(
 		state: Pick<

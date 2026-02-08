@@ -5,8 +5,6 @@ import type {
 	HeaderFooterContent,
 } from "../../types/settings";
 import { MeasuredPagination } from "./measured-pagination";
-import type { PageInfo as MeasuredPageInfo } from "./measured-pagination-types";
-import { debugLog, debugWarn } from "../../shared/logger";
 
 export interface PagedReadingModeOptions {
 	container: HTMLElement;
@@ -150,6 +148,8 @@ export class PagedReadingMode {
 			footerContent: "pageNumber",
 			footerAlign: "center",
 			pageNumberFormat: "currentTotal",
+			bookPaddingTop: 44,
+			bookPaddingBottom: 32,
 		};
 		this.title = options.title ?? "";
 		this.onPageChange = options.onPageChange;
@@ -164,6 +164,10 @@ export class PagedReadingMode {
 		this.destroyed = true;
 		this.renderToken += 1;
 		this.removeInputHandlers();
+		if (this.transitionTimeouts.length > 0) {
+			this.transitionTimeouts.forEach((t) => clearTimeout(t));
+			this.transitionTimeouts = [];
+		}
 		if (this.resizeTimeout !== null) {
 			const view = this.container.ownerDocument.defaultView ?? window;
 			view.clearTimeout(this.resizeTimeout);
@@ -302,15 +306,17 @@ export class PagedReadingMode {
 		this.viewportEl.appendChild(this.pagesContainerEl);
 		this.container.appendChild(this.viewportEl);
 
-		this.updatePaginationLayoutClasses();
-		this.ensureFixedHeaderFooterElements();
-		this.setupInputHandlers();
-		try {
-			this.container.focus();
-		} catch (_) {}
-		this.setupResizeObserver();
-		void this.render();
-	}
+			this.updatePaginationLayoutClasses();
+			this.ensureFixedHeaderFooterElements();
+			this.setupInputHandlers();
+			try {
+				this.container.focus();
+			} catch (_) {
+				// noop: focus失敗は無視
+			}
+			this.setupResizeObserver();
+			void this.render();
+		}
 
 	private setupResizeObserver(): void {
 		const view = this.container.ownerDocument.defaultView;
@@ -465,14 +471,16 @@ export class PagedReadingMode {
 			}
 		};
 
-		this.pointerDownHandler = (e: PointerEvent) => {
-			try {
-				this.container.focus();
-			} catch (_) {}
-			if (
-				e.pointerType &&
-				e.pointerType !== "touch" &&
-				e.pointerType !== "pen"
+			this.pointerDownHandler = (e: PointerEvent) => {
+				try {
+					this.container.focus();
+				} catch (_) {
+					// noop: focus失敗は無視
+				}
+				if (
+					e.pointerType &&
+					e.pointerType !== "touch" &&
+					e.pointerType !== "pen"
 			) {
 				return;
 			}
@@ -936,6 +944,40 @@ export class PagedReadingMode {
 		});
 	}
 
+	private getPagePaddingValues(): {
+		paddingTop: number;
+		paddingBottom: number;
+		paddingLeft: number;
+		paddingRight: number;
+	} {
+		const headerHeight = 24;
+		const footerHeight = 24;
+		const marginSmall = 0;
+		const headerBottomMargin = 20;
+		const defaultPaddingTop =
+			headerHeight + marginSmall + headerBottomMargin;
+		const defaultPaddingBottom = footerHeight + marginSmall + 8;
+		const basePaddingHorizontal = marginSmall + 8;
+		const rawTop = Number(
+			this.previewSettings.bookPaddingTop ?? defaultPaddingTop
+		);
+		const rawBottom = Number(
+			this.previewSettings.bookPaddingBottom ?? defaultPaddingBottom
+		);
+		const paddingTop = Number.isFinite(rawTop)
+			? Math.max(0, Math.min(200, rawTop))
+			: defaultPaddingTop;
+		const paddingBottom = Number.isFinite(rawBottom)
+			? Math.max(0, Math.min(200, rawBottom))
+			: defaultPaddingBottom;
+		return {
+			paddingTop,
+			paddingBottom,
+			paddingLeft: basePaddingHorizontal,
+			paddingRight: basePaddingHorizontal,
+		};
+	}
+
 	private buildStyles(): string {
 		const width = Math.max(
 			1,
@@ -949,33 +991,21 @@ export class PagedReadingMode {
 		);
 
 		// デバッグ: ビューポートサイズを確認
-		debugLog(
-			`[Tategaki] buildStyles: width=${width}, height=${height}, viewportEl.clientWidth=${this.viewportEl?.clientWidth}, viewportEl.clientHeight=${this.viewportEl?.clientHeight}`
-		);
 
-		const writingMode =
-			this.writingMode === "vertical-rl"
-				? "vertical-rl"
-				: "horizontal-tb";
-		const isVertical = this.writingMode === "vertical-rl";
-		const linePitch = this.layoutLinePitchPx ?? this.getLinePitchPx();
-		const snappedLineHeight =
-			linePitch / Math.max(1, this.settings.fontSize);
+			const writingMode =
+				this.writingMode === "vertical-rl"
+					? "vertical-rl"
+					: "horizontal-tb";
+			const linePitch = this.layoutLinePitchPx ?? this.getLinePitchPx();
+			const snappedLineHeight =
+				linePitch / Math.max(1, this.settings.fontSize);
 
-		// 余白設定
-		const headerHeight = 24;
-		const footerHeight = 24;
 		const marginSmall = 0;
-		const headerBottomMargin = 20; // ヘッダーと本文の間隔
-		const basePaddingTop = headerHeight + marginSmall + headerBottomMargin;
-		const basePaddingBottom = footerHeight + marginSmall + 8;
-		const basePaddingHorizontal = marginSmall + 8;
-
-		// 縦スクロール方式：パディングはシンプルに
-		const paddingTop = basePaddingTop;
-		const paddingBottom = basePaddingBottom;
-		const paddingLeft = basePaddingHorizontal;
-		const paddingRight = basePaddingHorizontal;
+		const pagePadding = this.getPagePaddingValues();
+		const paddingTop = pagePadding.paddingTop;
+		const paddingBottom = pagePadding.paddingBottom;
+		const paddingLeft = pagePadding.paddingLeft;
+		const paddingRight = pagePadding.paddingRight;
 
 		this.lastLayoutMetrics = {
 			width,
@@ -1220,16 +1250,13 @@ export class PagedReadingMode {
 			this.emitPageChange();
 			this.logLayoutMetrics();
 
-			if (this.onRendered) {
-				try {
-					this.onRendered({ pages: this.pageElements });
-				} catch (error) {
-					debugWarn(
-						"[Tategaki] reading mode onRendered failed",
-						error
-					);
+				if (this.onRendered) {
+					try {
+						this.onRendered({ pages: this.pageElements });
+					} catch (error) {
+						// Ignore consumer callback errors to keep rendering stable.
+					}
 				}
-			}
 		} finally {
 			this.isRendering = false;
 			const currentSize = this.getViewportSize();
@@ -1277,30 +1304,12 @@ export class PagedReadingMode {
 		this.pageElements = [];
 		pagesContainerEl.textContent = "";
 
-		debugLog(`[Tategaki] Starting measured pagination...`);
-		debugLog(
-			`[Tategaki] Content HTML length: ${this.contentHtml?.length || 0}`
-		);
-		debugLog(
-			`[Tategaki] Content HTML preview:`,
-			this.contentHtml?.substring(0, 100)
-		);
 
 		// ビューポートサイズを取得
 		const viewportWidth = Math.max(1, viewportEl.clientWidth);
 		const viewportHeight = Math.max(1, viewportEl.clientHeight);
-		debugLog(
-			`[Tategaki] Viewport size: ${viewportWidth}x${viewportHeight}`
-		);
 
-		// パディング設定
-		const headerHeight = 24;
-		const footerHeight = 24;
-		const marginSmall = 0;
-		const headerBottomMargin = 20; // ヘッダーと本文の間隔
-		const paddingTop = headerHeight + marginSmall + headerBottomMargin;
-		const paddingBottom = footerHeight + marginSmall + 8;
-		const paddingHorizontal = marginSmall + 8;
+		const pagePadding = this.getPagePaddingValues();
 
 		const pageElements: HTMLElement[] = [];
 		let lastEmit = 0;
@@ -1344,10 +1353,10 @@ export class PagedReadingMode {
 					: "horizontal-tb",
 			pageWidth: viewportWidth,
 			pageHeight: viewportHeight,
-			paddingTop,
-			paddingBottom,
-			paddingLeft: paddingHorizontal,
-			paddingRight: paddingHorizontal,
+			paddingTop: pagePadding.paddingTop,
+			paddingBottom: pagePadding.paddingBottom,
+			paddingLeft: pagePadding.paddingLeft,
+			paddingRight: pagePadding.paddingRight,
 			timeSliceMs: 12,
 			onPage: (pageInfo) => {
 				if (this.destroyed || token !== this.renderToken) {
@@ -1360,22 +1369,16 @@ export class PagedReadingMode {
 					pageIndex.toString()
 				);
 				pageElements.push(pageInfo.element);
-				if (this.onPageAdded) {
-					try {
-						this.onPageAdded(pageInfo.element, pageIndex);
-					} catch (error) {
-						debugWarn(
-							"[Tategaki] reading mode onPageAdded failed",
-							error
-						);
+					if (this.onPageAdded) {
+						try {
+							this.onPageAdded(pageInfo.element, pageIndex);
+						} catch (error) {
+							// Ignore consumer callback errors to keep pagination stable.
+						}
 					}
-				}
-				emitPageUpdate(pageElements.length === 1);
+					emitPageUpdate(pageElements.length === 1);
 			},
 			onProgress: (current, total) => {
-				debugLog(
-					`[Tategaki] Pagination progress: ${current}/${total}`
-				);
 			},
 		});
 		this.activePagination = pagination;
@@ -1394,29 +1397,18 @@ export class PagedReadingMode {
 				this.pageElements = [];
 				return;
 			}
-			debugLog(`[Tategaki] Pagination returned ${pages.length} pages`);
 
 			// ページ要素を配置
-			this.pageElements = pageElements.length
-				? pageElements
-				: pages.map((pageInfo, index) => {
-						pageInfo.element.setAttribute(
-							"data-page",
-							index.toString()
-						);
-						return pageInfo.element;
-				  });
-
-			debugLog(
-				`[Tategaki] Created ${this.pageElements.length} pages using measured pagination`
-			);
-			if (pagesContainerEl) {
-				debugLog(
-					`[Tategaki] Pages in DOM:`,
-					pagesContainerEl.querySelectorAll(".tategaki-page").length
-				);
-			}
-		} catch (error) {
+				this.pageElements = pageElements.length
+					? pageElements
+					: pages.map((pageInfo, index) => {
+							pageInfo.element.setAttribute(
+								"data-page",
+								index.toString()
+							);
+							return pageInfo.element;
+						});
+			} catch (error) {
 			if (this.destroyed || token !== this.renderToken) {
 				return;
 			}
@@ -1615,32 +1607,24 @@ export class PagedReadingMode {
 		return Number.isFinite(measured) ? measured : 0;
 	}
 
-	private logLayoutMetrics(): void {
-		if (!this.debugLayout || !this.viewportEl || !this.lastLayoutMetrics) {
-			return;
+		private logLayoutMetrics(): void {
+			if (!this.debugLayout || !this.viewportEl || !this.lastLayoutMetrics) {
+				return;
+			}
+			const viewportWidth = this.viewportEl.clientWidth;
+			const viewportHeight = this.viewportEl.clientHeight;
+			const viewportScrollHeight = this.viewportEl.scrollHeight;
+			const pageGap = this.getPageGapPx();
+			const stride =
+				this.getRenderStridePx() ??
+				calculatePageStridePx(viewportHeight, pageGap);
+			console.debug("[Tategaki] layout metrics", {
+				viewportWidth,
+				viewportHeight,
+				viewportScrollHeight,
+				pageGap,
+				stride,
+				lastLayoutMetrics: this.lastLayoutMetrics,
+			});
 		}
-		const viewportWidth = this.viewportEl.clientWidth;
-		const viewportHeight = this.viewportEl.clientHeight;
-		const viewportScrollHeight = this.viewportEl.scrollHeight;
-		const pageGap = this.getPageGapPx();
-		const stride =
-			this.getRenderStridePx() ??
-			calculatePageStridePx(viewportHeight, pageGap);
-
-		debugLog("[Tategaki] paged layout metrics (page blocks)", {
-			writingMode: this.writingMode,
-			pageIndex: this.pageIndex,
-			pageCount: this.pageCount,
-			pageElementsLength: this.pageElements.length,
-			viewportWidth,
-			viewportHeight,
-			viewportScrollHeight,
-			pageGap,
-			stride,
-			computedFontSizePx: this.lastLineMetrics?.fontSizePx ?? null,
-			computedLineHeightPx: this.lastLineMetrics?.lineHeightPx ?? null,
-			computedLineHeightProbe: this.lastLineMetrics?.usedProbe ?? null,
-			...this.lastLayoutMetrics,
-		});
 	}
-}

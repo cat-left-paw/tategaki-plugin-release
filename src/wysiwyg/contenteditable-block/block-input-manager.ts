@@ -384,30 +384,31 @@ export class BlockInputManager {
 			return;
 		}
 
-		switch (event.key) {
-			case " ":
-				// スペースキー入力時にMarkdown自動フォーマットを試行するフラグを設定
-				this.shouldTryAutoFormat = true;
-				break;
-			case "Enter":
-				if (event.shiftKey) {
-					return; // allow native line break
-				}
-				// Enter前にMarkdown自動フォーマットを試行
-				const formatted = MarkdownAutoFormat.tryAutoFormat(block);
-				if (formatted) {
+			switch (event.key) {
+				case " ":
+					// スペースキー入力時にMarkdown自動フォーマットを試行するフラグを設定
+					this.shouldTryAutoFormat = true;
+					break;
+				case "Enter": {
+					if (event.shiftKey) {
+						return; // allow native line break
+					}
+					// Enter前にMarkdown自動フォーマットを試行
+					const formatted = MarkdownAutoFormat.tryAutoFormat(block);
+					if (formatted) {
 					// フォーマットが適用された場合、通常のEnter処理はスキップ
 					event.preventDefault();
 					return;
 				}
-				event.preventDefault();
-				this.handleEnter(block, blockId);
-				break;
-			case "a":
-			case "A":
-				if (event.ctrlKey || event.metaKey) {
 					event.preventDefault();
-					this.selectAll();
+					this.handleEnter(block, blockId);
+					break;
+				}
+				case "a":
+				case "A":
+					if (event.ctrlKey || event.metaKey) {
+						event.preventDefault();
+						this.selectAll();
 				}
 				break;
 			case "Backspace":
@@ -471,13 +472,17 @@ export class BlockInputManager {
 		// キャレット位置の補正は行わない
 	}
 
-	private handleEnter(blockElement: HTMLElement, blockId: string): void {
-		const selection = window.getSelection();
-		if (!selection || selection.rangeCount === 0) return;
-		const range = selection.getRangeAt(0);
+		private handleEnter(blockElement: HTMLElement, blockId: string): void {
+			const selection = window.getSelection();
+			if (!selection || selection.rangeCount === 0) return;
+			const range = selection.getRangeAt(0);
 
-		let { beforeHtml, afterHtml } = splitBlockHtml(blockElement, range);
-		const normalizeOptions = this.getNormalizeOptions();
+			const { beforeHtml, afterHtml: rawAfterHtml } = splitBlockHtml(
+				blockElement,
+				range
+			);
+			let afterHtml = rawAfterHtml;
+			const normalizeOptions = this.getNormalizeOptions();
 
 		// 見出しブロック内で改行した場合、新しいブロックには見出しタグを持ち込まない
 		const isHeadingBlock = blockElement.dataset.blockType === "heading";
@@ -633,15 +638,14 @@ export class BlockInputManager {
 		return this.findBlockFromSelection();
 	}
 
-	private handleBeforeInput = (event: InputEvent): void => {
-		if (!this.enabled) return;
-		const block =
-			this.findBlockFromEvent(event) ?? this.findBlockFromSelection();
-		if (!block) return;
-		const blockId = block.dataset.blockId;
-		if (!blockId) return;
-		const activeId = this.hooks.getActiveBlockId();
-		const isSelectAll = event.inputType === "selectAll";
+		private handleBeforeInput = (event: InputEvent): void => {
+			if (!this.enabled) return;
+			const block =
+				this.findBlockFromEvent(event) ?? this.findBlockFromSelection();
+			if (!block) return;
+			const blockId = block.dataset.blockId;
+			if (!blockId) return;
+			const isSelectAll = event.inputType === "selectAll";
 
 		// 複数ブロック選択をチェック
 		const selection = window.getSelection();
@@ -1005,7 +1009,7 @@ export class BlockInputManager {
 			const normalizeOptions = this.getNormalizeOptions();
 
 			// 現在のブロックを分割
-			let { beforeHtml, afterHtml } = splitBlockHtml(block, range);
+			const { beforeHtml, afterHtml } = splitBlockHtml(block, range);
 
 		// HTMLをパース
 		const tempDiv = document.createElement("div");
@@ -1484,12 +1488,12 @@ export class BlockInputManager {
 		const firstLineStart = this.getLineStartOffset(blockText, clampedStart);
 		offsets.push(firstLineStart);
 
-		let searchIndex = firstLineStart;
-		while (true) {
-			const newlineIndex = blockText.indexOf("\n", searchIndex);
-			if (newlineIndex === -1) {
-				break;
-			}
+			let searchIndex = firstLineStart;
+			for (;;) {
+				const newlineIndex = blockText.indexOf("\n", searchIndex);
+				if (newlineIndex === -1) {
+					break;
+				}
 			const nextLineStart = newlineIndex + 1;
 			if (nextLineStart >= textLength) {
 				break;

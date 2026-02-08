@@ -12,7 +12,7 @@
 
 1. Obsidian をいったん終了します（安全のため）。
 2. 配布 Zip をダウンロードして展開します。
-   例: `tategaki-plugin-v1.0.0.zip`
+   例: `tategaki-plugin-v1.2.1.zip`
 3. 展開した中に、`tategaki-plugin/` フォルダがあることを確認します。
     - `tategaki-plugin/main.js`
     - `tategaki-plugin/manifest.json`

@@ -1,9 +1,9 @@
 {
 	"id": "tategaki-plugin",
 	"name": "Tategaki",
-	"version": "1.2.0",
+	"version": "1.2.1",
 	"minAppVersion": "0.15.0",
-	"description": "Tategaki Editor for Obsidian",
+	"description": "Edit and read Markdown in vertical writing mode for Obsidian.",
 	"author": "cat-left-paw",
 	"authorUrl": "https://github.com/cat-left-paw",
 	"isDesktopOnly": true

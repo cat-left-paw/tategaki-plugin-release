@@ -36,21 +36,19 @@ import { TipTapCompatToolbar } from "./tiptap-compat/toolbar";
 import { TipTapCompatContextMenu } from "./tiptap-compat/context-menu";
 import { SearchReplacePanel } from "./tiptap-compat/search-replace-panel";
 import { PlainEditMode } from "./tiptap-compat/plain-edit-mode";
-import {
-	createTipTapMarkdownAdapter,
-	MarkdownAdapter,
-	normalizeMarkdownForTipTap,
-	protectIndentation,
-	restoreIndentation,
-	extractFrontmatterBlock,
-	stripBlankLineMarkersFromMarkdown,
-} from "./tiptap-compat/markdown-adapter";
-import { areMarkdownContentsEquivalent } from "../shared/sync-backup";
-import { writeSyncBackupPair } from "../shared/sync-backup";
+	import {
+		createTipTapMarkdownAdapter,
+		MarkdownAdapter,
+		normalizeMarkdownForTipTap,
+		protectIndentation,
+		extractFrontmatterBlock,
+	} from "./tiptap-compat/markdown-adapter";
+	import { writeSyncBackupPair } from "../shared/sync-backup";
 import { UnsupportedHtmlModal } from "../shared/ui/unsupported-html-modal";
 import { PagedReadingMode } from "./reading-mode/paged-reading-mode";
 import { FileSwitchModal } from "../shared/ui/file-switch-modal";
 import { NewNoteModal } from "../shared/ui/new-note-modal";
+import { isPhoneLikeMobile } from "./shared/device-profile";
 
 export const TIPTAP_COMPAT_VIEW_TYPE = "tategaki-tiptap-compat-view";
 export const TIPTAP_COMPAT_VIEW_TYPE_LEGACY = "tategaki-tiptap-dev-view";
@@ -445,13 +443,15 @@ export class TipTapCompatView extends ItemView {
 			| undefined;
 		if (!initialFile) {
 			// 起動時のレイアウト復元で空表示になるのを防ぐため、明示的に開かれた場合のみ表示する
-			window.setTimeout(() => {
-				try {
-					this.leaf.detach();
-				} catch (_) {}
-			}, 0);
-			return;
-		}
+				window.setTimeout(() => {
+					try {
+						this.leaf.detach();
+					} catch (_) {
+						// noop: detach失敗は無視
+					}
+				}, 0);
+				return;
+			}
 		delete (this.leaf as any)[INITIAL_FILE_PROP];
 
 		// ファイル情報を保持
@@ -734,7 +734,7 @@ export class TipTapCompatView extends ItemView {
 			},
 		});
 
-		this.contextMenu = new TipTapCompatContextMenu(this.editor, {
+			this.contextMenu = new TipTapCompatContextMenu(this.editor, {
 			app: this.app,
 			onFindReplace: () => {
 				this.searchReplacePanel?.show(true);
@@ -747,20 +747,27 @@ export class TipTapCompatView extends ItemView {
 				this.plainEditMode?.applyInlineCommand(command) ?? false,
 			getPlainEditSelectionText: () =>
 				this.plainEditMode?.getSelectionText() ?? "",
-			getRubyEnabled: () =>
-				this.plugin.settings.wysiwyg.enableRuby !== false,
-		});
-		this.contextMenuHandler = (event: MouseEvent) => {
-			if (!this.contextMenu || !this.editor) return;
-			const isPlainEditing = this.plainEditMode?.isPlainMode() ?? false;
-			const keepOverlayFocus =
-				isPlainEditing &&
-				this.plainEditMode?.isOverlayTarget(event.target);
-			if (!isPlainEditing && !keepOverlayFocus) {
-				this.editor.commands.focus();
-			}
-			this.contextMenu.show(event);
-		};
+				getRubyEnabled: () =>
+					this.plugin.settings.wysiwyg.enableRuby !== false,
+			});
+			this.contextMenuHandler = (event: MouseEvent) => {
+				if (!this.contextMenu || !this.editor) return;
+				const hostWindow =
+					this.editorHostEl?.ownerDocument.defaultView ?? window;
+				if (isPhoneLikeMobile(hostWindow)) {
+					event.preventDefault();
+					event.stopPropagation();
+					return;
+				}
+				const isPlainEditing = this.plainEditMode?.isPlainMode() ?? false;
+				const keepOverlayFocus =
+					isPlainEditing &&
+					this.plainEditMode?.isOverlayTarget(event.target);
+				if (!isPlainEditing && !keepOverlayFocus) {
+					this.editor.commands.focus();
+				}
+				this.contextMenu.show(event);
+			};
 		this.editorHostEl.addEventListener(
 			"contextmenu",
 			this.contextMenuHandler
@@ -1009,36 +1016,35 @@ export class TipTapCompatView extends ItemView {
 		this.currentFile = null;
 	}
 
-	async updateSettings(settings: TategakiV2Settings): Promise<void> {
-		const prev = this.lastAppliedSettings;
-		const frontmatterChanged = prev
-			? prev.preview.hideFrontmatter !==
-					settings.preview.hideFrontmatter ||
-			  prev.preview.showFrontmatterTitle !==
-					settings.preview.showFrontmatterTitle ||
-			  prev.preview.showFrontmatterSubtitle !==
-					settings.preview.showFrontmatterSubtitle ||
-			  prev.preview.showFrontmatterOriginalTitle !==
-					settings.preview.showFrontmatterOriginalTitle ||
-			  prev.preview.showFrontmatterAuthor !==
-					settings.preview.showFrontmatterAuthor ||
-			  prev.preview.showFrontmatterCoAuthors !==
-					settings.preview.showFrontmatterCoAuthors ||
-			  prev.preview.showFrontmatterTranslator !==
-					settings.preview.showFrontmatterTranslator ||
-			  prev.preview.showFrontmatterCoTranslators !==
-					settings.preview.showFrontmatterCoTranslators
-			: true;
-		const writingModeChanged = !prev
-			? true
-			: prev.common.writingMode !== settings.common.writingMode;
-		const rubyChanged = !prev
-			? true
-			: prev.wysiwyg.enableRuby !== settings.wysiwyg.enableRuby;
-		const auxiliaryChanged = !prev
-			? true
-			: prev.wysiwyg.enableAssistantInput !==
-			  settings.wysiwyg.enableAssistantInput;
+		async updateSettings(settings: TategakiV2Settings): Promise<void> {
+			const prev = this.lastAppliedSettings;
+			const frontmatterChanged = !prev
+				? true
+				: prev.preview.hideFrontmatter !== settings.preview.hideFrontmatter ||
+					prev.preview.showFrontmatterTitle !==
+						settings.preview.showFrontmatterTitle ||
+					prev.preview.showFrontmatterSubtitle !==
+						settings.preview.showFrontmatterSubtitle ||
+					prev.preview.showFrontmatterOriginalTitle !==
+						settings.preview.showFrontmatterOriginalTitle ||
+					prev.preview.showFrontmatterAuthor !==
+						settings.preview.showFrontmatterAuthor ||
+					prev.preview.showFrontmatterCoAuthors !==
+						settings.preview.showFrontmatterCoAuthors ||
+					prev.preview.showFrontmatterTranslator !==
+						settings.preview.showFrontmatterTranslator ||
+					prev.preview.showFrontmatterCoTranslators !==
+						settings.preview.showFrontmatterCoTranslators;
+			const writingModeChanged = !prev
+				? true
+				: prev.common.writingMode !== settings.common.writingMode;
+			const rubyChanged = !prev
+				? true
+				: prev.wysiwyg.enableRuby !== settings.wysiwyg.enableRuby;
+			const auxiliaryChanged = !prev
+				? true
+				: prev.wysiwyg.enableAssistantInput !==
+						settings.wysiwyg.enableAssistantInput;
 
 		if (settings.wysiwyg.enableAssistantInput) {
 			this.plainEditAutoPaused = false;
@@ -1718,20 +1724,25 @@ export class TipTapCompatView extends ItemView {
 					currentRect.top +
 					this.getScrollSide(scrollMarginValue, "top")
 				);
-			} else if (
-				currentRect.bottom >
-				bounding.bottom - this.getScrollSide(scrollThreshold, "bottom")
-			) {
-				moveY =
-					currentRect.bottom - currentRect.top >
-					bounding.bottom - bounding.top
-						? currentRect.top +
-						  this.getScrollSide(scrollMarginValue, "top") -
-						  bounding.top
-						: currentRect.bottom -
-						  bounding.bottom +
-						  this.getScrollSide(scrollMarginValue, "bottom");
-			}
+				} else if (
+					currentRect.bottom >
+					bounding.bottom - this.getScrollSide(scrollThreshold, "bottom")
+				) {
+					const isOverflowing =
+						currentRect.bottom - currentRect.top >
+						bounding.bottom - bounding.top;
+					if (isOverflowing) {
+						moveY =
+							currentRect.top +
+							this.getScrollSide(scrollMarginValue, "top") -
+							bounding.top;
+					} else {
+						moveY =
+							currentRect.bottom -
+							bounding.bottom +
+							this.getScrollSide(scrollMarginValue, "bottom");
+					}
+				}
 
 			if (
 				currentRect.left <
@@ -2281,14 +2292,16 @@ export class TipTapCompatView extends ItemView {
 			row.textContent = item.text;
 			row.addEventListener("click", (event) => {
 				event.preventDefault();
-				try {
-					this.editor?.commands.focus();
-					this.editor?.commands.setTextSelection(item.pos + 1);
-					this.ensureExternalCursorVisible(item.pos + 1);
-				} catch (_) {}
-			});
+					try {
+						this.editor?.commands.focus();
+						this.editor?.commands.setTextSelection(item.pos + 1);
+						this.ensureExternalCursorVisible(item.pos + 1);
+					} catch (_) {
+						// noop: カーソル操作失敗は無視
+					}
+				});
+			}
 		}
-	}
 
 	private registerEditorChangeWatchers(): void {
 		const leafRef = (this.app.workspace as any).on(
@@ -3046,14 +3059,16 @@ export class TipTapCompatView extends ItemView {
 		if (!this.editor) {
 			return;
 		}
-		const readOnly = this.isEditorReadOnly();
-		try {
-			this.editor.setEditable(!readOnly);
-		} catch (_) {}
-		this.formattingToolbar?.setReadOnly(readOnly, {
-			hideEditingButtons: false,
-		});
-		this.searchReplacePanel?.setReadOnly(readOnly);
+			const readOnly = this.isEditorReadOnly();
+			try {
+				this.editor.setEditable(!readOnly);
+			} catch (_) {
+				// noop: setEditable失敗は無視
+			}
+			this.formattingToolbar?.setReadOnly(readOnly, {
+				hideEditingButtons: false,
+			});
+			this.searchReplacePanel?.setReadOnly(readOnly);
 	}
 
 	private isEditorReadOnly(): boolean {
@@ -3138,14 +3153,16 @@ export class TipTapCompatView extends ItemView {
 			padding-bottom: ${isPhone ? "var(--tategaki-reading-bottom-offset, 0px)" : "0px"};
 		`;
 		container.addEventListener(
-			"pointerdown",
-			() => {
-				try {
-					container.focus();
-				} catch (_) {}
-			},
-			{ capture: true }
-		);
+				"pointerdown",
+				() => {
+					try {
+						container.focus();
+					} catch (_) {
+						// noop: focus失敗は無視
+					}
+				},
+				{ capture: true }
+			);
 
 		const settings = this.plugin.settings;
 		const effectiveCommon = this.getEffectiveCommonSettings(settings);
@@ -3219,14 +3236,16 @@ export class TipTapCompatView extends ItemView {
 				},
 			});
 		} catch (error) {
-			console.error("[Tategaki] Failed to start reading mode", error);
-			try {
-				this.readingModePager?.destroy();
-			} catch (_) {}
-			this.readingModePager = null;
-			container.remove();
-			proseMirror.style.visibility =
-				this.proseMirrorBeforeReadingStyle.visibility;
+				console.error("[Tategaki] Failed to start reading mode", error);
+				try {
+					this.readingModePager?.destroy();
+				} catch (_) {
+					// noop: 破棄失敗は無視
+				}
+				this.readingModePager = null;
+				container.remove();
+				proseMirror.style.visibility =
+					this.proseMirrorBeforeReadingStyle.visibility;
 			proseMirror.style.pointerEvents =
 				this.proseMirrorBeforeReadingStyle.pointerEvents;
 			this.proseMirrorBeforeReadingStyle = null;
@@ -3237,25 +3256,29 @@ export class TipTapCompatView extends ItemView {
 		this.readingModeActive = true;
 		this.formattingToolbar?.updateReadingModeButton();
 
-		// キーボードでページ送りできるようにフォーカスする
-		try {
-			container.focus();
-		} catch (_) {}
+			// キーボードでページ送りできるようにフォーカスする
+			try {
+				container.focus();
+			} catch (_) {
+				// noop: focus失敗は無視
+			}
 
-		return true;
-	}
+			return true;
+		}
 
 	private disableReadingMode(): void {
 		if (!this.readingModeActive && !this.readingModePager) {
 			return;
 		}
 
-		if (this.readingModePager) {
-			try {
-				this.readingModePager.destroy();
-			} catch (_) {}
-			this.readingModePager = null;
-		}
+			if (this.readingModePager) {
+				try {
+					this.readingModePager.destroy();
+				} catch (_) {
+					// noop: 破棄失敗は無視
+				}
+				this.readingModePager = null;
+			}
 
 		if (this.readingModeContainerEl) {
 			this.readingModeContainerEl.remove();
@@ -3362,14 +3385,16 @@ export class TipTapCompatView extends ItemView {
 			return;
 		}
 		const progress = this.readingModePager?.getProgress() ?? 0;
-		const enabled = this.enableReadingMode();
-		if (!enabled) {
-			return;
+			const enabled = this.enableReadingMode();
+			if (!enabled) {
+				return;
+			}
+			try {
+				this.readingModePager?.jumpToProgress(progress);
+			} catch (_) {
+				// noop: 進捗復元失敗は無視
+			}
 		}
-		try {
-			this.readingModePager?.jumpToProgress(progress);
-		} catch (_) {}
-	}
 
 	private setReadOnlyProtection(
 		active: boolean,
@@ -3523,15 +3548,17 @@ export class TipTapCompatView extends ItemView {
 			return;
 		}
 
-		const state = this.syncManager.getState();
-		if (!state.currentFilePath) {
-			try {
-				this.editor.commands.clearExternalCursor();
-			} catch (_) {}
-			this.pendingExternalCursor = null;
-			this.lastExternalCursor = null;
-			return;
-		}
+			const state = this.syncManager.getState();
+			if (!state.currentFilePath) {
+				try {
+					this.editor.commands.clearExternalCursor();
+				} catch (_) {
+					// noop: 外部カーソルの消去失敗は無視
+				}
+				this.pendingExternalCursor = null;
+				this.lastExternalCursor = null;
+				return;
+			}
 
 		const mdView = this.getMarkdownViewForFile(state.currentFilePath);
 		if (!mdView?.file || mdView.file.path !== state.currentFilePath) {
@@ -3616,12 +3643,14 @@ export class TipTapCompatView extends ItemView {
 		const offset = getOffsetFromPos(pending.pos, pending.content);
 		const extracted = extractFrontmatterBlock(pending.content);
 		const frontmatterLen = extracted.frontmatter.length;
-		if (offset <= frontmatterLen) {
-			try {
-				this.editor.commands.clearExternalCursor();
-			} catch (_) {}
-			return;
-		}
+			if (offset <= frontmatterLen) {
+				try {
+					this.editor.commands.clearExternalCursor();
+				} catch (_) {
+					// noop: 外部カーソルの消去失敗は無視
+				}
+				return;
+			}
 
 		const bodyOffset = Math.max(0, offset - frontmatterLen);
 		const bodyWithMarker = insertCursorMarker(extracted.body, bodyOffset);
@@ -3659,12 +3688,14 @@ export class TipTapCompatView extends ItemView {
 			document.body.removeChild(tempDiv);
 		}
 
-		if (foundPos == null) {
-			try {
-				this.editor.commands.clearExternalCursor();
-			} catch (_) {}
-			return;
-		}
+			if (foundPos == null) {
+				try {
+					this.editor.commands.clearExternalCursor();
+				} catch (_) {
+					// noop: 外部カーソルの消去失敗は無視
+				}
+				return;
+			}
 
 		try {
 			this.editor.commands.setExternalCursor(foundPos);

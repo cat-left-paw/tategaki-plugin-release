@@ -8,7 +8,7 @@ import { TategakiV2Settings } from "../../types/settings";
 export class VerticalWritingManager {
     private element: HTMLElement;
     private settings: TategakiV2Settings;
-    private isVertical: boolean = true;
+    private isVertical = true;
 
     constructor(element: HTMLElement, settings: TategakiV2Settings) {
         this.element = element;

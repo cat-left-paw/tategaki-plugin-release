@@ -282,7 +282,7 @@ export const AozoraRubyNode = Node.create({
 					},
 					transformPastedText: (text) => {
 						// プレーンテキストのペースト時も青空文庫形式を変換
-						let result = text;
+						const result = text;
 						const matches = Array.from(text.matchAll(AOZORA_RUBY_GLOBAL_REGEX));
 
 						if (matches.length > 0) {

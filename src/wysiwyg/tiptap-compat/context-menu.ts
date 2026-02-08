@@ -64,10 +64,12 @@ export class TipTapCompatContextMenu {
 					: storedMode === "vertical-rl" || storedMode === "horizontal-tb"
 						? storedMode
 						: "vertical-rl";
-			try {
-				editor.commands.setWritingMode(mode as any);
-			} catch (_) {}
-		};
+				try {
+					editor.commands.setWritingMode(mode as any);
+				} catch (_) {
+					// noop: 書字方向の再適用失敗は無視
+				}
+			};
 
 		return [
 			{

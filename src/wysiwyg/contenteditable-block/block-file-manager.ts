@@ -22,7 +22,7 @@ export class BlockFileManager {
 		const markdown = await this.vault.read(file);
 		this.lastSavedMarkdown = markdown;
 		this.options.onFileChange?.(file);
-		return markdownToDocument(markdown);
+		return await markdownToDocument(markdown);
 	}
 
 	async saveFile(model: DocumentModel): Promise<void> {

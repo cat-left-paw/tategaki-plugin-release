@@ -40,7 +40,9 @@ export const replacePlainEditSelection = (
 	overlay.focus({ preventScroll: true });
 	try {
 		overlay.setSelectionRange(start, end);
-	} catch (_) {}
+	} catch (_) {
+		// noop: iOS等で例外になる場合があるため無視
+	}
 	options.onResize?.();
 };
 
@@ -71,7 +73,7 @@ export const wrapPlainEditSelection = (
 
 export const stripPlainEditFormatting = (text: string): string => {
 	let result = text;
-	result = result.replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1");
+	result = result.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
 	result = result.replace(/==([^=\n]+)==/g, "$1");
 	result = result.replace(/\*\*([^*\n]+)\*\*/g, "$1");
 	result = result.replace(/\*([^*\n]+)\*/g, "$1");

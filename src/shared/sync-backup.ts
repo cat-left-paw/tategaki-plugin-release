@@ -152,21 +152,10 @@ export async function getLatestSyncBackupPair(
 		if (!group) continue;
 
 		const filePaths = group.files;
-		const beforeCandidates = filePaths.filter((p) =>
-			/__(before)(-[0-9]+)?\.md$/.test(p)
-		);
-		const afterCandidates = filePaths.filter((p) =>
-			/__(after)(-[0-9]+)?\.md$/.test(p)
-		);
-		if (beforeCandidates.length === 0 || afterCandidates.length === 0) {
+		const picked = await pickLatestBackupPair(app, filePaths);
+		if (!picked) {
 			continue;
 		}
-
-		const pickPreferred = (candidates: string[], key: "before" | "after") => {
-			const exact = candidates.find((p) => p.endsWith(`__${key}.md`));
-			if (exact) return exact;
-			return candidates.slice().sort()[0] as string;
-		};
 
 		// タイムスタンプ部分のみを返す
 		const timestamp = groupKey.split("_")[0] ?? groupKey;
@@ -175,12 +164,112 @@ export async function getLatestSyncBackupPair(
 			backupFolderPath,
 			timestamp,
 			reason: group.reason,
-			beforePath: pickPreferred(beforeCandidates, "before"),
-			afterPath: pickPreferred(afterCandidates, "after"),
+			beforePath: picked.beforePath,
+			afterPath: picked.afterPath,
 		};
 	}
 
 	return null;
+}
+
+async function pickLatestBackupPair(
+	app: App,
+	filePaths: string[]
+): Promise<{ beforePath: string; afterPath: string } | null> {
+	const beforeCandidates = filePaths.filter((p) =>
+		/__(before)(-[0-9]+)?\.md$/.test(p)
+	);
+	const afterCandidates = filePaths.filter((p) =>
+		/__(after)(-[0-9]+)?\.md$/.test(p)
+	);
+	if (beforeCandidates.length === 0 || afterCandidates.length === 0) {
+		return null;
+	}
+
+	const parseSuffix = (path: string, key: "before" | "after"): number => {
+		const match = path.match(
+			new RegExp(`__${key}(?:-([0-9]+))?\\.md$`)
+		);
+		const raw = match?.[1];
+		if (!raw) return 0;
+		const parsed = parseInt(raw, 10);
+		return Number.isFinite(parsed) ? parsed : 0;
+	};
+
+	const safeStat = async (path: string): Promise<number> => {
+		try {
+			const stat = await app.vault.adapter.stat(path);
+			return stat?.mtime ?? 0;
+		} catch {
+			return 0;
+		}
+	};
+
+	type PairEntry = {
+		beforePath?: string;
+		afterPath?: string;
+		beforeMtime: number;
+		afterMtime: number;
+	};
+	const entries = new Map<number, PairEntry>();
+
+	for (const path of beforeCandidates) {
+		const suffix = parseSuffix(path, "before");
+		const entry = entries.get(suffix) ?? {
+			beforeMtime: 0,
+			afterMtime: 0,
+		};
+		entry.beforePath = path;
+		entry.beforeMtime = await safeStat(path);
+		entries.set(suffix, entry);
+	}
+
+	for (const path of afterCandidates) {
+		const suffix = parseSuffix(path, "after");
+		const entry = entries.get(suffix) ?? {
+			beforeMtime: 0,
+			afterMtime: 0,
+		};
+		entry.afterPath = path;
+		entry.afterMtime = await safeStat(path);
+		entries.set(suffix, entry);
+	}
+
+	let best: { suffix: number; beforePath: string; afterPath: string; mtime: number } | null = null;
+	for (const [suffix, entry] of entries.entries()) {
+		if (!entry.beforePath || !entry.afterPath) continue;
+		const mtime = Math.max(entry.beforeMtime, entry.afterMtime);
+		if (!best) {
+			best = {
+				suffix,
+				beforePath: entry.beforePath,
+				afterPath: entry.afterPath,
+				mtime,
+			};
+			continue;
+		}
+		if (mtime > best.mtime) {
+			best = {
+				suffix,
+				beforePath: entry.beforePath,
+				afterPath: entry.afterPath,
+				mtime,
+			};
+			continue;
+		}
+		if (mtime === best.mtime && suffix > best.suffix) {
+			best = {
+				suffix,
+				beforePath: entry.beforePath,
+				afterPath: entry.afterPath,
+				mtime,
+			};
+		}
+	}
+
+	return best
+		? { beforePath: best.beforePath, afterPath: best.afterPath }
+		: null;
 }
 
 export function areMarkdownContentsEquivalent(
@@ -251,14 +340,15 @@ function fnv1a32Hex(input: string): string {
 	return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-/**
- * 旧フォーマット用タイムスタンプ（後方互換性のため保持）
- */
-function formatTimestamp(date: Date): string {
-	const yyyy = date.getFullYear();
-	const mm = String(date.getMonth() + 1).padStart(2, "0");
-	const dd = String(date.getDate()).padStart(2, "0");
-	const hh = String(date.getHours()).padStart(2, "0");
+	/**
+	 * 旧フォーマット用タイムスタンプ（後方互換性のため保持）
+	 */
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	function formatTimestamp(date: Date): string {
+		const yyyy = date.getFullYear();
+		const mm = String(date.getMonth() + 1).padStart(2, "0");
+		const dd = String(date.getDate()).padStart(2, "0");
+		const hh = String(date.getHours()).padStart(2, "0");
 	const min = String(date.getMinutes()).padStart(2, "0");
 	const ss = String(date.getSeconds()).padStart(2, "0");
 	const ms = String(date.getMilliseconds()).padStart(3, "0");
@@ -356,15 +446,16 @@ async function allocateUniquePath(app: App, desiredPath: string): Promise<string
 	throw new Error(`Failed to allocate unique backup path: ${desiredPath}`);
 }
 
-/**
- * 旧: シンプルなバックアップ削除（keepLatest件を保持）
- * @deprecated 使用日ベースの pruneOldBackupsUsageDayBased を使用してください
- */
-async function pruneOldBackups(
-	app: App,
-	backupFolderPath: string,
-	keepLatest: number
-): Promise<void> {
+	/**
+	 * 旧: シンプルなバックアップ削除（keepLatest件を保持）
+	 * @deprecated 使用日ベースの pruneOldBackupsUsageDayBased を使用してください
+	 */
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	async function pruneOldBackups(
+		app: App,
+		backupFolderPath: string,
+		keepLatest: number
+	): Promise<void> {
 	if (keepLatest <= 0) {
 		return;
 	}

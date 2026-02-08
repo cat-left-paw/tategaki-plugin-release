@@ -680,6 +680,7 @@ export class SettingsPanelModal extends Modal {
 		initiallyOpen: boolean,
 		builder: (content: HTMLElement) => void,
 	): HTMLElement {
+		const initialOpen = initiallyOpen;
 		const section = container.createDiv("tategaki-settings-section");
 		section.style.cssText = `
 			margin-bottom: 4px;
@@ -718,7 +719,7 @@ export class SettingsPanelModal extends Modal {
 			color: var(--text-muted);
 			transition: transform 0.2s ease;
 		`;
-		setIcon(chevron, initiallyOpen ? "chevron-down" : "chevron-right");
+		setIcon(chevron, initialOpen ? "chevron-down" : "chevron-right");
 
 		// アイコン（Lucide）
 		const iconEl = header.createSpan();
@@ -744,13 +745,13 @@ export class SettingsPanelModal extends Modal {
 		// コンテンツ領域
 		const content = section.createDiv("tategaki-settings-section-content");
 		content.style.cssText = `
-			padding: ${initiallyOpen ? "4px 14px 10px" : "0 14px"};
-			max-height: ${initiallyOpen ? "2000px" : "0"};
+			padding: ${initialOpen ? "4px 14px 10px" : "0 14px"};
+			max-height: ${initialOpen ? "2000px" : "0"};
 			overflow: hidden;
 			transition: max-height 0.3s ease, padding 0.3s ease;
 		`;
 
-		let isOpen = initiallyOpen;
+		let isOpen = initialOpen;
 		header.addEventListener("click", () => {
 			isOpen = !isOpen;
 			setIcon(chevron, isOpen ? "chevron-down" : "chevron-right");
@@ -790,8 +791,8 @@ export class SettingsPanelModal extends Modal {
 			container,
 			"sliders-horizontal",
 			"基本設定",
-			true,
-			(content) => {
+			false,
+				(content) => {
 				// 書字方向
 				this.createSettingItem(
 					content,
@@ -826,12 +827,120 @@ export class SettingsPanelModal extends Modal {
 					},
 				);
 
-				// ページ枠の表示
+				// 選択: ネイティブ（巨大文書向け）
 				this.createSettingItem(
 					content,
-					"ページ枠の表示",
-					"ページ枠を表示するか、全画面表示にするかを選択",
+					"選択をネイティブにする",
+					"大きな範囲選択・端超えオートスクロール時のみネイティブ選択を補助的に使います（通常時はSoT選択を優先）",
 					(itemEl) => {
+						const button = itemEl.createEl("button", {
+							cls: "tategaki-toggle-button",
+						});
+
+						const getCurrent = () =>
+							this.tempSettings.wysiwyg.useNativeSelection ===
+							true;
+
+						const refresh = (enabled: boolean) => {
+							button.textContent = enabled
+								? "使用する"
+								: "使用しない";
+							button.setAttr(
+								"aria-pressed",
+								enabled ? "true" : "false",
+							);
+							button.style.cssText = `
+								min-width: 96px;
+								padding: 6px 12px;
+								border-radius: 6px;
+								border: 1px solid var(--background-modifier-border);
+								background: ${
+									enabled
+										? "var(--interactive-accent)"
+										: "var(--interactive-normal)"
+								};
+								color: ${enabled ? "var(--text-on-accent)" : "var(--text-normal)"};
+								cursor: pointer;
+								transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+							`;
+						};
+
+						refresh(getCurrent());
+
+						button.addEventListener("click", () => {
+							const next = !getCurrent();
+							this.tempSettings.wysiwyg.useNativeSelection =
+								next;
+							refresh(next);
+							this.applySettings();
+						});
+					},
+					{
+						disabled: isCompatMode,
+						disabledReason: isCompatMode
+							? "互換モードでは反映されません"
+							: undefined,
+					},
+				);
+
+				// SoT全文プレーン表示
+				this.createSettingItem(
+					content,
+					"全文プレーン表示（SoT）",
+					"Markdown装飾・ルビの表示を行わず、記号をそのまま表示します（ソーステキスト編集は無効）",
+					(itemEl) => {
+						const button = itemEl.createEl("button", {
+							cls: "tategaki-toggle-button",
+						});
+
+						const getCurrent = () =>
+							this.tempSettings.wysiwyg.plainTextView === true;
+
+						const refresh = (enabled: boolean) => {
+							button.textContent = enabled ? "有効" : "無効";
+							button.setAttr(
+								"aria-pressed",
+								enabled ? "true" : "false",
+							);
+							button.style.cssText = `
+								min-width: 96px;
+								padding: 6px 12px;
+								border-radius: 6px;
+								border: 1px solid var(--background-modifier-border);
+								background: ${
+									enabled
+										? "var(--interactive-accent)"
+										: "var(--interactive-normal)"
+								};
+								color: ${enabled ? "var(--text-on-accent)" : "var(--text-normal)"};
+								cursor: pointer;
+								transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+							`;
+						};
+
+						refresh(getCurrent());
+
+						button.addEventListener("click", () => {
+							const next = !getCurrent();
+							this.tempSettings.wysiwyg.plainTextView = next;
+							refresh(next);
+							this.applySettings();
+						});
+					},
+					{
+						disabled: isCompatMode,
+						disabledReason: isCompatMode
+							? "互換モードでは反映されません"
+							: undefined,
+					},
+				);
+
+					// ページ枠の表示
+					this.createSettingItem(
+						content,
+						"ページ枠の表示",
+						"ページ枠を表示するか、全画面表示にするかを選択",
+						(itemEl) => {
 						const button = itemEl.createEl("button", {
 							cls: "tategaki-toggle-button",
 						});
@@ -880,12 +989,12 @@ export class SettingsPanelModal extends Modal {
 			},
 		);
 
-		// ─── フォント ───
-		this.createCollapsibleSection(
-			container,
-			"type",
-			"フォント",
-			true,
+	// ─── フォント ───
+	this.createCollapsibleSection(
+		container,
+		"type",
+		"フォント",
+		false,
 			(content) => {
 				// フォント選択
 				this.createSettingItem(
@@ -1979,11 +2088,11 @@ export class SettingsPanelModal extends Modal {
 				);
 
 				// CE補助モード: ネイティブキャレット
-				this.createSettingItem(
-					content,
-					"CE補助モードでネイティブキャレットを使用",
-					"CE補助(IME)をオンにしたとき、OS標準のキャレットを使うか選べます",
-					(itemEl) => {
+					this.createSettingItem(
+						content,
+						"CE補助モードでネイティブキャレットを使用",
+						"CE補助(IME)をオンにしたとき、OS標準のキャレットを使うか選べます",
+						(itemEl) => {
 						const button = itemEl.createEl("button", {
 							cls: "tategaki-toggle-button",
 						});
@@ -2486,6 +2595,104 @@ export class SettingsPanelModal extends Modal {
 						});
 					},
 				);
+
+				// 上余白
+				this.createSettingItem(
+					content,
+					"上余白",
+					"書籍モード本文エリアの上余白を調整（0〜200px）",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv();
+						wrapper.style.cssText = `
+							display: flex;
+							align-items: center;
+							gap: 10px;
+						`;
+
+						const slider = wrapper.createEl("input");
+						slider.type = "range";
+						slider.min = "0";
+						slider.max = "200";
+						slider.step = "2";
+						slider.value = (
+							this.tempSettings.preview.bookPaddingTop ??
+							DEFAULT_V2_SETTINGS.preview.bookPaddingTop ??
+							44
+						).toString();
+						slider.style.cssText = `
+							flex: 1;
+							min-width: 100px;
+						`;
+
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent = `${this.tempSettings.preview.bookPaddingTop ?? DEFAULT_V2_SETTINGS.preview.bookPaddingTop ?? 44}px`;
+						valueSpan.style.cssText = `
+							min-width: 50px;
+							text-align: right;
+							color: var(--text-muted);
+						`;
+
+						slider.addEventListener("input", () => {
+							const value = parseInt(slider.value, 10);
+							this.tempSettings.preview.bookPaddingTop = value;
+							valueSpan.textContent = `${value}px`;
+							this.applySettings({ debounce: true });
+						});
+
+						slider.addEventListener("change", () => {
+							this.applySettings();
+						});
+					},
+				);
+
+				// 下余白
+				this.createSettingItem(
+					content,
+					"下余白",
+					"書籍モード本文エリアの下余白を調整（0〜200px）",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv();
+						wrapper.style.cssText = `
+							display: flex;
+							align-items: center;
+							gap: 10px;
+						`;
+
+						const slider = wrapper.createEl("input");
+						slider.type = "range";
+						slider.min = "0";
+						slider.max = "200";
+						slider.step = "2";
+						slider.value = (
+							this.tempSettings.preview.bookPaddingBottom ??
+							DEFAULT_V2_SETTINGS.preview.bookPaddingBottom ??
+							32
+						).toString();
+						slider.style.cssText = `
+							flex: 1;
+							min-width: 100px;
+						`;
+
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent = `${this.tempSettings.preview.bookPaddingBottom ?? DEFAULT_V2_SETTINGS.preview.bookPaddingBottom ?? 32}px`;
+						valueSpan.style.cssText = `
+							min-width: 50px;
+							text-align: right;
+							color: var(--text-muted);
+						`;
+
+						slider.addEventListener("input", () => {
+							const value = parseInt(slider.value, 10);
+							this.tempSettings.preview.bookPaddingBottom = value;
+							valueSpan.textContent = `${value}px`;
+							this.applySettings({ debounce: true });
+						});
+
+						slider.addEventListener("change", () => {
+							this.applySettings();
+						});
+					},
+				);
 			},
 		);
 
@@ -2588,6 +2795,7 @@ export class SettingsPanelModal extends Modal {
 							});
 						},
 					);
+
 				},
 			);
 		}
@@ -2832,18 +3040,15 @@ export class SettingsPanelModal extends Modal {
 					async (themeName) => {
 						try {
 							// 現在の一時設定をプラグインに反映
-							await this.plugin.updateSettings(this.tempSettings);
+								await this.plugin.updateSettings(this.tempSettings);
 
-							// テーマとして保存
-							const newTheme =
-								await this.plugin.createThemeFromCurrentSettings(
-									themeName,
+								// テーマとして保存
+								await this.plugin.createThemeFromCurrentSettings(themeName);
+
+								// tempSettingsを更新
+								this.tempSettings = JSON.parse(
+									JSON.stringify(this.plugin.settings),
 								);
-
-							// tempSettingsを更新
-							this.tempSettings = JSON.parse(
-								JSON.stringify(this.plugin.settings),
-							);
 							this.onOpen();
 						} catch (error) {
 							console.error(

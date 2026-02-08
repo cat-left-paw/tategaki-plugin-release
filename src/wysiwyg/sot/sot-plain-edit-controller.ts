@@ -52,6 +52,14 @@ type PlainEditHost = {
 
 export class SoTPlainEditController {
 	private readonly host: PlainEditHost;
+	private readonly overlayResizeIdleMs = 120;
+	private overlayPositionDirty = false;
+	private overlayInputActive = false;
+	private overlayInputIdleTimer: number | null = null;
+	private overlayPositionNeedsRefine = false;
+	private overlayPositionRefineRaf: number | null = null;
+	private readonly fixedOverlaySize = true;
+	private overlayFixedExpandRaf: number | null = null;
 
 	constructor(host: PlainEditHost) {
 		this.host = host;
@@ -81,9 +89,11 @@ export class SoTPlainEditController {
 			});
 			overlay.addEventListener("compositionstart", () => {
 				this.host.plainEditComposing = true;
+				this.markOverlayInputActive();
 			});
 			overlay.addEventListener("compositionend", () => {
 				this.host.plainEditComposing = false;
+				this.markOverlayInputActive();
 			});
 			overlay.addEventListener("keydown", (event) => {
 				if (event.key === "Escape") {
@@ -129,7 +139,7 @@ export class SoTPlainEditController {
 				event.stopPropagation();
 			});
 			overlay.addEventListener("input", () => {
-				this.adjustOverlaySize();
+				this.markOverlayInputActive();
 			});
 			this.host.plainEditOverlayEl = overlay;
 			this.host.derivedRootEl.appendChild(overlay);
@@ -142,9 +152,127 @@ export class SoTPlainEditController {
 			this.host.plainEditOverlayEl = null;
 		}
 		this.host.plainEditOverlayBaseRect = null;
+		this.resetOverlayInputState();
+		if (this.overlayPositionRefineRaf !== null) {
+			window.cancelAnimationFrame(this.overlayPositionRefineRaf);
+			this.overlayPositionRefineRaf = null;
+		}
+	}
+
+	private resetOverlayInputState(): void {
+		this.overlayInputActive = false;
+		this.overlayPositionDirty = false;
+		this.overlayPositionNeedsRefine = false;
+		if (this.overlayPositionRefineRaf !== null) {
+			window.cancelAnimationFrame(this.overlayPositionRefineRaf);
+			this.overlayPositionRefineRaf = null;
+		}
+		if (this.overlayFixedExpandRaf !== null) {
+			window.cancelAnimationFrame(this.overlayFixedExpandRaf);
+			this.overlayFixedExpandRaf = null;
+		}
+		if (this.overlayInputIdleTimer !== null) {
+			window.clearTimeout(this.overlayInputIdleTimer);
+			this.overlayInputIdleTimer = null;
+		}
+	}
+
+	private markOverlayInputActive(): void {
+		this.overlayInputActive = true;
+		if (this.overlayInputIdleTimer !== null) {
+			window.clearTimeout(this.overlayInputIdleTimer);
+		}
+		this.overlayInputIdleTimer = window.setTimeout(() => {
+			this.overlayInputIdleTimer = null;
+			this.overlayInputActive = false;
+			if (this.overlayPositionDirty && this.host.plainEditRange) {
+				this.overlayPositionDirty = false;
+				this.updateOverlayPositionInternal(this.host.plainEditRange, {
+					refine: false,
+				});
+			}
+			this.scheduleFixedOverlayExpand();
+			this.scheduleOverlayPositionRefine();
+		}, this.overlayResizeIdleMs);
+	}
+
+	private scheduleFixedOverlayExpand(): void {
+		if (!this.fixedOverlaySize) return;
+		if (!this.host.plainEditOverlayEl || !this.host.plainEditOverlayBaseRect) {
+			return;
+		}
+		if (this.overlayFixedExpandRaf !== null) return;
+		this.overlayFixedExpandRaf = window.requestAnimationFrame(() => {
+			this.overlayFixedExpandRaf = null;
+			this.expandFixedOverlayIfOverflow();
+		});
+	}
+
+	private expandFixedOverlayIfOverflow(): void {
+		if (!this.fixedOverlaySize) return;
+		if (!this.host.plainEditOverlayEl || !this.host.plainEditOverlayBaseRect) {
+			return;
+		}
+		const overlay = this.host.plainEditOverlayEl;
+		const base = this.host.plainEditOverlayBaseRect;
+		const writingMode =
+			overlay.style.writingMode || getComputedStyle(overlay).writingMode;
+		const style = getComputedStyle(overlay);
+		const fontSize = Number.parseFloat(style.fontSize) || 16;
+		const lineHeight =
+			Number.parseFloat(style.lineHeight) || Math.max(1, fontSize * 1.6);
+		if (writingMode.startsWith("vertical")) {
+			const overflow = overlay.scrollWidth - overlay.clientWidth;
+			if (overflow <= 0) return;
+			const expand = Math.max(1, Math.ceil(fontSize));
+			const nextWidth = base.width + expand;
+			this.host.plainEditOverlayEl.style.width = `${nextWidth}px`;
+			this.host.plainEditOverlayBaseRect = {
+				left: base.left,
+				top: base.top,
+				width: nextWidth,
+				height: base.height,
+			};
+			return;
+		}
+		const overflow = overlay.scrollHeight - overlay.clientHeight;
+		if (overflow <= 0) return;
+		const expand = Math.max(1, Math.ceil(lineHeight));
+		const nextHeight = base.height + expand;
+		this.host.plainEditOverlayEl.style.height = `${nextHeight}px`;
+		this.host.plainEditOverlayBaseRect = {
+			left: base.left,
+			top: base.top,
+			width: base.width,
+			height: nextHeight,
+		};
+	}
+
+	private scheduleOverlayPositionRefine(): void {
+		if (!this.overlayPositionNeedsRefine || !this.host.plainEditRange) {
+			return;
+		}
+		if (this.overlayInputActive) {
+			return;
+		}
+		if (this.overlayPositionRefineRaf !== null) return;
+		this.overlayPositionRefineRaf = window.requestAnimationFrame(() => {
+			this.overlayPositionRefineRaf = null;
+			if (!this.overlayPositionNeedsRefine || !this.host.plainEditRange) {
+				return;
+			}
+			if (this.overlayInputActive) {
+				return;
+			}
+			this.overlayPositionNeedsRefine = false;
+			this.updateOverlayPositionInternal(this.host.plainEditRange, {
+				refine: true,
+			});
+		});
 	}
 
 	adjustOverlaySize(): void {
+		if (this.fixedOverlaySize) return;
 		if (!this.host.plainEditOverlayEl || !this.host.plainEditOverlayBaseRect)
 			return;
 		const base = this.host.plainEditOverlayBaseRect;
@@ -540,8 +668,48 @@ export class SoTPlainEditController {
 	}
 
 	updateOverlayPosition(range: { startLine: number; endLine: number }): void {
+		if (this.overlayInputActive) {
+			this.overlayPositionDirty = true;
+			return;
+		}
+		this.updateOverlayPositionInternal(range, { refine: false });
+	}
+
+	private scheduleInitialRefine(): void {
+		this.overlayPositionNeedsRefine = true;
+		this.scheduleOverlayPositionRefine();
+	}
+
+	private updateOverlayPositionInternal(
+		range: { startLine: number; endLine: number },
+		options: { refine: boolean }
+	): void {
 		if (!this.host.derivedRootEl || !this.host.plainEditOverlayEl) return;
 		const rootRect = this.host.derivedRootEl.getBoundingClientRect();
+		if (!options.refine) {
+			const lineEl = this.host.getLineElement(range.startLine);
+			if (!lineEl) return;
+			this.host.ensureLineRendered(lineEl);
+			const lineRect = lineEl.getBoundingClientRect();
+			const quickRect = lineRect;
+			const left =
+				quickRect.left -
+				rootRect.left +
+				this.host.derivedRootEl.scrollLeft;
+			const top =
+				quickRect.top -
+				rootRect.top +
+				this.host.derivedRootEl.scrollTop;
+			const width = Math.max(1, quickRect.width);
+			const height = Math.max(1, quickRect.height);
+			this.host.plainEditOverlayEl.style.left = `${left}px`;
+			this.host.plainEditOverlayEl.style.top = `${top}px`;
+			this.host.plainEditOverlayEl.style.width = `${width}px`;
+			this.host.plainEditOverlayEl.style.height = `${height}px`;
+			this.host.plainEditOverlayBaseRect = { left, top, width, height };
+			this.scheduleInitialRefine();
+			return;
+		}
 		let unionRect: DOMRect | null = null;
 		const merge = (a: DOMRect, b: DOMRect): DOMRect => {
 			const left = Math.min(a.left, b.left);
@@ -566,30 +734,6 @@ export class SoTPlainEditController {
 			unionRect = unionRect ? merge(unionRect, base) : base;
 		}
 		if (!unionRect) return;
-		const writingMode =
-			this.host.derivedRootEl.dataset.writingMode ||
-			getComputedStyle(this.host.derivedRootEl).writingMode;
-		const rootRight =
-			rootRect.left + this.host.derivedRootEl.clientWidth;
-		const rootBottom =
-			rootRect.top + this.host.derivedRootEl.clientHeight;
-		if (writingMode.startsWith("vertical")) {
-			const bottom = Math.max(unionRect.bottom, rootBottom);
-			unionRect = DOMRect.fromRect({
-				x: unionRect.left,
-				y: unionRect.top,
-				width: unionRect.width,
-				height: Math.max(1, bottom - unionRect.top),
-			});
-		} else {
-			const right = Math.max(unionRect.right, rootRight);
-			unionRect = DOMRect.fromRect({
-				x: unionRect.left,
-				y: unionRect.top,
-				width: Math.max(1, right - unionRect.left),
-				height: unionRect.height,
-			});
-		}
 		const left =
 			unionRect.left - rootRect.left + this.host.derivedRootEl.scrollLeft;
 		const top =
@@ -601,7 +745,6 @@ export class SoTPlainEditController {
 		this.host.plainEditOverlayEl.style.width = `${width}px`;
 		this.host.plainEditOverlayEl.style.height = `${height}px`;
 		this.host.plainEditOverlayBaseRect = { left, top, width, height };
-		this.adjustOverlaySize();
 	}
 
 	startFromSelection(): void {
@@ -651,7 +794,8 @@ export class SoTPlainEditController {
 			originalText: text,
 		};
 		this.applyTargets(next);
-		this.updateOverlayPosition(next);
+		this.overlayPositionNeedsRefine = true;
+		this.updateOverlayPositionInternal(next, { refine: false });
 	}
 
 	commit(save: boolean, updateSelection: boolean): void {
@@ -704,6 +848,7 @@ export class SoTPlainEditController {
 			this.clearTargets();
 			this.host.plainEditRange = null;
 			this.host.plainEditOverlayEl.style.display = "none";
+			this.resetOverlayInputState();
 		} finally {
 			this.host.plainEditCommitting = false;
 		}

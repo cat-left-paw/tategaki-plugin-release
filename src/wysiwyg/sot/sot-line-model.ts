@@ -374,7 +374,7 @@ export function recomputeLineBlockKinds(
 		if (term.trim().length === 0) continue;
 		if (!isDefLine(def)) continue;
 
-		let start = i;
+		const start = i;
 		let end = i + 1;
 
 		let j = i + 2;

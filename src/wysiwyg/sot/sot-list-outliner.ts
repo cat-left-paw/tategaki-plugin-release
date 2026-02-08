@@ -17,20 +17,13 @@ export type SoTListOutlinerHost = {
 
 type ListOutlinerAction = "indent" | "outdent" | "move-up" | "move-down";
 
-const arrowKeys = new Set([
-	"ArrowUp",
-	"ArrowDown",
-	"ArrowLeft",
-	"ArrowRight",
-]);
-
 export function handleListOutlinerKeydown(
 	host: SoTListOutlinerHost,
 	event: KeyboardEvent,
 ): boolean {
 	const action = resolveAction(host, event);
 	if (!action) return false;
-	const applied = runListOutlinerAction(host, action);
+	const applied = runListOutlinerActionInternal(host, action);
 	return action === "indent" || action === "outdent" ? true : applied;
 }
 
@@ -38,26 +31,22 @@ function resolveAction(
 	host: SoTListOutlinerHost,
 	event: KeyboardEvent,
 ): ListOutlinerAction | null {
+	void host;
 	const isMod = event.metaKey || event.ctrlKey;
 	if (!isMod && !event.altKey && event.key === "Tab") {
 		return event.shiftKey ? "outdent" : "indent";
 	}
-	if (!isMod || event.shiftKey || event.altKey) return null;
-	if (!arrowKeys.has(event.key)) return null;
-
-	const writingMode = host.getWritingMode();
-	const isVertical = writingMode === "vertical-rl";
-	if (isVertical) {
-		if (event.key === "ArrowRight") return "move-up";
-		if (event.key === "ArrowLeft") return "move-down";
-		return null;
-	}
-	if (event.key === "ArrowUp") return "move-up";
-	if (event.key === "ArrowDown") return "move-down";
 	return null;
 }
 
-function runListOutlinerAction(
+export function runListOutlinerAction(
+	host: SoTListOutlinerHost,
+	action: ListOutlinerAction,
+): boolean {
+	return runListOutlinerActionInternal(host, action);
+}
+
+function runListOutlinerActionInternal(
 	host: SoTListOutlinerHost,
 	action: ListOutlinerAction,
 ): boolean {
@@ -231,7 +220,7 @@ function applyMove(
 		if (prevStart === null) return false;
 		const prevBlock = getListItemBlock(lines, lineBlockKinds, prevStart);
 		if (!prevBlock) return false;
-		return swapBlocks(
+		const swapped = swapBlocks(
 			host,
 			lines,
 			ranges,
@@ -240,6 +229,13 @@ function applyMove(
 			block,
 			true,
 		);
+		if (swapped) {
+			renumberOrderedListsAround(host, lineBlockKinds, [
+				prevBlock,
+				block,
+			]);
+		}
+		return swapped;
 	}
 
 	const nextStart = findNextSiblingStart(
@@ -252,7 +248,19 @@ function applyMove(
 	if (nextStart === null) return false;
 	const nextBlock = getListItemBlock(lines, lineBlockKinds, nextStart);
 	if (!nextBlock) return false;
-	return swapBlocks(host, lines, ranges, selection, block, nextBlock, false);
+	const swapped = swapBlocks(
+		host,
+		lines,
+		ranges,
+		selection,
+		block,
+		nextBlock,
+		false,
+	);
+	if (swapped) {
+		renumberOrderedListsAround(host, lineBlockKinds, [block, nextBlock]);
+	}
+	return swapped;
 }
 
 type ListBlock = {

@@ -50,11 +50,6 @@ export interface TategakiCompatEditorOptions {
 export function createTategakiCompatEditor(options: TategakiCompatEditorOptions): Editor {
 	const { element, content = "", onUpdate, settings } = options;
 	const initialMode: WritingMode = settings.common.writingMode;
-	const escapeHtml = (value: string): string =>
-		value
-			.replace(/&/g, "&amp;")
-			.replace(/</g, "&lt;")
-			.replace(/>/g, "&gt;");
 
 	element.classList.add("tategaki-wysiwyg-editor");
 	element.setAttribute("data-writing-mode", initialMode);

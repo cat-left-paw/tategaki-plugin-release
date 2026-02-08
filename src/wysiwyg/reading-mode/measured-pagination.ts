@@ -12,7 +12,6 @@ import {
 	PROHIBITED_LINE_START_CHARS,
 	PROHIBITED_LINE_END_CHARS,
 } from "./measured-pagination-types";
-import { debugLog, debugWarn } from "../../shared/logger";
 
 export class MeasuredPagination {
 	private options: MeasuredPaginationOptions;
@@ -38,7 +37,6 @@ export class MeasuredPagination {
 		const slice = { start: this.getNow() };
 		const doc = this.options.container?.ownerDocument;
 		if (!doc) {
-			debugWarn("[MeasuredPagination] Missing ownerDocument");
 			return [];
 		}
 
@@ -56,11 +54,8 @@ export class MeasuredPagination {
 		const totalLength =
 			prefixLengths.length > 0 ? prefixLengths[prefixLengths.length - 1] : 0;
 
-		debugLog(`[MeasuredPagination] Content text length: ${totalLength}`);
-		debugLog(`[MeasuredPagination] Text nodes: ${textNodes.length}`);
 
 		if (totalLength === 0) {
-			debugWarn("[MeasuredPagination] No content to paginate");
 			return [];
 		}
 
@@ -70,7 +65,6 @@ export class MeasuredPagination {
 			this.options.writingMode,
 			doc
 		);
-		debugLog(`[MeasuredPagination] Created ${blockSegments.length} block segments`);
 
 		// ページネーション状態を初期化
 		const state: PaginationState = {
@@ -94,7 +88,6 @@ export class MeasuredPagination {
 		// ページを順次生成
 		while (state.startIndex < state.totalLength && iteration < maxIterations) {
 			if (this.cancelled) {
-				debugLog("[MeasuredPagination] Pagination cancelled");
 				break;
 			}
 
@@ -104,7 +97,6 @@ export class MeasuredPagination {
 				timeBudgetMs
 			);
 			if (!pageInfo) {
-				debugWarn("[MeasuredPagination] computeNextPagePrecise returned null");
 				break;
 			}
 
@@ -113,7 +105,6 @@ export class MeasuredPagination {
 				this.options.onPage(pageInfo);
 			}
 
-			debugLog(`[MeasuredPagination] Page ${state.pageCount}: chars=${pageInfo.charCount}, range=${pageInfo.startIndex}-${pageInfo.endIndex}`);
 
 			// 進捗通知
 			if (this.options.onProgress) {
@@ -122,14 +113,12 @@ export class MeasuredPagination {
 
 			await this.maybeYield(slice, timeBudgetMs);
 			if (this.cancelled) {
-				debugLog("[MeasuredPagination] Pagination cancelled");
 				break;
 			}
 
 			iteration++;
 		}
 
-		debugLog(`[MeasuredPagination] Pagination complete: ${pages.length} pages, ${iteration} iterations`);
 		return pages;
 	}
 
@@ -270,9 +259,9 @@ export class MeasuredPagination {
 			if (fallbackPrimary > 0) {
 				return fallbackPrimary;
 			}
-		} catch (error) {
-			debugLog("[MeasuredPagination] measureBlockAxisSize failed", error);
-		}
+			} catch (error) {
+				// Range/measure failures fall back to 0.
+			}
 
 		return 0;
 	}
@@ -464,6 +453,8 @@ export class MeasuredPagination {
 			sanityGuard++;
 		}
 
+		const maxTake = finalTake;
+
 		// 禁則処理
 		finalTake = this.adjustBreakForKinsoku(
 			state,
@@ -478,6 +469,26 @@ export class MeasuredPagination {
 			wrapper,
 			finalTake
 		);
+		if (finalTake < maxTake) {
+			wrapper.innerHTML = "";
+			const probeFrag = this.cloneFragmentByCharRange(
+				state.textNodes,
+				state.prefixLengths,
+				state.startIndex,
+				finalTake
+			);
+			wrapper.appendChild(probeFrag);
+			this.pruneTrailingWhitespaceNodes(wrapper);
+			wrapper.offsetHeight;
+			const lastBlock = this.findLastLeafBlock(wrapper);
+			const ratio =
+				lastBlock && this.isPageContinuation(state, state.startIndex + finalTake)
+					? this.getLastLineInlineRatio(lastBlock, state.writingMode)
+					: null;
+			if (ratio !== null && ratio < 0.7) {
+				finalTake = maxTake;
+			}
+		}
 
 		// 最終的なコンテンツを設定
 		wrapper.innerHTML = "";
@@ -497,7 +508,10 @@ export class MeasuredPagination {
 		const isContinuation = this.isPageContinuation(state, pageEndIndex);
 		if (isContinuation) {
 			tempPage.setAttribute("data-continued", "true");
-			this.markContinuationBlock(wrapper);
+			const block = this.markContinuationBlock(wrapper);
+			if (block) {
+				this.markShortLastLineIfNeeded(block, state.writingMode);
+			}
 		} else {
 			tempPage.removeAttribute("data-continued");
 		}
@@ -517,7 +531,15 @@ export class MeasuredPagination {
 		return pageInfo;
 	}
 
-	private markContinuationBlock(wrapper: HTMLElement): void {
+	private markContinuationBlock(wrapper: HTMLElement): HTMLElement | null {
+		const block = this.findLastLeafBlock(wrapper);
+		if (block) {
+			block.classList.add("tategaki-continued-block");
+		}
+		return block;
+	}
+
+	private findLastLeafBlock(wrapper: HTMLElement): HTMLElement | null {
 		const blockSelector = "p, li, blockquote, h1, h2, h3, h4, h5, h6, div";
 		const blocks = Array.from(
 			wrapper.querySelectorAll<HTMLElement>(blockSelector)
@@ -527,9 +549,54 @@ export class MeasuredPagination {
 			if (block.querySelector(blockSelector)) {
 				continue;
 			}
-			block.classList.add("tategaki-continued-block");
+			return block;
+		}
+		return null;
+	}
+
+	private markShortLastLineIfNeeded(
+		block: HTMLElement,
+		writingMode: string
+	): void {
+		const ratio = this.getLastLineInlineRatio(block, writingMode);
+		if (ratio === null) {
+			block.classList.remove("tategaki-continued-block-short-last");
 			return;
 		}
+		if (ratio < 0.7) {
+			block.classList.add("tategaki-continued-block-short-last");
+		} else {
+			block.classList.remove("tategaki-continued-block-short-last");
+		}
+	}
+
+	private getLastLineInlineRatio(
+		block: HTMLElement,
+		writingMode: string
+	): number | null {
+		const isVertical =
+			writingMode === "vertical-rl" || writingMode === "vertical-lr";
+		const doc = block.ownerDocument;
+		const range = doc.createRange();
+		const previousAlign = block.style.textAlignLast;
+		block.style.textAlignLast = "start";
+		block.offsetWidth; // force layout
+		range.selectNodeContents(block);
+		const rects = Array.from(range.getClientRects()).filter(
+			(rect) => rect.width > 0 && rect.height > 0
+		);
+		const lastRect = rects.length > 0 ? rects[rects.length - 1] : null;
+		const blockRect = block.getBoundingClientRect();
+		block.style.textAlignLast = previousAlign;
+		if (!lastRect) {
+			return null;
+		}
+		const inlineSize = isVertical ? lastRect.height : lastRect.width;
+		const blockInline = isVertical ? blockRect.height : blockRect.width;
+		if (!Number.isFinite(blockInline) || blockInline <= 0) {
+			return null;
+		}
+		return inlineSize / blockInline;
 	}
 
 	private isPageContinuation(
@@ -706,11 +773,32 @@ export class MeasuredPagination {
 				n.nodeType === Node.TEXT_NODE &&
 				n.nodeValue &&
 				n.nodeValue.length
-			)
+			) {
+				const textNode = n as Text;
+				if (this.isRubyAnnotationText(textNode)) {
+					n = walker.nextNode();
+					continue;
+				}
 				result.push(n as Text);
+			}
 			n = walker.nextNode();
 		}
 		return result;
+	}
+
+	private isRubyAnnotationText(node: Text): boolean {
+		let current = node.parentElement;
+		while (current) {
+			const tag = current.tagName;
+			if (tag === "RT" || tag === "RP") {
+				return true;
+			}
+			if (current.classList.contains("tategaki-aozora-ruby-rt")) {
+				return true;
+			}
+			current = current.parentElement;
+		}
+		return false;
 	}
 
 	/**
@@ -808,10 +896,112 @@ export class MeasuredPagination {
 		const isVertical = writingMode === "vertical-rl" || writingMode === "vertical-lr";
 
 		if (isVertical) {
-			return wrapper.scrollWidth > wrapper.clientWidth;
+			const overflow = wrapper.scrollWidth - wrapper.clientWidth;
+			if (overflow <= 0) {
+				return false;
+			}
+			if (this.isRubyOnlyOverflow(wrapper, writingMode)) {
+				return false;
+			}
+			if (this.allowRubyOverhang(wrapper, writingMode, overflow)) {
+				return false;
+			}
+			return true;
 		} else {
-			return wrapper.scrollHeight > wrapper.clientHeight;
+			const overflow = wrapper.scrollHeight - wrapper.clientHeight;
+			if (overflow <= 0) {
+				return false;
+			}
+			if (this.isRubyOnlyOverflow(wrapper, writingMode)) {
+				return false;
+			}
+			if (this.allowRubyOverhang(wrapper, writingMode, overflow)) {
+				return false;
+			}
+			return true;
 		}
+	}
+
+	private isRubyOnlyOverflow(
+		wrapper: HTMLElement,
+		writingMode: string
+	): boolean {
+		if (!this.wrapperHasRuby(wrapper)) {
+			return false;
+		}
+		const isVertical = writingMode === "vertical-rl" || writingMode === "vertical-lr";
+		const overflowWithoutRuby = this.withRubySuppressed(
+			wrapper,
+			() => {
+				wrapper.offsetWidth;
+				return isVertical
+					? wrapper.scrollWidth - wrapper.clientWidth
+					: wrapper.scrollHeight - wrapper.clientHeight;
+			}
+		);
+		return overflowWithoutRuby <= 0;
+	}
+
+	private wrapperHasRuby(wrapper: HTMLElement): boolean {
+		return (
+			!!wrapper.querySelector("ruby") ||
+			!!wrapper.querySelector(".tategaki-aozora-ruby") ||
+			!!wrapper.querySelector(".tategaki-aozora-ruby-rt")
+		);
+	}
+
+	private withRubySuppressed<T>(
+		wrapper: HTMLElement,
+		fn: () => T
+	): T {
+		const className = "tategaki-pagination-ignore-ruby";
+		const had = wrapper.classList.contains(className);
+		if (!had) {
+			wrapper.classList.add(className);
+		}
+		try {
+			return fn();
+		} finally {
+			if (!had) {
+				wrapper.classList.remove(className);
+			}
+		}
+	}
+
+	private allowRubyOverhang(
+		wrapper: HTMLElement,
+		writingMode: string,
+		overflow: number
+	): boolean {
+		if (overflow <= 0) return false;
+		if (!this.wrapperHasRuby(wrapper)) return false;
+		const allowance = this.getRubyOverhangAllowancePx(wrapper, writingMode);
+		return allowance > 0 && overflow <= allowance;
+	}
+
+	private getRubyOverhangAllowancePx(
+		wrapper: HTMLElement,
+		writingMode: string
+	): number {
+		const view = wrapper.ownerDocument.defaultView;
+		if (!view) return 0;
+		const style = view.getComputedStyle(wrapper);
+		const fontSize = Number.parseFloat(style.fontSize);
+		if (!Number.isFinite(fontSize) || fontSize <= 0) {
+			return 0;
+		}
+		const rubyScaleRaw = Number.parseFloat(
+			style.getPropertyValue("--tategaki-ruby-size")
+		);
+		const rubyScale = Number.isFinite(rubyScaleRaw) ? rubyScaleRaw : 0.5;
+		const gapVar =
+			writingMode === "vertical-rl" || writingMode === "vertical-lr"
+				? "--tategaki-ruby-gap-vertical"
+				: "--tategaki-ruby-gap-horizontal";
+		const gapRaw = Number.parseFloat(style.getPropertyValue(gapVar));
+		const gapEm = Number.isFinite(gapRaw) ? gapRaw : 0;
+		const allowanceEm = Math.min(1.2, Math.max(0.2, rubyScale + gapEm));
+		return fontSize * allowanceEm;
 	}
 
 	/**

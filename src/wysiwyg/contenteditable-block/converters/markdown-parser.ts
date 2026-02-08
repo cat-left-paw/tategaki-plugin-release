@@ -23,14 +23,17 @@ interface MarkdownParserOptions {
  * Markdownテキストから行ごとのブロックモデルを生成
  * 1行 = 1ブロック（改行区切り）
  */
-export function markdownToDocument(markdown: string, options: MarkdownParserOptions = {}): DocumentModel {
+export async function markdownToDocument(
+	markdown: string,
+	options: MarkdownParserOptions = {}
+): Promise<DocumentModel> {
 	const segments = splitMarkdown(markdown);
 	const frontmatterLineIndices = detectFrontmatterLineIndices(segments);
 	const blocks: BlockNode[] = [];
 	const converterOptions: MarkdownToHtmlOptions = {
 		enableRuby: options.enableRuby,
 	};
-	const toHtml = (md: string): string =>
+	const toHtml = (md: string): Promise<string> =>
 		MarkdownConverter.markdownToHtml(md, converterOptions);
 
 	let i = 0;
@@ -68,7 +71,7 @@ export function markdownToDocument(markdown: string, options: MarkdownParserOpti
 
 			if (codeBlockEnded) {
 				const codeBlockText = codeBlockLines.join("\n");
-				const block = parseCodeFenceSegment(
+				const block = await parseCodeFenceSegment(
 					codeBlockText,
 					codeBlockText,
 					converterOptions
@@ -111,7 +114,7 @@ export function markdownToDocument(markdown: string, options: MarkdownParserOpti
 
 			// リストブロック全体を変換
 			const listBlock = listLines.join("\n");
-			const listBlocks = parseListSegment(listBlock, converterOptions);
+			const listBlocks = await parseListSegment(listBlock, converterOptions);
 			blocks.push(...listBlocks);
 			i = j;
 			continue;
@@ -119,14 +122,14 @@ export function markdownToDocument(markdown: string, options: MarkdownParserOpti
 
 		const headingLevel = extractHeadingLevel(trimmed);
 		if (headingLevel) {
-			const html = toHtml(segment);
+			const html = await toHtml(segment);
 			blocks.push(createHeadingBlock(headingLevel, html, { markdown: segment, metadata }));
 			i++;
 			continue;
 		}
 
 		if (isBlockquoteSegment(trimmed)) {
-			const html = toHtml(segment);
+			const html = await toHtml(segment);
 			blocks.push(createBlockquoteBlock(html, { markdown: segment, metadata }));
 			i++;
 			continue;
@@ -144,7 +147,7 @@ export function markdownToDocument(markdown: string, options: MarkdownParserOpti
 			continue;
 		}
 
-		const html = toHtml(segment);
+		const html = await toHtml(segment);
 		blocks.push(createParagraphBlock(html, { markdown: segment, metadata }));
 		i++;
 	}
@@ -182,7 +185,7 @@ export function documentToHtml(model: DocumentModel, separator = "\n\n"): string
 /**
  * HTMLフラグメント群からブロックモデルを構築
  */
-export function htmlToDocument(html: string): DocumentModel {
+export async function htmlToDocument(html: string): Promise<DocumentModel> {
 	const markdown = MarkdownConverter.htmlToMarkdown(html);
 	return markdownToDocument(markdown);
 }
@@ -217,10 +220,10 @@ function isListLine(line: string): boolean {
 	return /^(\s*)([-*+]|\d+\.)\s+/.test(line);
 }
 
-function parseListSegment(
+async function parseListSegment(
 	segment: string,
 	options: MarkdownToHtmlOptions
-): BlockNode[] {
+): Promise<BlockNode[]> {
 	const lines = segment
 		.replace(/\t/g, "    ")
 		.split("\n")
@@ -239,7 +242,7 @@ function parseListSegment(
 
 		const match = line.match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
 		if (!match) {
-			const html = MarkdownConverter.markdownToHtml(line.trim(), options);
+			const html = await MarkdownConverter.markdownToHtml(line.trim(), options);
 			blocks.push(createParagraphBlock(html, { markdown: line.trim() }));
 			index++;
 			continue;
@@ -282,7 +285,7 @@ function parseListSegment(
 
 		const contentMarkdown = contentLines.join("\n");
 		const itemMarkdown = itemMarkdownLines.join("\n"); // リストアイテムの元のMarkdown
-		const html = MarkdownConverter.markdownToHtml(contentMarkdown, options);
+		const html = await MarkdownConverter.markdownToHtml(contentMarkdown, options);
 		const state = ensureListState(listStates, depth, listType, startNumber);
 		const listNumber =
 			listType === "ordered"
@@ -310,10 +313,9 @@ function parseListSegment(
 	return blocks.length
 		? blocks
 		: [
-			createParagraphBlock(
-				MarkdownConverter.markdownToHtml(segment, options),
-				{ markdown: segment }
-			),
+			createParagraphBlock(await MarkdownConverter.markdownToHtml(segment, options), {
+				markdown: segment,
+			}),
 		];
 }
 
@@ -343,16 +345,16 @@ function isCodeFenceSegment(segment: string): boolean {
 	return firstLine ? /^```/.test(firstLine.trim()) : false;
 }
 
-function parseCodeFenceSegment(
+async function parseCodeFenceSegment(
 	segment: string,
 	markdownSource: string,
 	options: MarkdownToHtmlOptions
-): BlockNode {
+): Promise<BlockNode> {
 	const lines = segment.split("\n");
 	const firstLine = lines[0] ?? "";
 	const fenceMatch = firstLine.match(/^```([^\s]*)/);
 	const language = fenceMatch && fenceMatch[1] ? fenceMatch[1] : undefined;
-	const html = MarkdownConverter.markdownToHtml(segment, options);
+	const html = await MarkdownConverter.markdownToHtml(segment, options);
 	return createCodeBlock(html, language, { markdown: markdownSource });
 }
 

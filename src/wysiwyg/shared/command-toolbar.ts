@@ -133,6 +133,10 @@ export class CommandToolbar {
 			this.createSeparator();
 			this.createRubyToggleButton();
 		}
+		if (this.adapter.togglePlainTextView) {
+			this.createSeparator();
+			this.createPlainTextToggleButton();
+		}
 		this.createSeparator();
 		this.createSourceToggleButton();
 		if (this.adapter.toggleCeImeMode) {
@@ -210,17 +214,27 @@ export class CommandToolbar {
 	}
 
 	private createWritingModeButton(): void {
+		const getIcon = (): string =>
+			this.adapter.getWritingMode?.() === "vertical-rl"
+				? "arrow-down-up"
+				: "arrow-left-right";
+		const getTitle = (): string =>
+			this.adapter.getWritingMode?.() === "vertical-rl"
+				? "横書きに切り替え"
+				: "縦書きに切り替え";
 		this.writingModeButton = this.createButton(
 			"writingMode",
-			"arrow-down-up",
+			getIcon(),
 			"書字方向切り替え",
 			this.adapter.toggleWritingMode
 				? () => {
 						this.adapter.toggleWritingMode?.();
-				  }
+					}
 				: undefined,
 			undefined,
-			() => !this.adapter.toggleWritingMode
+			() => !this.adapter.toggleWritingMode,
+			getIcon,
+			getTitle
 		);
 	}
 
@@ -285,7 +299,8 @@ export class CommandToolbar {
 			this.adapter.isBoldActive,
 			() =>
 				!this.adapter.toggleBold ||
-				!(this.adapter.hasSelection?.() ?? false)
+				!(this.adapter.hasSelection?.() ?? false) ||
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
 		);
 		this.createButton(
 			"italic",
@@ -295,7 +310,8 @@ export class CommandToolbar {
 			this.adapter.isItalicActive,
 			() =>
 				!this.adapter.toggleItalic ||
-				!(this.adapter.hasSelection?.() ?? false)
+				!(this.adapter.hasSelection?.() ?? false) ||
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
 		);
 		this.createButton(
 			"strikethrough",
@@ -305,7 +321,8 @@ export class CommandToolbar {
 			this.adapter.isStrikethroughActive,
 			() =>
 				!this.adapter.toggleStrikethrough ||
-				!(this.adapter.hasSelection?.() ?? false)
+				!(this.adapter.hasSelection?.() ?? false) ||
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
 		);
 		if (this.adapter.toggleUnderline) {
 			this.createButton(
@@ -316,7 +333,8 @@ export class CommandToolbar {
 				this.adapter.isUnderlineActive,
 				() =>
 					!this.adapter.toggleUnderline ||
-					!(this.adapter.hasSelection?.() ?? false)
+					!(this.adapter.hasSelection?.() ?? false) ||
+					!(this.adapter.isInlineSelectionAllowed?.() ?? true)
 			);
 		}
 		this.createButton(
@@ -327,7 +345,8 @@ export class CommandToolbar {
 			this.adapter.isHighlightActive,
 			() =>
 				!this.adapter.toggleHighlight ||
-				!(this.adapter.hasSelection?.() ?? false)
+				!(this.adapter.hasSelection?.() ?? false) ||
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
 		);
 		this.createButton(
 			"inlineCode",
@@ -337,7 +356,8 @@ export class CommandToolbar {
 			this.adapter.isInlineCodeActive,
 			() =>
 				!this.adapter.toggleInlineCode ||
-				!(this.adapter.hasSelection?.() ?? false)
+				!(this.adapter.hasSelection?.() ?? false) ||
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
 		);
 	}
 
@@ -430,7 +450,9 @@ export class CommandToolbar {
 			"リンク挿入",
 			this.adapter.insertLink,
 			undefined,
-			() => !this.adapter.insertLink
+			() =>
+				!this.adapter.insertLink ||
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
 		);
 		this.createButton(
 			"ruby",
@@ -438,7 +460,10 @@ export class CommandToolbar {
 			"ルビ挿入",
 			this.adapter.insertRuby,
 			undefined,
-			() => !this.adapter.insertRuby
+			() =>
+				!this.adapter.insertRuby ||
+				!(this.adapter.hasSelection?.() ?? false) ||
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
 		);
 		const getHrIcon = (): string => {
 			const mode = this.adapter.getWritingMode?.();
@@ -475,13 +500,31 @@ export class CommandToolbar {
 			"ルビ表示のオン/オフ",
 			this.adapter.toggleRuby,
 			() => this.adapter.isRubyEnabled?.() ?? true,
-			() => !this.adapter.toggleRuby,
+			() =>
+				!this.adapter.toggleRuby ||
+				(this.adapter.isPlainTextView?.() ?? false),
 			() =>
 				this.adapter.isRubyEnabled?.() === false ? "eye-off" : "eye",
 			() =>
 				this.adapter.isRubyEnabled?.() === false
 					? "ルビ表示をオンにする"
 					: "ルビ表示をオフにする"
+		);
+	}
+
+	private createPlainTextToggleButton(): void {
+		this.createButton(
+			"plainTextView",
+			"type",
+			"全文プレーン表示",
+			this.adapter.togglePlainTextView,
+			() => this.adapter.isPlainTextView?.() ?? false,
+			() => !this.adapter.togglePlainTextView,
+			undefined,
+			() =>
+				this.adapter.isPlainTextView?.() ?? false
+					? "全文プレーン表示をオフにする"
+					: "全文プレーン表示をオンにする"
 		);
 	}
 
@@ -492,7 +535,9 @@ export class CommandToolbar {
 			"ソーステキスト編集",
 			this.adapter.toggleSourceMode,
 			() => this.adapter.isSourceMode?.() ?? false,
-			() => !this.adapter.toggleSourceMode,
+			() =>
+				!this.adapter.toggleSourceMode ||
+				(this.adapter.isPlainTextView?.() ?? false),
 			() =>
 				this.adapter.isSourceMode?.() ?? false
 					? "file-code"
@@ -547,7 +592,7 @@ export class CommandToolbar {
 		const writingMode = this.adapter.getWritingMode?.();
 		if (this.writingModeButton) {
 			const label =
-				writingMode === "vertical-rl" ? "縦書き" : "横書き";
+				writingMode === "vertical-rl" ? "横書き" : "縦書き";
 			this.writingModeButton.setAttr(
 				"aria-label",
 				`${label}に切り替え`

@@ -681,7 +681,7 @@ export class PlainEditMode {
 
 	private stripInlineFormatting(text: string): string {
 		let result = text;
-		result = result.replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1");
+		result = result.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
 		result = result.replace(/==([^=\n]+)==/g, "$1");
 		result = result.replace(/\*\*([^*\n]+)\*\*/g, "$1");
 		result = result.replace(/\*([^*\n]+)\*/g, "$1");

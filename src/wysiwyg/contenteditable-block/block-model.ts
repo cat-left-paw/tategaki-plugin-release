@@ -210,13 +210,15 @@ export class DocumentModel {
 		});
 
 		// プレースホルダーのbrタグを除外
-		turndownService.addRule('removePlaceholderBr', {
-			filter: (node) => {
-				return node.nodeName === 'BR' &&
-					   node.getAttribute('data-tategaki-placeholder') === '1';
-			},
-			replacement: () => ''
-		});
+			turndownService.addRule('removePlaceholderBr', {
+				filter: (node) => {
+					return (
+						node.nodeName === "BR" &&
+						node.getAttribute("data-tategaki-placeholder") === "1"
+					);
+				},
+				replacement: () => ''
+			});
 
 		return turndownService.turndown(html);
 	}

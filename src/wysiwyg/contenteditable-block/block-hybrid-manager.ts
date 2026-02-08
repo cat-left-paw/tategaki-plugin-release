@@ -33,7 +33,7 @@ export interface BlockModeState {
 export interface BlockHybridManagerOptions {
 	getModel: () => DocumentModel;
 	getBlockElement: (blockId: string) => HTMLElement | null;
-	markdownToHtml: (markdown: string) => string;
+	markdownToHtml: (markdown: string) => Promise<string>;
 	htmlToMarkdown: (html: string) => string;
 	onBlockModeChange?: (blockId: string, mode: BlockDisplayMode) => void;
 	onUpdate?: () => void;
@@ -75,7 +75,7 @@ export class BlockHybridManager {
 		// 全てのプレーン表示ブロックを装飾表示に戻す
 		const plainBlockIds = Array.from(this.blockModes.keys());
 		for (const blockId of plainBlockIds) {
-			this.endPlainEdit(blockId, true);
+			void this.endPlainEdit(blockId, true);
 		}
 	}
 
@@ -91,7 +91,7 @@ export class BlockHybridManager {
 		// 現在プレーン表示されている他のブロックを装飾表示に戻す
 		for (const [existingBlockId, state] of this.blockModes.entries()) {
 			if (existingBlockId !== blockId && state.mode === BlockDisplayMode.PLAIN) {
-				this.endPlainEdit(existingBlockId, true);
+				void this.endPlainEdit(existingBlockId, true);
 			}
 		}
 
@@ -114,7 +114,7 @@ export class BlockHybridManager {
 		if (mode === BlockDisplayMode.PLAIN) {
 			this.startPlainEdit(blockId);
 		} else {
-			this.endPlainEdit(blockId, true);
+			void this.endPlainEdit(blockId, true);
 		}
 	}
 
@@ -195,7 +195,7 @@ export class BlockHybridManager {
 	/**
 	 * プレーン編集モードを終了
 	 */
-	endPlainEdit(blockId: string, save: boolean): void {
+	async endPlainEdit(blockId: string, save: boolean): Promise<void> {
 		const state = this.blockModes.get(blockId);
 		if (!state) {
 			return; // プレーンモードではない
@@ -212,15 +212,15 @@ export class BlockHybridManager {
 			const editedSource = block.textContent || '';
 
 			// Markdown → HTML に変換
-			const newHtml = this.options.markdownToHtml(editedSource);
+			const newHtml = await this.options.markdownToHtml(editedSource);
 
-			// モデルを更新
-			const model = this.options.getModel();
-			const updatedModel = model.updateBlockWithMarkdown(blockId, editedSource, newHtml);
+				// モデルを更新
+				const model = this.options.getModel();
+				void model.updateBlockWithMarkdown(blockId, editedSource, newHtml);
 
-			// 注意: モデルはイミュータブルなので、更新されたモデルを適用するには
-			// 外部（BlockEditor）でsetModelを呼ぶ必要がある
-			// ここではDOMだけ更新
+				// 注意: モデルはイミュータブルなので、更新されたモデルを適用するには
+				// 外部（BlockEditor）でsetModelを呼ぶ必要がある
+				// ここではDOMだけ更新
 			block.innerHTML = newHtml;
 		} else {
 			// 編集をキャンセル（元のHTMLに戻す）
@@ -323,7 +323,7 @@ export class BlockHybridManager {
 		// 全てのプレーンモードを終了
 		const blockIds = Array.from(this.blockModes.keys());
 		for (const blockId of blockIds) {
-			this.endPlainEdit(blockId, false);
+			void this.endPlainEdit(blockId, false);
 		}
 
 		this.blockModes.clear();

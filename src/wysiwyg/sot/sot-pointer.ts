@@ -13,19 +13,25 @@ export type SoTPointerContext = {
 	getDerivedRootEl: () => HTMLElement | null;
 	getDerivedContentEl: () => HTMLElement | null;
 	isCeImeMode: () => boolean;
+	isNativeSelectionEnabled?: () => boolean;
 	ensureLineRendered: (lineEl: HTMLElement) => void;
+	getLineRanges: () => Array<{ from: number; to: number }>;
 	getLineVisualRects: (lineEl: HTMLElement) => DOMRect[];
 	getLocalOffsetFromPoint: (
 		lineEl: HTMLElement,
 		clientX: number,
 		clientY: number,
-		lineLength: number
+		lineLength: number,
 	) => number | null;
-	normalizeOffsetToVisible: (offset: number, preferForward: boolean) => number;
+	normalizeOffsetToVisible: (
+		offset: number,
+		preferForward: boolean,
+	) => number;
 	setSelectionNormalized: (anchor: number, head: number) => void;
 	scheduleCaretUpdate: (force?: boolean) => void;
 	updateSelectionOverlay: () => void;
 	setAutoScrollSelecting: (active: boolean) => void;
+	setAutoScrollFast?: (active: boolean) => void;
 	focusInputSurface: (shouldFocus: boolean) => void;
 	syncSelectionToCe: () => void;
 	toggleHeadingFold: (lineIndex: number) => void;
@@ -40,6 +46,10 @@ export class SoTPointerHandler {
 	private autoScrollRaf: number | null = null;
 	private autoScrollActive = false;
 	private lastPointerEvent: PointerEvent | null = null;
+	private lastAutoScrollOffset: number | null = null;
+	private autoScrollRemainder = 0;
+	private lastAutoScrollAt: number | null = null;
+	private autoScrollFast = false;
 
 	constructor(context: SoTPointerContext) {
 		this.context = context;
@@ -53,11 +63,11 @@ export class SoTPointerHandler {
 		const target = event.target as HTMLElement | null;
 
 		const calloutToggleTarget = target?.closest(
-			".tategaki-md-callout-widget-content .callout-title, .tategaki-md-callout-widget-content .callout-fold"
+			".tategaki-md-callout-widget-content .callout-title, .tategaki-md-callout-widget-content .callout-fold",
 		) as HTMLElement | null;
 		if (calloutToggleTarget && !event.metaKey && !event.ctrlKey) {
 			const callout = calloutToggleTarget.closest(
-				".tategaki-md-callout-widget-content .callout"
+				".tategaki-md-callout-widget-content .callout",
 			) as HTMLElement | null;
 			if (callout?.classList.contains("is-collapsible")) {
 				event.preventDefault();
@@ -68,11 +78,11 @@ export class SoTPointerHandler {
 		}
 
 		const headingToggle = target?.closest(
-			".tategaki-md-heading-toggle"
+			".tategaki-md-heading-toggle",
 		) as HTMLElement | null;
 		if (headingToggle) {
 			const lineEl = headingToggle.closest(
-				".tategaki-sot-line"
+				".tategaki-sot-line",
 			) as HTMLElement | null;
 			const lineIndex = Number.parseInt(lineEl?.dataset.line ?? "", 10);
 			if (lineEl && Number.isFinite(lineIndex)) {
@@ -84,7 +94,7 @@ export class SoTPointerHandler {
 		}
 
 		const embedAnchor = target?.closest(
-			".tategaki-md-embed-widget-content a"
+			".tategaki-md-embed-widget-content a",
 		) as HTMLAnchorElement | null;
 		if (embedAnchor && (event.metaKey || event.ctrlKey)) {
 			const dataHref =
@@ -105,7 +115,7 @@ export class SoTPointerHandler {
 		}
 
 		const linkEl = target?.closest(
-			".tategaki-sot-run[data-href]"
+			".tategaki-sot-run[data-href]",
 		) as HTMLElement | null;
 		if (linkEl && (event.metaKey || event.ctrlKey)) {
 			const href = linkEl.dataset.href ?? "";
@@ -118,13 +128,13 @@ export class SoTPointerHandler {
 		}
 
 		const taskToggle = target?.closest(
-			".tategaki-md-task-box"
+			".tategaki-md-task-box",
 		) as HTMLElement | null;
 		if (taskToggle) {
 			event.preventDefault();
 			event.stopPropagation();
 			const lineEl = taskToggle.closest(
-				".tategaki-sot-line"
+				".tategaki-sot-line",
 			) as HTMLElement | null;
 			if (lineEl) {
 				this.context.toggleTaskForLineElement(lineEl);
@@ -142,32 +152,40 @@ export class SoTPointerHandler {
 			}
 			return;
 		}
+		if (this.context.isNativeSelectionEnabled?.()) {
+			return;
+		}
 
 		event.preventDefault();
 		rootEl.focus({ preventScroll: true });
 		const hitOffset = this.getOffsetFromPointerEvent(event);
 		if (hitOffset !== null) {
+			this.lastAutoScrollOffset = hitOffset;
+			this.autoScrollRemainder = 0;
 			const selection = sotEditor.getSelection();
 			const anchor = event.shiftKey ? selection.anchor : hitOffset;
 			this.context.setPointerState({
 				isPointerSelecting: true,
 				pointerSelectAnchor: this.context.normalizeOffsetToVisible(
 					anchor,
-					hitOffset >= anchor
+					hitOffset >= anchor,
 				),
 				pointerSelectPointerId: event.pointerId,
 			});
-			try {
-				rootEl.setPointerCapture(event.pointerId);
-			} catch (_) {}
-			this.context.setSelectionNormalized(anchor, hitOffset);
-			this.context.scheduleCaretUpdate(true);
-		}
+				try {
+					rootEl.setPointerCapture(event.pointerId);
+				} catch (_) {
+					// noop: setPointerCapture失敗は無視
+				}
+				this.context.setSelectionNormalized(anchor, hitOffset);
+				this.context.scheduleCaretUpdate(true);
+			}
 		this.context.focusInputSurface(true);
 	}
 
 	handlePointerMove(event: PointerEvent): void {
 		if (this.context.isCeImeMode()) return;
+		if (this.context.isNativeSelectionEnabled?.() && !this.autoScrollActive) return;
 		const sotEditor = this.context.getSotEditor();
 		if (!sotEditor) return;
 		const state = this.context.getPointerState();
@@ -181,13 +199,19 @@ export class SoTPointerHandler {
 		this.lastPointerEvent = event;
 		const hitOffset = this.getOffsetFromPointerEvent(event);
 		if (hitOffset === null || state.pointerSelectAnchor === null) return;
-		this.context.setSelectionNormalized(state.pointerSelectAnchor, hitOffset);
+		this.lastAutoScrollOffset = hitOffset;
+		this.autoScrollRemainder = 0;
+		this.context.setSelectionNormalized(
+			state.pointerSelectAnchor,
+			hitOffset,
+		);
 		this.context.updateSelectionOverlay();
 		this.updateAutoScroll();
 	}
 
 	handlePointerUp(event: PointerEvent): void {
 		if (this.context.isCeImeMode()) return;
+		if (this.context.isNativeSelectionEnabled?.() && !this.autoScrollActive) return;
 		const state = this.context.getPointerState();
 		if (!state.isPointerSelecting) return;
 		if (
@@ -198,37 +222,56 @@ export class SoTPointerHandler {
 		}
 		const hitOffset = this.getOffsetFromPointerEvent(event);
 		if (hitOffset !== null && state.pointerSelectAnchor !== null) {
-			this.context.setSelectionNormalized(state.pointerSelectAnchor, hitOffset);
+			this.lastAutoScrollOffset = hitOffset;
+			this.autoScrollRemainder = 0;
+			this.context.setSelectionNormalized(
+				state.pointerSelectAnchor,
+				hitOffset,
+			);
 			this.context.updateSelectionOverlay();
 		}
 		const rootEl = this.context.getDerivedRootEl();
 		if (rootEl && state.pointerSelectPointerId !== null) {
-			try {
-				rootEl.releasePointerCapture(state.pointerSelectPointerId);
-			} catch (_) {}
-		}
-		this.context.setPointerState({
-			isPointerSelecting: false,
+				try {
+					rootEl.releasePointerCapture(state.pointerSelectPointerId);
+				} catch (_) {
+					// noop: releasePointerCapture失敗は無視
+				}
+			}
+			this.context.setPointerState({
+				isPointerSelecting: false,
 			pointerSelectAnchor: null,
 			pointerSelectPointerId: null,
 		});
+		this.lastAutoScrollOffset = null;
+		this.autoScrollRemainder = 0;
 		this.stopAutoScroll();
 	}
 
 	private updateAutoScroll(): void {
+		if (this.context.isCeImeMode()) {
+			this.stopAutoScroll();
+			return;
+		}
 		const rootEl = this.context.getDerivedRootEl();
 		const state = this.context.getPointerState();
 		if (!rootEl || !this.lastPointerEvent || !state.isPointerSelecting) {
 			this.stopAutoScroll();
 			return;
 		}
-		const { delta } = this.computeAutoScrollDelta(rootEl, this.lastPointerEvent);
+		const { delta, axis } = this.computeAutoScrollDelta(
+			rootEl,
+			this.lastPointerEvent,
+		);
 		if (delta === 0) {
+			this.setAutoScrollFast(false);
 			this.stopAutoScroll();
 			return;
 		}
+		this.updateAutoScrollFast(rootEl, axis, this.lastPointerEvent);
 		if (this.autoScrollActive) return;
 		this.autoScrollActive = true;
+		this.lastAutoScrollAt = performance.now();
 		this.context.setAutoScrollSelecting(true);
 		this.autoScrollRaf = window.requestAnimationFrame(() => {
 			this.runAutoScroll();
@@ -237,6 +280,10 @@ export class SoTPointerHandler {
 
 	private runAutoScroll(): void {
 		if (!this.autoScrollActive) return;
+		if (this.context.isCeImeMode()) {
+			this.stopAutoScroll();
+			return;
+		}
 		const rootEl = this.context.getDerivedRootEl();
 		const state = this.context.getPointerState();
 		const event = this.lastPointerEvent;
@@ -246,18 +293,43 @@ export class SoTPointerHandler {
 		}
 		const { delta, axis } = this.computeAutoScrollDelta(rootEl, event);
 		if (delta === 0) {
+			this.setAutoScrollFast(false);
 			this.stopAutoScroll();
 			return;
 		}
+		this.updateAutoScrollFast(rootEl, axis, event);
+		const now = performance.now();
+		const last = this.lastAutoScrollAt ?? now;
+		this.lastAutoScrollAt = now;
+		const dt = Math.max(4, Math.min(now - last, 100));
+		const speedScale = Math.max(0.5, Math.min(3, dt / 16.67));
+		const effectiveDelta = delta * speedScale;
 		if (axis === "x") {
-			rootEl.scrollLeft += delta;
+			rootEl.scrollLeft += effectiveDelta;
 		} else {
-			rootEl.scrollTop += delta;
+			rootEl.scrollTop += effectiveDelta;
 		}
 		const hitOffset = this.getOffsetFromPointerEvent(event);
-		if (hitOffset !== null && state.pointerSelectAnchor !== null) {
-			this.context.setSelectionNormalized(state.pointerSelectAnchor, hitOffset);
-			this.context.updateSelectionOverlay();
+		if (state.pointerSelectAnchor !== null) {
+			const nextOffset =
+				hitOffset !== null
+					? hitOffset
+					: this.getAutoScrollFallbackOffset(
+							rootEl,
+							effectiveDelta,
+							axis,
+						);
+			if (nextOffset !== null) {
+				if (hitOffset !== null) {
+					this.lastAutoScrollOffset = hitOffset;
+					this.autoScrollRemainder = 0;
+				}
+				this.context.setSelectionNormalized(
+					state.pointerSelectAnchor,
+					nextOffset,
+				);
+				this.context.updateSelectionOverlay();
+			}
 		}
 		this.autoScrollRaf = window.requestAnimationFrame(() => {
 			this.runAutoScroll();
@@ -270,12 +342,14 @@ export class SoTPointerHandler {
 			this.autoScrollRaf = null;
 		}
 		this.autoScrollActive = false;
+		this.lastAutoScrollAt = null;
+		this.setAutoScrollFast(false);
 		this.context.setAutoScrollSelecting(false);
 	}
 
 	private computeAutoScrollDelta(
 		rootEl: HTMLElement,
-		event: PointerEvent
+		event: PointerEvent,
 	): { delta: number; axis: "x" | "y" } {
 		const rect = rootEl.getBoundingClientRect();
 		const writingMode = window.getComputedStyle(rootEl).writingMode;
@@ -286,13 +360,19 @@ export class SoTPointerHandler {
 			const distRight = rect.right - event.clientX;
 			if (distLeft < edgeThreshold) {
 				return {
-					delta: -this.computeAutoScrollSpeed(distLeft, edgeThreshold),
+					delta: -this.computeAutoScrollSpeed(
+						distLeft,
+						edgeThreshold,
+					),
 					axis: "x",
 				};
 			}
 			if (distRight < edgeThreshold) {
 				return {
-					delta: this.computeAutoScrollSpeed(distRight, edgeThreshold),
+					delta: this.computeAutoScrollSpeed(
+						distRight,
+						edgeThreshold,
+					),
 					axis: "x",
 				};
 			}
@@ -317,13 +397,137 @@ export class SoTPointerHandler {
 
 	private computeAutoScrollSpeed(
 		distance: number,
-		threshold: number
+		threshold: number,
 	): number {
 		const clamped = Math.max(0, Math.min(distance, threshold));
 		const factor = (threshold - clamped) / threshold;
-		const minSpeed = 2;
-		const maxSpeed = 24;
+		const minSpeed = 4;
+		const maxSpeed = 40;
 		return minSpeed + (maxSpeed - minSpeed) * factor;
+	}
+
+	private updateAutoScrollFast(
+		rootEl: HTMLElement,
+		axis: "x" | "y",
+		event: PointerEvent,
+	): void {
+		const factor = this.getAutoScrollSpeedFactor(rootEl, axis, event);
+		const totalLines = this.context.getLineRanges().length;
+		const effectiveThreshold = this.getAutoScrollFastThreshold(totalLines);
+		this.setAutoScrollFast(factor >= effectiveThreshold);
+	}
+
+	private setAutoScrollFast(active: boolean): void {
+		if (this.autoScrollFast === active) return;
+		this.autoScrollFast = active;
+		this.context.setAutoScrollFast?.(active);
+	}
+
+	private getAutoScrollSpeedFactor(
+		rootEl: HTMLElement,
+		axis: "x" | "y",
+		event: PointerEvent,
+	): number {
+		const rect = rootEl.getBoundingClientRect();
+		const edgeThreshold = 28;
+		if (axis === "x") {
+			const distLeft = event.clientX - rect.left;
+			const distRight = rect.right - event.clientX;
+			const dist = Math.min(distLeft, distRight);
+			const clamped = Math.max(0, Math.min(dist, edgeThreshold));
+			return (edgeThreshold - clamped) / edgeThreshold;
+		}
+		const distTop = event.clientY - rect.top;
+		const distBottom = rect.bottom - event.clientY;
+		const dist = Math.min(distTop, distBottom);
+		const clamped = Math.max(0, Math.min(dist, edgeThreshold));
+		return (edgeThreshold - clamped) / edgeThreshold;
+	}
+
+	private getAutoScrollFastThreshold(totalLines: number): number {
+		if (totalLines >= 20000) return 0;
+		if (totalLines >= 8000) return 0.7;
+		if (totalLines >= 4000) return 0.75;
+		if (totalLines >= 2000) return 0.8;
+		return 0.85;
+	}
+
+	private getAutoScrollFallbackOffset(
+		rootEl: HTMLElement,
+		delta: number,
+		axis: "x" | "y",
+	): number | null {
+		if (delta === 0) return null;
+		const baseOffset = this.lastAutoScrollOffset;
+		if (baseOffset === null) return null;
+		const ranges = this.context.getLineRanges();
+		if (ranges.length === 0) return baseOffset;
+		const currentLine = this.findLineIndexFromRanges(baseOffset, ranges);
+		if (currentLine === null) return baseOffset;
+		const extent = this.getLineExtent(rootEl);
+		const direction = delta > 0 ? 1 : -1;
+		this.autoScrollRemainder += delta;
+		const steps = Math.floor(
+			Math.abs(this.autoScrollRemainder) / Math.max(1, extent),
+		);
+		if (steps <= 0) return baseOffset;
+		this.autoScrollRemainder -= direction * steps * extent;
+		const forward = this.isForwardScroll(direction, axis, rootEl);
+		const nextLine = Math.max(
+			0,
+			Math.min(
+				ranges.length - 1,
+				currentLine + (forward ? steps : -steps),
+			),
+		);
+		const nextRange = ranges[nextLine];
+		if (!nextRange) return baseOffset;
+		const nextOffset = forward ? nextRange.to : nextRange.from;
+		this.lastAutoScrollOffset = nextOffset;
+		return nextOffset;
+	}
+
+	private getLineExtent(rootEl: HTMLElement): number {
+		const computed = window.getComputedStyle(rootEl);
+		const fontSize = Number.parseFloat(computed.fontSize) || 16;
+		const lineHeight =
+			Number.parseFloat(computed.lineHeight) ||
+			Math.max(1, fontSize * 1.6);
+		return Math.max(fontSize, lineHeight);
+	}
+
+	private isForwardScroll(
+		direction: number,
+		axis: "x" | "y",
+		rootEl: HTMLElement,
+	): boolean {
+		if (axis === "y") {
+			return direction > 0;
+		}
+		const writingMode = window.getComputedStyle(rootEl).writingMode;
+		const isVerticalRL = writingMode !== "vertical-lr";
+		return isVerticalRL ? direction < 0 : direction > 0;
+	}
+
+	private findLineIndexFromRanges(
+		offset: number,
+		ranges: Array<{ from: number; to: number }>,
+	): number | null {
+		let low = 0;
+		let high = ranges.length - 1;
+		while (low <= high) {
+			const mid = Math.floor((low + high) / 2);
+			const range = ranges[mid];
+			if (!range) break;
+			if (offset < range.from) {
+				high = mid - 1;
+			} else if (offset > range.to) {
+				low = mid + 1;
+			} else {
+				return mid;
+			}
+		}
+		return null;
 	}
 
 	private handleCeClickToLineEnd(event: PointerEvent): boolean {
@@ -334,12 +538,12 @@ export class SoTPointerHandler {
 		}
 		let lineEl = this.findLineElementFromPoint(
 			event.clientX,
-			event.clientY
+			event.clientY,
 		);
 		if (!lineEl) {
 			lineEl = this.findNearestLineElementFromPoint(
 				event.clientX,
-				event.clientY
+				event.clientY,
 			);
 		}
 		if (!lineEl) return false;
@@ -406,15 +610,15 @@ export class SoTPointerHandler {
 		if (!rootEl) return null;
 		const target = event.target as HTMLElement | null;
 		const widgetEl = target?.closest(
-			".tategaki-md-inline-widget"
+			".tategaki-md-inline-widget",
 		) as HTMLElement | null;
 		let lineEl = target?.closest(
-			".tategaki-sot-line"
+			".tategaki-sot-line",
 		) as HTMLElement | null;
 		if (!lineEl) {
 			lineEl = this.findLineElementFromPoint(
 				event.clientX,
-				event.clientY
+				event.clientY,
 			);
 		}
 		if (!lineEl) return null;
@@ -434,13 +638,13 @@ export class SoTPointerHandler {
 				const mid = rect.top + rect.height / 2;
 				return this.context.normalizeOffsetToVisible(
 					event.clientY > mid ? safeAbsTo : safeAbsFrom,
-					true
+					true,
 				);
 			}
 			const mid = rect.left + rect.width / 2;
 			return this.context.normalizeOffsetToVisible(
 				event.clientX > mid ? safeAbsTo : safeAbsFrom,
-				true
+				true,
 			);
 		}
 		const mdKind = lineEl.dataset.mdKind ?? "";
@@ -465,7 +669,7 @@ export class SoTPointerHandler {
 				lineEl,
 				event.clientX,
 				event.clientY,
-				lineLength
+				lineLength,
 			) ?? 0;
 		const clamped = Math.max(0, Math.min(localOffset, lineLength));
 		return this.context.normalizeOffsetToVisible(from + clamped, true);
@@ -473,18 +677,18 @@ export class SoTPointerHandler {
 
 	private findLineElementFromPoint(
 		clientX: number,
-		clientY: number
+		clientY: number,
 	): HTMLElement | null {
 		const el = document.elementFromPoint(
 			clientX,
-			clientY
+			clientY,
 		) as HTMLElement | null;
 		return el?.closest(".tategaki-sot-line") ?? null;
 	}
 
 	private findNearestLineElementFromPoint(
 		clientX: number,
-		clientY: number
+		clientY: number,
 	): HTMLElement | null {
 		const contentEl = this.context.getDerivedContentEl();
 		if (!contentEl) return null;
@@ -534,9 +738,17 @@ export class SoTPointerHandler {
 			const right = left + width;
 			const bottom = top + height;
 			const dx =
-				clientX < left ? left - clientX : clientX > right ? clientX - right : 0;
+				clientX < left
+					? left - clientX
+					: clientX > right
+						? clientX - right
+						: 0;
 			const dy =
-				clientY < top ? top - clientY : clientY > bottom ? clientY - bottom : 0;
+				clientY < top
+					? top - clientY
+					: clientY > bottom
+						? clientY - bottom
+						: 0;
 			const distance = dx * dx + dy * dy;
 			if (distance < bestDistance) {
 				bestDistance = distance;

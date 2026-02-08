@@ -35,14 +35,14 @@ export function getClampedPointInRect(
 			? Math.max(
 					rect.left + margin,
 					Math.min(clientX, rect.right - margin)
-			  )
+				)
 			: rect.left + rect.width / 2;
 	const y =
 		rect.height > margin * 2
 			? Math.max(
 					rect.top + margin,
 					Math.min(clientY, rect.bottom - margin)
-			  )
+				)
 			: rect.top + rect.height / 2;
 	return { x, y };
 }

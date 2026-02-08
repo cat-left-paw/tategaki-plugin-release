@@ -106,6 +106,8 @@ export interface PreviewSettings {
 	footerAlign?: HeaderFooterAlign; // フッターの配置
 	pageNumberFormat?: PageNumberFormat; // ページ番号の形式
 	pageTransitionEffect?: PageTransitionEffect; // ページ遷移効果（書籍モード用）
+	bookPaddingTop?: number; // 書籍モードの上余白（px）
+	bookPaddingBottom?: number; // 書籍モードの下余白（px）
 }
 
 /**
@@ -119,6 +121,7 @@ export interface WysiwygSettings {
 	enableTcy: boolean; // 縦中横
 	enableAssistantInput: boolean; // 補助入力パネル
 	enableSyncBackup: boolean; // 互換モードの同期バックアップ
+	plainTextView?: boolean; // SoTビューの全文プレーン表示
 	appCloseAction: AppCloseAction; // アプリ終了時の未保存変更の扱い
 	imeOffsetHorizontalEm?: number; // IME表示の縦方向補正（横書き）
 	imeOffsetVerticalEm?: number; // IME表示の横方向補正（縦書き）
@@ -126,6 +129,7 @@ export interface WysiwygSettings {
 	caretCustomColor?: string;
 	caretWidthPx?: number;
 	ceUseNativeCaret?: boolean;
+	useNativeSelection?: boolean; // SoTビューの選択操作をネイティブ選択に寄せる
 	sotPaddingTop?: number; // SoTビューの上余白（px）
 	sotPaddingBottom?: number; // SoTビューの下余白（px）
 }
@@ -134,7 +138,7 @@ export interface WysiwygSettings {
  * 現在の設定バージョン
  * 新しい設定が追加された時にインクリメントする
  */
-export const CURRENT_SETTINGS_VERSION = 2;
+export const CURRENT_SETTINGS_VERSION = 3;
 
 /**
  * メイン設定インターフェース
@@ -259,6 +263,8 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		footerAlign: "center",
 		pageNumberFormat: "currentTotal",
 		pageTransitionEffect: "fade", // デフォルトはフェード効果（最も軽量で安定）
+		bookPaddingTop: 44,
+		bookPaddingBottom: 32,
 	},
 
 	// WYSIWYG設定
@@ -270,6 +276,7 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		enableTcy: true,
 		enableAssistantInput: false,
 		enableSyncBackup: true,
+		plainTextView: false,
 		appCloseAction: "save",
 		imeOffsetHorizontalEm: 0.1,
 		imeOffsetVerticalEm: 0.5,
@@ -277,6 +284,7 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		caretCustomColor: "#1e90ff",
 		caretWidthPx: 3,
 		ceUseNativeCaret: true,
+		useNativeSelection: false,
 		sotPaddingTop: 32,
 		sotPaddingBottom: 16,
 	},
@@ -523,12 +531,26 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 		if (settings.preview && typeof settings.preview === "object") {
 			validated.preview = { ...validated.preview, ...settings.preview };
 		}
+		const bookPaddingTop = Number((validated.preview as any).bookPaddingTop);
+		validated.preview.bookPaddingTop = Number.isFinite(bookPaddingTop)
+			? Math.max(0, Math.min(200, bookPaddingTop))
+			: DEFAULT_V2_SETTINGS.preview.bookPaddingTop ?? 44;
+		const bookPaddingBottom = Number(
+			(validated.preview as any).bookPaddingBottom
+		);
+		validated.preview.bookPaddingBottom = Number.isFinite(bookPaddingBottom)
+			? Math.max(0, Math.min(200, bookPaddingBottom))
+			: DEFAULT_V2_SETTINGS.preview.bookPaddingBottom ?? 32;
 
 		if (settings.wysiwyg && typeof settings.wysiwyg === "object") {
 			validated.wysiwyg = { ...validated.wysiwyg, ...settings.wysiwyg };
 			if (typeof (validated.wysiwyg as any).enableSyncBackup !== "boolean") {
 				validated.wysiwyg.enableSyncBackup =
 					DEFAULT_V2_SETTINGS.wysiwyg.enableSyncBackup;
+			}
+			if (typeof (validated.wysiwyg as any).plainTextView !== "boolean") {
+				validated.wysiwyg.plainTextView =
+					DEFAULT_V2_SETTINGS.wysiwyg.plainTextView;
 			}
 			const action = (validated.wysiwyg as any).appCloseAction;
 			if (action !== "save" && action !== "discard") {
@@ -574,6 +596,12 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 				validated.wysiwyg.ceUseNativeCaret =
 					DEFAULT_V2_SETTINGS.wysiwyg.ceUseNativeCaret;
 			}
+			if (
+				typeof (validated.wysiwyg as any).useNativeSelection !== "boolean"
+			) {
+				validated.wysiwyg.useNativeSelection =
+					DEFAULT_V2_SETTINGS.wysiwyg.useNativeSelection;
+			}
 			// SoT余白のバリデーション
 			const sotPaddingTop = Number((validated.wysiwyg as any).sotPaddingTop);
 			validated.wysiwyg.sotPaddingTop = Number.isFinite(sotPaddingTop)
@@ -593,14 +621,11 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 				validated.wysiwyg.imeOffsetVerticalEm,
 				DEFAULT_V2_SETTINGS.wysiwyg.imeOffsetVerticalEm ?? 0.5
 			);
-			const caretWidth = Number(validated.wysiwyg.caretWidthPx);
-			validated.wysiwyg.caretWidthPx = Number.isFinite(caretWidth)
-				? Math.max(
-						CARET_WIDTH_MIN,
-						Math.min(CARET_WIDTH_MAX, caretWidth)
-				  )
-				: DEFAULT_V2_SETTINGS.wysiwyg.caretWidthPx;
-		}
+				const caretWidth = Number(validated.wysiwyg.caretWidthPx);
+				validated.wysiwyg.caretWidthPx = Number.isFinite(caretWidth)
+					? Math.max(CARET_WIDTH_MIN, Math.min(CARET_WIDTH_MAX, caretWidth))
+					: DEFAULT_V2_SETTINGS.wysiwyg.caretWidthPx;
+			}
 
 		if (
 			settings.controlPanel &&

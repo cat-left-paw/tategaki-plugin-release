@@ -5,6 +5,7 @@ export interface CommandUiAdapter {
 	app: App;
 	isReadOnly?: () => boolean;
 	hasSelection?: () => boolean;
+	isInlineSelectionAllowed?: () => boolean;
 
 	getWritingMode?: () => WritingMode;
 	toggleWritingMode?: () => void;
@@ -47,6 +48,8 @@ export interface CommandUiAdapter {
 
 	toggleSourceMode?: () => void;
 	isSourceMode?: () => boolean;
+	isPlainTextView?: () => boolean;
+	togglePlainTextView?: () => void;
 
 	toggleRuby?: () => void;
 	isRubyEnabled?: () => boolean;

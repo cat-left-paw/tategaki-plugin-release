@@ -753,7 +753,7 @@ export class SourceCodeMirrorAdapterImpl implements SourceCodeMirrorAdapter {
 	}
 
 	private stripLineFormatting(text: string): string {
-		let result = text;
+		const result = text;
 		const leading = result.match(/^\s*/)?.[0] ?? "";
 		let rest = result.slice(leading.length);
 		rest = rest.replace(/^#{1,6}\s+/, '');

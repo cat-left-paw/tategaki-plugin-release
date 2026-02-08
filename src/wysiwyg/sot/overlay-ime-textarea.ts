@@ -9,6 +9,10 @@ type OverlayCallbacks = {
 	navigate?: (event: KeyboardEvent) => void;
 	onPendingText?: (text: string) => void;
 	listOutliner?: (event: KeyboardEvent) => boolean;
+	shouldHandleOutlinerKey?: (event: KeyboardEvent) => boolean;
+	cancelSelection?: () => void;
+	compositionStart?: () => void;
+	compositionEnd?: () => void;
 };
 
 type OverlayFocusCallbacks = {
@@ -57,7 +61,7 @@ export class OverlayImeTextarea {
 	constructor(
 		parent: HTMLElement,
 		callbacks: OverlayCallbacks,
-		focusCallbacks: OverlayFocusCallbacks = {}
+		focusCallbacks: OverlayFocusCallbacks = {},
 	) {
 		this.parentEl = parent;
 		this.callbacks = callbacks;
@@ -86,6 +90,7 @@ export class OverlayImeTextarea {
 			this.isComposing = true;
 			this.clearFlushTimer();
 			this.textarea.classList.add("tategaki-ime-visible");
+			this.callbacks.compositionStart?.();
 			const pending = (event as CompositionEvent).data ?? "";
 			this.updateDynamicSize(pending);
 		});
@@ -104,6 +109,7 @@ export class OverlayImeTextarea {
 				(event as CompositionEvent).data ?? this.textarea.value;
 			this.textarea.value = pending;
 			this.callbacks.onPendingText?.(pending);
+			this.callbacks.compositionEnd?.();
 			this.flushPending();
 		});
 
@@ -125,17 +131,33 @@ export class OverlayImeTextarea {
 			if (event.key === "Escape") {
 				if (!this.isComposing && !event.isComposing) {
 					event.preventDefault();
+					this.callbacks.cancelSelection?.();
 				}
 				event.stopPropagation();
 				return;
 			}
-			event.stopPropagation();
+			const allowPropagation =
+				(event.metaKey || event.ctrlKey) &&
+				event.shiftKey &&
+				!event.altKey &&
+				["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
+					event.key,
+				) &&
+				!(this.callbacks.shouldHandleOutlinerKey?.(event) ?? false);
+			if (!allowPropagation) {
+				event.stopPropagation();
+			}
 			if (this.isComposing || event.isComposing) return;
 
 			const isMod = event.metaKey || event.ctrlKey;
-			const isOutlinerKey =
-				(!isMod && !event.altKey && event.key === "Tab") ||
-				(isMod &&
+			const isOutlinerKey = (() => {
+				if (!this.callbacks.listOutliner) return false;
+				if (this.callbacks.shouldHandleOutlinerKey) {
+					return this.callbacks.shouldHandleOutlinerKey(event);
+				}
+				if (!isMod && !event.altKey && event.key === "Tab") return true;
+				return (
+					isMod &&
 					!event.shiftKey &&
 					!event.altKey &&
 					[
@@ -143,7 +165,9 @@ export class OverlayImeTextarea {
 						"ArrowDown",
 						"ArrowLeft",
 						"ArrowRight",
-					].includes(event.key));
+					].includes(event.key)
+				);
+			})();
 			if (isOutlinerKey && this.callbacks.listOutliner) {
 				this.flushPending();
 				const handled = this.callbacks.listOutliner(event);
@@ -200,7 +224,7 @@ export class OverlayImeTextarea {
 			if (
 				this.textarea.value.length === 0 &&
 				["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
-					event.key
+					event.key,
 				)
 			) {
 				event.preventDefault();
@@ -296,7 +320,7 @@ export class OverlayImeTextarea {
 	setConstraints(
 		isVertical: boolean,
 		maxSize: number,
-		lineSize: number
+		lineSize: number,
 	): void {
 		const modeChanged = this.isVertical !== isVertical;
 		this.isVertical = isVertical;
@@ -346,13 +370,13 @@ export class OverlayImeTextarea {
 				0;
 			let neededWidth = Math.max(
 				this.baseLineSize,
-				Math.min(measuredWidth, maxSpan)
+				Math.min(measuredWidth, maxSpan),
 			);
 			// 折り返し直前で1列分先に確保（入力直後の測定遅延対策）
 			if (measuredWidth > currentWidth + 1) {
 				neededWidth = Math.max(
 					neededWidth,
-					currentWidth + this.baseLineSize
+					currentWidth + this.baseLineSize,
 				);
 			}
 			neededWidth = Math.min(neededWidth, maxSpan);
@@ -369,13 +393,13 @@ export class OverlayImeTextarea {
 				0;
 			let neededHeight = Math.max(
 				this.baseLineSize,
-				Math.min(measuredHeight, maxSpan)
+				Math.min(measuredHeight, maxSpan),
 			);
 			// 折り返し直前で1行分先に確保（入力直後の測定遅延対策）
 			if (measuredHeight > currentHeight + 1) {
 				neededHeight = Math.max(
 					neededHeight,
-					currentHeight + this.baseLineSize
+					currentHeight + this.baseLineSize,
 				);
 			}
 			neededHeight = Math.min(neededHeight, maxSpan);

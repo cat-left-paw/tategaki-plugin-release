@@ -225,16 +225,6 @@ export class ModeManager {
 			const view = leaf.view as unknown as { updateSettings?: (s: TategakiV2Settings) => Promise<void> };
 			await view.updateSettings?.(settings);
 		}
-
-		const activeType = this.app.workspace.activeLeaf?.view?.getViewType?.();
-		if (
-			activeType !== TIPTAP_COMPAT_VIEW_TYPE &&
-			activeType !== TIPTAP_COMPAT_VIEW_TYPE_LEGACY &&
-			activeType !== TATEGAKI_SOT_WYSIWYG_VIEW_TYPE &&
-			leaves.length > 0
-		) {
-			void this.openTipTapView();
-		}
 	}
 
 	/**

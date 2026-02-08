@@ -38,10 +38,19 @@ export function getSelectionRectsForLine(
 			: context.findTextNodeAtOffset(lineEl, end);
 	if (!startNode || !endNode) return [];
 
-	range.setStart(startNode.node, startNode.offset);
-	range.setEnd(endNode.node, endNode.offset);
-	const rects = Array.from(range.getClientRects());
-	return filterSelectionRects(rects, writingMode);
+	const clampOffset = (node: Text, offset: number) =>
+		Math.max(0, Math.min(offset, node.length));
+	const clampedStart = clampOffset(startNode.node, startNode.offset);
+	const clampedEnd = clampOffset(endNode.node, endNode.offset);
+	try {
+		range.setStart(startNode.node, clampedStart);
+		range.setEnd(endNode.node, clampedEnd);
+		const rects = Array.from(range.getClientRects());
+		return filterSelectionRects(rects, writingMode);
+	} catch (_) {
+		const rect = lineEl.getBoundingClientRect();
+		return rect ? [rect] : [];
+	}
 }
 
 function filterSelectionRects(

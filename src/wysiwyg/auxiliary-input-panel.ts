@@ -1,5 +1,3 @@
-import { setIcon } from "obsidian";
-
 interface AuxiliaryInputPanelOptions {
 	parent: HTMLElement;
 	isVertical: boolean;
@@ -19,6 +17,9 @@ export class AuxiliaryInputPanel {
 	resizeHandleHorizontal: HTMLElement;
 	resizeHandleVertical: HTMLElement;
 	options: AuxiliaryInputPanelOptions;
+	private activeDragHandlers:
+		| { onMove: (e: PointerEvent) => void; onUp: (e: PointerEvent) => void }
+		| null = null;
 
 	constructor(options: AuxiliaryInputPanelOptions) {
 		this.options = options;
@@ -121,6 +122,7 @@ export class AuxiliaryInputPanel {
 		) => {
 			event.preventDefault();
 			event.stopPropagation();
+			this.clearDragHandlers();
 			const startX = event.clientX;
 			const startY = event.clientY;
 			const startWidth = this.containerEl.offsetWidth;
@@ -141,10 +143,10 @@ export class AuxiliaryInputPanel {
 			};
 
 			const onUp = () => {
-				document.removeEventListener("pointermove", onMove);
-				document.removeEventListener("pointerup", onUp);
+				this.clearDragHandlers();
 			};
 
+			this.activeDragHandlers = { onMove, onUp };
 			document.addEventListener("pointermove", onMove);
 			document.addEventListener("pointerup", onUp);
 		};
@@ -187,6 +189,14 @@ export class AuxiliaryInputPanel {
 	}
 
 	destroy() {
+		this.clearDragHandlers();
 		this.containerEl.remove();
+	}
+
+	private clearDragHandlers(): void {
+		if (!this.activeDragHandlers) return;
+		document.removeEventListener("pointermove", this.activeDragHandlers.onMove);
+		document.removeEventListener("pointerup", this.activeDragHandlers.onUp);
+		this.activeDragHandlers = null;
 	}
 }
