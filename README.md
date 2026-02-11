@@ -26,6 +26,7 @@ Until it is available in Community Plugins, install from GitHub Releases:
 - https://github.com/cat-left-paw/tategaki-plugin-release/releases
 
 See `INSTALL.md` for detailed steps: `INSTALL.md`
+If you are upgrading from `<=1.2.1`, check the ID migration notes in both `README` and `INSTALL.md`.
 
 ## Migration Note (ID change)
 

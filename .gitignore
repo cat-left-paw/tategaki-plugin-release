@@ -15,21 +15,13 @@
 !THIRD_PARTY_LICENSES.md
 !NOTICE
 
-# manifest / versions / release artifacts
+# manifest / versions
 !manifest.json
 !versions.json
-!main.js
 !styles.css
 
 # source (for review)
-!main.ts
 !src/
 !src/**
-
-# minimal build reproducibility
-!package.json
-!package-lock.json
-!tsconfig.json
-!esbuild.config.mjs
 
 .DS_Store
