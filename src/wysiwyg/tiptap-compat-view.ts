@@ -161,7 +161,6 @@ export class TipTapCompatView extends ItemView {
 	private modeBadgeEl: HTMLElement | null = null;
 	private initialScrollApplied = false;
 	private frontmatterUpdateToken = 0;
-	private plainEditAutoPaused = false;
 	private beforeInputHandler: ((event: InputEvent) => void) | null = null;
 	private beforeInputKeydownHandler:
 		| ((event: KeyboardEvent) => void)
@@ -462,18 +461,7 @@ export class TipTapCompatView extends ItemView {
 		const container = this.containerEl.children[1] as HTMLElement;
 		this.viewRootEl = container;
 		container.empty();
-		container.style.cssText = `
-				position: relative;
-				width: 100%;
-				height: 100%;
-				display: flex;
-				flex-direction: column;
-				min-height: 0;
-				overflow: hidden;
-				box-sizing: border-box;
-				margin: 0;
-				padding: 0;
-			`;
+		container.addClass("tategaki-tiptap-view-container");
 		const phoneQuery =
 			"(hover: none) and (pointer: coarse) and (max-width: 700px)";
 		const updateHeaderInset = (): void => {
@@ -532,131 +520,41 @@ export class TipTapCompatView extends ItemView {
 		const toolbarRow = container.createDiv(
 			"tategaki-tiptap-compat-toolbar-row"
 		);
-		toolbarRow.style.cssText = `
-				display: flex;
-				align-items: center;
-				gap: 8px;
-				flex: 0 0 auto;
-				padding: 0;
-				background: var(--background-secondary);
-				border-bottom: 1px solid var(--background-modifier-border);
-			`;
+		const toolbarLeft = toolbarRow.createDiv(
+			"tategaki-tiptap-compat-toolbar-left",
+		);
 
-		const toolbarLeft = toolbarRow.createDiv();
-		toolbarLeft.style.cssText = `
-			display: flex;
-			align-items: center;
-			flex: 1;
-			min-width: 0;
-		`;
-
-		const toolbarRight = toolbarRow.createDiv();
-		toolbarRight.style.cssText = `
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			padding: 0 8px;
-			flex-shrink: 0;
-		`;
+		const toolbarRight = toolbarRow.createDiv(
+			"tategaki-tiptap-compat-toolbar-right",
+		);
 
 		// モード表示（互換）
 		const modeBadge = toolbarRight.createDiv();
 		modeBadge.textContent = "互換";
-		modeBadge.style.cssText = `
-			display: inline-flex;
-			align-items: center;
-			gap: 6px;
-			padding: 2px 8px;
-			border-radius: 999px;
-			background: var(--background-modifier-hover);
-			border: 1px solid var(--background-modifier-border);
-			color: var(--text-normal);
-			font-size: 11px;
-			white-space: nowrap;
-		`;
+		modeBadge.addClass("tategaki-tiptap-mode-badge");
 		this.modeBadgeEl = modeBadge;
 
 		const editorArea = container.createDiv(
 			"tategaki-tiptap-compat-editor-area"
 		);
-		editorArea.style.cssText = `
-				position: relative;
-				flex: 1 1 auto;
-				min-height: 0;
-				width: 100%;
-				overflow: hidden;
-				display: flex;
-			`;
 		this.editorAreaEl = editorArea;
 
 		// ページコンテナ（CE版のページサイズUIと同等の構造）
 		this.pageContainerEl = editorArea.createDiv(
 			"tategaki-tiptap-page-container"
 		);
-		this.pageContainerEl.style.cssText = `
-				flex: 1 1 auto;
-				min-width: 0;
-				min-height: 0;
-				display: flex;
-				align-items: center;
-				justify-content: center;
-				box-sizing: border-box;
-				overflow: visible;
-				padding: 40px 32px 22px 32px;
-				background: transparent;
-			`;
 
 		this.borderWrapperEl = this.pageContainerEl.createDiv(
 			"tategaki-tiptap-border-wrapper"
 		);
-		this.borderWrapperEl.style.cssText = `
-				position: relative;
-				width: 100%;
-				height: 100%;
-				min-width: 0;
-				min-height: 0;
-				border: none !important;
-				outline: none !important;
-				border-radius: 0;
-				background: ${this.plugin.settings.common.backgroundColor} !important;
-				box-shadow: 0 6px 12px rgba(0,0,0,0.4);
-			box-sizing: border-box;
-			overflow: hidden;
-			transform-origin: center center;
-			transform: scale(1);
-		`;
 
 		this.contentWrapperEl = this.borderWrapperEl.createDiv(
 			"tategaki-tiptap-content-wrapper"
 		);
-		this.contentWrapperEl.style.cssText = `
-			position: absolute;
-			top: 0;
-			left: 0;
-			width: 100%;
-			height: 100%;
-			background: ${this.plugin.settings.common.backgroundColor};
-			color: var(--text-normal);
-			display: flex;
-			flex-direction: column;
-			overflow: hidden;
-			border: none !important;
-			outline: none !important;
-		`;
 
 		this.editorHostEl = this.contentWrapperEl.createDiv(
 			"tategaki-tiptap-compat-editor-host"
 		);
-		this.editorHostEl.style.cssText = `
-				flex: 1 1 auto;
-				min-width: 0;
-				min-height: 0;
-				width: 100%;
-				position: relative;
-				overflow: auto;
-				box-sizing: border-box;
-				scrollbar-gutter: stable;
-			`;
 
 		this.suppressEditorUpdates = true;
 		this.editor = createTategakiCompatEditor({
@@ -723,6 +621,7 @@ export class TipTapCompatView extends ItemView {
 			getRubyEnabled: () =>
 				this.plugin.settings.wysiwyg?.enableRuby !== false,
 			getViewRoot: () => this.viewRootEl,
+			canFocusOverlay: () => this.isViewLeafActive(),
 			onModeChange: () => {
 				this.formattingToolbar?.updatePlainEditButton();
 			},
@@ -842,34 +741,8 @@ export class TipTapCompatView extends ItemView {
 
 		// leafのdetachメソッドをインターセプトして、タブを閉じる前に未保存チェック
 		this.originalDetach = this.leaf.detach.bind(this.leaf);
-		this.leaf.detach = async () => {
-			if (this.isReadOnlyProtected) {
-				if (this.originalDetach) {
-					this.originalDetach();
-				}
-				return;
-			}
-			if (this.syncManager && this.syncManager.hasUnsavedChanges()) {
-				if (this.plugin.settings.wysiwyg.syncMode === "manual") {
-					const modal = new UnsavedChangesModal(
-						this.app,
-						"未保存の変更があります。タブを閉じる前に保存しますか？"
-					);
-					const choice = await modal.waitForChoice();
-
-					if (choice === "save") {
-						await this.syncManager.triggerManualSync();
-					} else if (choice === "discard") {
-						this.syncManager.clearDirtyFlag();
-					} else if (choice === "cancel") {
-						return;
-					}
-				}
-			}
-
-			if (this.originalDetach) {
-				this.originalDetach();
-			}
+		this.leaf.detach = () => {
+			void this.handleInterceptedLeafDetach();
 		};
 
 		this.keyHandler = (event: KeyboardEvent) => {
@@ -903,6 +776,36 @@ export class TipTapCompatView extends ItemView {
 
 		// リスト項目移動用のcaptureフェーズリスナー（Outliner等との競合回避）
 		this.setupListItemMoveCaptureHandler();
+	}
+
+	private async handleInterceptedLeafDetach(): Promise<void> {
+		if (this.isReadOnlyProtected) {
+			if (this.originalDetach) {
+				this.originalDetach();
+			}
+			return;
+		}
+		if (this.syncManager && this.syncManager.hasUnsavedChanges()) {
+			if (this.plugin.settings.wysiwyg.syncMode === "manual") {
+				const modal = new UnsavedChangesModal(
+					this.app,
+					"未保存の変更があります。タブを閉じる前に保存しますか？"
+				);
+				const choice = await modal.waitForChoice();
+
+				if (choice === "save") {
+					await this.syncManager.triggerManualSync();
+				} else if (choice === "discard") {
+					this.syncManager.clearDirtyFlag();
+				} else if (choice === "cancel") {
+					return;
+				}
+			}
+		}
+
+		if (this.originalDetach) {
+			this.originalDetach();
+		}
 	}
 
 	async onClose(): Promise<void> {
@@ -1047,7 +950,6 @@ export class TipTapCompatView extends ItemView {
 						settings.wysiwyg.enableAssistantInput;
 
 		if (settings.wysiwyg.enableAssistantInput) {
-			this.plainEditAutoPaused = false;
 			this.deactivatePlainEditMode();
 		}
 
@@ -1096,7 +998,7 @@ export class TipTapCompatView extends ItemView {
 
 		// 設定を更新
 		this.plugin.settings.common.writingMode = newMode;
-		this.plugin.saveSettings();
+		void this.plugin.saveSettings();
 
 		// エディタに適用
 		this.applySettingsToEditor(this.plugin.settings);
@@ -1139,7 +1041,6 @@ export class TipTapCompatView extends ItemView {
 			new Notice("読み取り専用ではソーステキスト編集は使用できません。", 2500);
 			return;
 		}
-		this.plainEditAutoPaused = false;
 		const isPlainMode = this.plainEditMode.isPlainMode();
 		if (!isPlainMode) {
 			await this.activatePlainEditMode();
@@ -1151,6 +1052,7 @@ export class TipTapCompatView extends ItemView {
 	private async activatePlainEditMode(): Promise<boolean> {
 		if (!this.plainEditMode) return false;
 		if (this.isEditorReadOnly()) return false;
+		if (!this.isViewLeafActive()) return false;
 		if (this.plainEditMode.isPlainMode()) {
 			return true;
 		}
@@ -1167,7 +1069,9 @@ export class TipTapCompatView extends ItemView {
 		return true;
 	}
 
-	private deactivatePlainEditMode(): void {
+	private deactivatePlainEditMode(
+		options?: { restoreEditorFocus?: boolean }
+	): void {
 		if (!this.plainEditMode?.isPlainMode()) {
 			return;
 		}
@@ -1175,7 +1079,8 @@ export class TipTapCompatView extends ItemView {
 
 		// プレーン執筆モード解除後、エディタにフォーカスを戻してから
 		// カーソル同期設定を適用する（focusoutイベント後の意図しないカーソル同期を防ぐ）
-		if (this.editor) {
+		const restoreEditorFocus = options?.restoreEditorFocus ?? true;
+		if (restoreEditorFocus && this.editor && this.isViewLeafActive()) {
 			this.editor.commands.focus();
 		}
 
@@ -2204,20 +2109,6 @@ export class TipTapCompatView extends ItemView {
 		const panel = this.editorAreaEl.createDiv(
 			"tategaki-tiptap-outline-panel"
 		);
-		panel.style.cssText = `
-			position: absolute;
-			top: 0;
-			right: 0;
-			bottom: 0;
-			width: 280px;
-			background: color-mix(in srgb, var(--background-primary) 80%, transparent);
-			backdrop-filter: blur(8px);
-			-webkit-backdrop-filter: blur(8px);
-			border-left: 1px solid var(--background-modifier-border);
-			z-index: 900;
-			overflow: auto;
-			padding: 8px 0;
-		`;
 		this.outlinePanelEl = panel;
 		this.renderOutline(panel);
 	}
@@ -2226,21 +2117,7 @@ export class TipTapCompatView extends ItemView {
 		if (!this.editor) return;
 		panel.empty();
 
-		const header = panel.createDiv();
-		header.style.cssText = `
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			padding: 8px 12px;
-			border-bottom: 1px solid var(--background-modifier-border);
-			font-weight: 600;
-			position: sticky;
-			top: 0;
-			background: color-mix(in srgb, var(--background-primary) 90%, transparent);
-			backdrop-filter: blur(8px);
-			-webkit-backdrop-filter: blur(8px);
-			z-index: 1;
-		`;
+		const header = panel.createDiv("tategaki-tiptap-outline-header");
 		header.createSpan({ text: "アウトライン" });
 		const closeBtn = header.createEl("button", {
 			cls: "clickable-icon contenteditable-toolbar-button",
@@ -2252,8 +2129,7 @@ export class TipTapCompatView extends ItemView {
 			this.toggleOutlinePanel();
 		});
 
-		const list = panel.createDiv();
-		list.style.cssText = "padding: 6px 0;";
+		const list = panel.createDiv("tategaki-tiptap-outline-list");
 
 		const items: Array<{ level: number; text: string; pos: number }> = [];
 		try {
@@ -2272,23 +2148,17 @@ export class TipTapCompatView extends ItemView {
 		}
 
 		if (items.length === 0) {
-			const empty = list.createDiv();
+			const empty = list.createDiv("tategaki-tiptap-outline-empty");
 			empty.textContent = "見出しがありません";
-			empty.style.cssText =
-				"padding: 8px 12px; color: var(--text-muted);";
 			return;
 		}
 
 		for (const item of items) {
-			const row = list.createDiv();
-			row.style.cssText = `
-				padding: 6px 12px;
-				cursor: pointer;
-				white-space: nowrap;
-				overflow: hidden;
-				text-overflow: ellipsis;
-				padding-left: ${12 + Math.max(0, item.level - 1) * 12}px;
-			`;
+			const row = list.createDiv("tategaki-tiptap-outline-row");
+			row.style.setProperty(
+				"--tategaki-tiptap-outline-indent",
+				`${12 + Math.max(0, item.level - 1) * 12}px`,
+			);
 			row.textContent = item.text;
 			row.addEventListener("click", (event) => {
 				event.preventDefault();
@@ -2307,43 +2177,30 @@ export class TipTapCompatView extends ItemView {
 		const leafRef = (this.app.workspace as any).on(
 			"active-leaf-change",
 			() => {
-				void this.handleWorkspaceFocusChange();
+				this.handleWorkspaceFocusChange();
 			}
 		);
 		this.registerEvent(leafRef);
 	}
 
-	private async handleWorkspaceFocusChange(): Promise<void> {
-		await this.syncPlainEditModeWithWorkspace();
+	private handleWorkspaceFocusChange(): void {
+		this.syncPlainEditModeWithWorkspace();
 	}
 
-	private async syncPlainEditModeWithWorkspace(): Promise<void> {
-		const activeLeaf = this.app.workspace.activeLeaf;
-		const activeView = activeLeaf?.view;
+	private syncPlainEditModeWithWorkspace(): void {
+		const activeView =
+			(this.app.workspace.getMostRecentLeaf?.() ?? null)?.view;
 		if (
-			activeView instanceof MarkdownView &&
-			activeView.getMode?.() !== "preview"
+			activeView !== this ||
+			(activeView instanceof MarkdownView &&
+				activeView.getMode?.() !== "preview")
 		) {
-			if (this.plainEditMode?.isPlainMode()) {
-				this.plainEditAutoPaused = true;
-				this.deactivatePlainEditMode();
-			}
-			return;
+			this.deactivatePlainEditMode({ restoreEditorFocus: false });
 		}
+	}
 
-		if (activeView === this) {
-			if (!this.plainEditAutoPaused) {
-				return;
-			}
-			const auxiliaryEnabled =
-				this.plugin.settings.wysiwyg.enableAssistantInput ?? false;
-			if (auxiliaryEnabled) {
-				this.plainEditAutoPaused = false;
-				return;
-			}
-			await this.activatePlainEditMode();
-			this.plainEditAutoPaused = false;
-		}
+	private isViewLeafActive(): boolean {
+		return (this.app.workspace.getMostRecentLeaf?.() ?? null)?.view === this;
 	}
 
 
@@ -3141,17 +2998,9 @@ export class TipTapCompatView extends ItemView {
 		const isPhone = window.matchMedia(
 			"(hover: none) and (pointer: coarse) and (max-width: 700px)"
 		).matches;
-		container.style.cssText = `
-			position: absolute;
-			top: 0;
-			left: 0;
-			right: 0;
-			bottom: 0;
-			overflow: hidden;
-			background: var(--tategaki-page-background-color, var(--background-primary));
-			z-index: 10;
-			padding-bottom: ${isPhone ? "var(--tategaki-reading-bottom-offset, 0px)" : "0px"};
-		`;
+		container.style.paddingBottom = isPhone
+			? "var(--tategaki-reading-bottom-offset, 0px)"
+			: "0px";
 		container.addEventListener(
 				"pointerdown",
 				() => {
@@ -3184,11 +3033,6 @@ export class TipTapCompatView extends ItemView {
 
 		const snapshotRoot = document.createElement("div");
 		snapshotRoot.className = "tategaki-reading-mode-snapshot";
-		snapshotRoot.style.cssText = `
-			position: relative;
-			width: 100%;
-			height: 100%;
-		`;
 
 		if (this.frontmatterContainer) {
 			snapshotRoot.appendChild(this.frontmatterContainer.cloneNode(true));
@@ -3474,19 +3318,21 @@ export class TipTapCompatView extends ItemView {
 			window.clearTimeout(this.fileUpdateDebounceTimer);
 		}
 
-		this.fileUpdateDebounceTimer = window.setTimeout(async () => {
+		this.fileUpdateDebounceTimer = window.setTimeout(() => {
 			this.fileUpdateDebounceTimer = null;
-			try {
-				if (this.syncManager) {
-					await this.syncManager.handleExternalChange(file);
-					await this.updateFrontmatterDisplay();
+			void (async () => {
+				try {
+					if (this.syncManager) {
+						await this.syncManager.handleExternalChange(file);
+						await this.updateFrontmatterDisplay();
+					}
+				} catch (error) {
+					console.error(
+						"Tategaki TipTap: failed to process external modification",
+						error
+					);
 				}
-			} catch (error) {
-				console.error(
-					"Tategaki TipTap: failed to process external modification",
-					error
-				);
-			}
+			})();
 		}, interval);
 	}
 
@@ -3624,7 +3470,7 @@ export class TipTapCompatView extends ItemView {
 		return Math.max(0, interval);
 	}
 
-	private async applyExternalCursorFromPending(): Promise<void> {
+	private applyExternalCursorFromPending(): void {
 		if (!this.editor || !this.editorHostEl || !this.syncManager) {
 			return;
 		}

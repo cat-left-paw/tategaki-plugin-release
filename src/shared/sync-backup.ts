@@ -67,11 +67,11 @@ export async function writeSyncBackupPair(
 
 	const timestamp = formatTimestampCompact(new Date());
 	// 新フォーマット: YYYYMMDD-HHMM_reason__before.md
-	const beforePath = await allocateUniquePath(
+	const beforePath = allocateUniquePath(
 		app,
 		`${backupFolderPath}/${timestamp}_${reason}__before.md`
 	);
-	const afterPath = await allocateUniquePath(
+	const afterPath = allocateUniquePath(
 		app,
 		`${backupFolderPath}/${timestamp}_${reason}__after.md`
 	);
@@ -430,7 +430,7 @@ async function ensureFolderExists(app: App, folderPath: string): Promise<void> {
 	}
 }
 
-async function allocateUniquePath(app: App, desiredPath: string): Promise<string> {
+function allocateUniquePath(app: App, desiredPath: string): string {
 	if (!app.vault.getAbstractFileByPath(desiredPath)) {
 		return desiredPath;
 	}

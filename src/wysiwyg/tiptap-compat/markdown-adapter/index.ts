@@ -1,18 +1,22 @@
 import { Editor } from "@tiptap/core";
+import * as MarkdownItModule from "markdown-it";
 import {
 	convertRubyElementsToAozora,
 	createAozoraRubyRegExp,
 } from "../../../shared/aozora-ruby";
 import type { TategakiV2Settings } from "../../../types/settings";
 
-	const BLANK_LINE_MARKER = "\u2060";
-	type MarkdownItConstructor = typeof import("markdown-it");
-	// eslint-disable-next-line @typescript-eslint/no-var-requires
-	const MarkdownItCtor: MarkdownItConstructor = require("markdown-it");
-	const markdownRenderer = new MarkdownItCtor({
-		html: true,
-		breaks: false,
-		linkify: false,
+const BLANK_LINE_MARKER = "\u2060";
+type MarkdownItConstructor = typeof import("markdown-it");
+const MarkdownItCtor = (
+	(MarkdownItModule as unknown as { default?: MarkdownItConstructor })
+		.default ??
+	(MarkdownItModule as unknown as MarkdownItConstructor)
+);
+const markdownRenderer = new MarkdownItCtor({
+	html: true,
+	breaks: false,
+	linkify: false,
 	typographer: false,
 });
 

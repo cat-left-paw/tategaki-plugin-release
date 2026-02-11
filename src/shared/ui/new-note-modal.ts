@@ -28,36 +28,27 @@ export class NewNoteModal extends Modal {
 
 		this.titleEl.setText("新規ノートを作成");
 
-		const desc = contentEl.createDiv();
-		desc.style.cssText = "margin-bottom: 8px; color: var(--text-muted);";
+		const desc = contentEl.createDiv("tategaki-new-note-desc");
 		desc.setText("ファイル名を入力してください（.md は省略可）");
 
 		if (this.defaultFolder !== null) {
-			const folderInfo = contentEl.createDiv();
-			folderInfo.style.cssText =
-				"margin-bottom: 12px; color: var(--text-muted); font-size: 12px;";
+			const folderInfo = contentEl.createDiv("tategaki-new-note-folder-info");
 			folderInfo.setText(
 				`作成先: ${this.defaultFolder || "/"}`
 			);
 		}
 
-		const inputContainer = contentEl.createDiv();
-		inputContainer.style.cssText = "margin-bottom: 12px;";
+		const inputContainer = contentEl.createDiv(
+			"tategaki-new-note-input-container",
+		);
 		this.input = new TextComponent(inputContainer);
-		this.input.inputEl.style.cssText = "width: 100%; box-sizing: border-box;";
+		this.input.inputEl.addClass("tategaki-new-note-input");
 		this.input.setPlaceholder("新規ノート名");
 		if (this.initialValue) {
 			this.input.setValue(this.initialValue);
 		}
 
-		const buttonContainer = contentEl.createDiv();
-		buttonContainer.style.cssText = `
-			display: flex;
-			gap: 8px;
-			justify-content: flex-end;
-			padding-top: 8px;
-			border-top: 1px solid var(--background-modifier-border);
-		`;
+		const buttonContainer = contentEl.createDiv("tategaki-new-note-buttons");
 
 		new ButtonComponent(buttonContainer)
 			.setButtonText("キャンセル")

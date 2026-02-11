@@ -24,6 +24,7 @@ export interface PlainEditModeOptions {
 	editor: Editor;
 	getRubyEnabled?: () => boolean;
 	getViewRoot?: () => HTMLElement | null;
+	canFocusOverlay?: () => boolean;
 	onModeChange?: (isPlainMode: boolean) => void;
 	onUpdate?: () => void;
 	onCommit?: () => void;
@@ -44,6 +45,11 @@ interface ParagraphState {
 	originalHtml: string;
 	originalMarkdown: string;
 }
+
+const isImeCompositionKey = (event: KeyboardEvent): boolean =>
+	event.isComposing ||
+	event.key === "Process" ||
+	event.key === "Unidentified";
 
 /**
  * PlainEditMode
@@ -345,9 +351,8 @@ export class PlainEditMode {
 					!event.altKey &&
 					!event.metaKey &&
 					!event.ctrlKey &&
-					!event.isComposing &&
 					!this.isComposing &&
-					event.keyCode !== 229
+					!isImeCompositionKey(event)
 				) {
 					if (this.handleArrowKey(event.key)) {
 						event.preventDefault();
@@ -357,9 +362,8 @@ export class PlainEditMode {
 				if (
 					event.key === "Backspace" &&
 					!event.shiftKey &&
-					!event.isComposing &&
 					!this.isComposing &&
-					event.keyCode !== 229 &&
+					!isImeCompositionKey(event) &&
 					this.overlayEl?.selectionStart === 0 &&
 					this.overlayEl?.selectionEnd === 0
 				) {
@@ -370,9 +374,8 @@ export class PlainEditMode {
 				if (
 					event.key === "Enter" &&
 					!event.shiftKey &&
-					!event.isComposing &&
 					!this.isComposing &&
-					event.keyCode !== 229
+					!isImeCompositionKey(event)
 				) {
 					event.preventDefault();
 					this.handleEnterKey();
@@ -441,7 +444,8 @@ export class PlainEditMode {
 		if (this.overlayEl) {
 			this.overlayEl.value = markdown;
 			this.overlayEl.style.display = "";
-			if (!this.suppressFocusOnNextStart) {
+			const canFocusOverlay = this.options.canFocusOverlay?.() ?? true;
+			if (!this.suppressFocusOnNextStart && canFocusOverlay) {
 				this.overlayEl.focus({ preventScroll: true });
 			}
 			this.suppressFocusOnNextStart = false;

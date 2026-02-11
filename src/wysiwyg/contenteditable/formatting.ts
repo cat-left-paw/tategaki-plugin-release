@@ -1,6 +1,6 @@
 /**
  * Formatting Manager for ContentEditable Editor
- * Provides formatting operations using document.execCommand API
+ * Provides formatting operations using Range/DOM APIs
  */
 
 export interface FormattingState {
@@ -26,7 +26,7 @@ export class FormattingManager {
      * Toggle bold formatting
      */
     toggleBold(): void {
-        document.execCommand('bold', false);
+        this.toggleInlineTag("strong", ["strong", "b"]);
         this.editorElement.focus();
     }
 
@@ -34,7 +34,7 @@ export class FormattingManager {
      * Toggle italic formatting
      */
     toggleItalic(): void {
-        document.execCommand('italic', false);
+        this.toggleInlineTag("em", ["em", "i"]);
         this.editorElement.focus();
     }
 
@@ -42,7 +42,7 @@ export class FormattingManager {
      * Toggle strikethrough formatting
      */
     toggleStrikethrough(): void {
-        document.execCommand('strikeThrough', false);
+        this.toggleInlineTag("del", ["del", "s", "strike"]);
         this.editorElement.focus();
     }
 
@@ -50,7 +50,7 @@ export class FormattingManager {
      * Toggle underline formatting
      */
     toggleUnderline(): void {
-        document.execCommand('underline', false);
+        this.toggleInlineTag("u", ["u"]);
         this.editorElement.focus();
     }
 
@@ -97,14 +97,11 @@ export class FormattingManager {
      * Set heading level (1-6) or remove heading (0)
      */
     setHeading(level: number): void {
-        // 現在の見出しレベルを取得
-        const selection = window.getSelection();
-        if (!selection || !selection.rangeCount) {
+        const parentElement = this.getClosestBlockElement();
+        if (!parentElement) {
             this.editorElement.focus();
             return;
         }
-
-        const parentElement = this.getSelectionParentElement();
         const currentLevel = this.getHeadingLevel(parentElement);
 
         // 現在のレベルと同じ場合は何もしない
@@ -113,23 +110,12 @@ export class FormattingManager {
             return;
         }
 
-        // 選択範囲を保存
-        const range = selection.getRangeAt(0);
-
         if (level === 0) {
-            // 見出しを解除する場合、p要素に変換
-            document.execCommand('formatBlock', false, '<p>');
+            if (parentElement.tagName.match(/^H[1-6]$/)) {
+                this.replaceTagName(parentElement, "p");
+            }
         } else if (level >= 1 && level <= 6) {
-            // 見出しレベルを設定
-            document.execCommand('formatBlock', false, `<h${level}>`);
-        }
-
-        // 選択範囲を復元
-        try {
-            selection.removeAllRanges();
-            selection.addRange(range);
-        } catch (e) {
-            // 範囲の復元に失敗した場合は無視
+            this.replaceTagName(parentElement, `h${level}`);
         }
 
         this.editorElement.focus();
@@ -139,7 +125,7 @@ export class FormattingManager {
      * Toggle bullet list
      */
     toggleBulletList(): void {
-        document.execCommand('insertUnorderedList', false);
+        this.toggleList("ul");
         this.editorElement.focus();
     }
 
@@ -147,7 +133,7 @@ export class FormattingManager {
      * Toggle ordered list
      */
     toggleOrderedList(): void {
-        document.execCommand('insertOrderedList', false);
+        this.toggleList("ol");
         this.editorElement.focus();
     }
 
@@ -155,7 +141,7 @@ export class FormattingManager {
      * Toggle blockquote
      */
     toggleBlockquote(): void {
-        document.execCommand('formatBlock', false, '<blockquote>');
+        this.toggleBlockTag("blockquote");
         this.editorElement.focus();
     }
 
@@ -163,7 +149,22 @@ export class FormattingManager {
      * Insert horizontal rule
      */
     insertHorizontalRule(): void {
-        document.execCommand('insertHorizontalRule', false);
+        const selection = window.getSelection();
+        const range = this.getSelectionRange(selection);
+        if (!selection || !range) {
+            this.editorElement.focus();
+            return;
+        }
+
+        const hr = document.createElement("hr");
+        range.deleteContents();
+        range.insertNode(hr);
+
+        const after = document.createRange();
+        after.setStartAfter(hr);
+        after.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(after);
         this.editorElement.focus();
     }
 
@@ -198,7 +199,17 @@ export class FormattingManager {
             selection.removeAllRanges();
             selection.addRange(newRange);
         } else {
-            document.execCommand('createLink', false, url);
+            const existingLink = this.findClosestWithinEditor(
+                this.getNodeElement(range.commonAncestorContainer),
+                "a"
+            );
+            if (existingLink) {
+                existingLink.setAttribute("href", url);
+            } else {
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                this.wrapRange(range, link);
+            }
         }
 
         this.editorElement.focus();
@@ -208,7 +219,29 @@ export class FormattingManager {
      * Remove link
      */
     removeLink(): void {
-        document.execCommand('unlink', false);
+        const selection = window.getSelection();
+        const range = this.getSelectionRange(selection);
+        if (!selection || !range) {
+            this.editorElement.focus();
+            return;
+        }
+
+        if (range.collapsed) {
+            const anchor = this.findClosestWithinEditor(
+                this.getNodeElement(range.startContainer),
+                "a"
+            );
+            if (anchor) {
+                this.unwrapElement(anchor);
+            }
+            this.editorElement.focus();
+            return;
+        }
+
+        const anchors = this.collectIntersectingElements(range, "a");
+        for (const anchor of anchors) {
+            this.unwrapElement(anchor);
+        }
         this.editorElement.focus();
     }
 
@@ -216,7 +249,6 @@ export class FormattingManager {
      * Undo last action
      */
     undo(): void {
-        document.execCommand('undo', false);
         this.editorElement.focus();
     }
 
@@ -224,7 +256,6 @@ export class FormattingManager {
      * Redo last undone action
      */
     redo(): void {
-        document.execCommand('redo', false);
         this.editorElement.focus();
     }
 
@@ -232,7 +263,7 @@ export class FormattingManager {
      * Check if undo is available
      */
     canUndo(): boolean {
-        // Note: There's no reliable way to check this with execCommand
+        // Note: There is no reliable browser-wide API to query editable undo availability
         // We'll implement a custom undo stack in Phase 6
         return true;
     }
@@ -241,7 +272,7 @@ export class FormattingManager {
      * Check if redo is available
      */
     canRedo(): boolean {
-        // Note: There's no reliable way to check this with execCommand
+        // Note: There is no reliable browser-wide API to query editable redo availability
         // We'll implement a custom undo stack in Phase 6
         return true;
     }
@@ -250,7 +281,20 @@ export class FormattingManager {
      * Check if a format is currently active
      */
     isFormatActive(format: string): boolean {
-        return document.queryCommandState(format);
+        const state = this.getFormattingState();
+        switch (format) {
+            case "bold":
+                return state.bold;
+            case "italic":
+                return state.italic;
+            case "underline":
+                return state.underline;
+            case "strikethrough":
+            case "strikeThrough":
+                return state.strikethrough;
+            default:
+                return false;
+        }
     }
 
     /**
@@ -521,6 +565,218 @@ export class FormattingManager {
         return container as HTMLElement;
     }
 
+    private toggleInlineTag(
+        targetTag: string,
+        aliases: string[],
+    ): void {
+        const selection = window.getSelection();
+        const range = this.getSelectionRange(selection);
+        if (!selection || !range || range.collapsed) {
+            return;
+        }
+
+        const startElement = this.getBoundaryElement(range, true);
+        const endElement = this.getBoundaryElement(range, false);
+        const tagSet = new Set(aliases.map((tag) => tag.toLowerCase()));
+        tagSet.add(targetTag.toLowerCase());
+
+        const commonAncestor = this.findCommonTagAncestor(
+            startElement,
+            endElement,
+            tagSet,
+        );
+        if (commonAncestor) {
+            this.unwrapElement(commonAncestor);
+            return;
+        }
+
+        const wrapper = document.createElement(targetTag);
+        this.wrapRange(range, wrapper);
+    }
+
+    private toggleList(listTag: "ul" | "ol"): void {
+        const block = this.getClosestBlockElement();
+        if (!block) return;
+
+        const currentList = this.findClosestWithinEditor(block, "ul, ol");
+        if (currentList) {
+            const currentTag = currentList.tagName.toLowerCase();
+            if (currentTag === listTag) {
+                this.unwrapList(currentList);
+            } else {
+                this.replaceTagName(currentList, listTag);
+            }
+            return;
+        }
+
+        const list = document.createElement(listTag);
+        const listItem = document.createElement("li");
+        while (block.firstChild) {
+            listItem.appendChild(block.firstChild);
+        }
+        list.appendChild(listItem);
+        block.replaceWith(list);
+    }
+
+    private toggleBlockTag(tagName: "blockquote"): void {
+        const block = this.getClosestBlockElement();
+        if (!block) return;
+
+        const current = this.findClosestWithinEditor(block, tagName);
+        if (current) {
+            this.unwrapElement(current);
+            return;
+        }
+
+        const wrapper = document.createElement(tagName);
+        block.replaceWith(wrapper);
+        wrapper.appendChild(block);
+    }
+
+    private unwrapList(list: HTMLElement): void {
+        const parent = list.parentNode;
+        if (!parent) return;
+
+        const fragment = document.createDocumentFragment();
+        const items = Array.from(list.children).filter(
+            (child): child is HTMLElement => child instanceof HTMLElement,
+        );
+        for (const item of items) {
+            if (item.tagName.toLowerCase() !== "li") continue;
+            const paragraph = document.createElement("p");
+            while (item.firstChild) {
+                paragraph.appendChild(item.firstChild);
+            }
+            fragment.appendChild(paragraph);
+        }
+
+        if (!fragment.firstChild) {
+            const paragraph = document.createElement("p");
+            paragraph.appendChild(document.createElement("br"));
+            fragment.appendChild(paragraph);
+        }
+
+        parent.insertBefore(fragment, list);
+        parent.removeChild(list);
+    }
+
+    private getClosestBlockElement(): HTMLElement | null {
+        const base = this.getSelectionParentElement();
+        if (!base) return null;
+
+        return (
+            this.findClosestWithinEditor(
+                base,
+                "h1, h2, h3, h4, h5, h6, p, div, li, blockquote",
+            ) ?? base
+        );
+    }
+
+    private getSelectionRange(selection: Selection | null): Range | null {
+        if (!selection || selection.rangeCount === 0) return null;
+        const range = selection.getRangeAt(0);
+        const start = this.getNodeElement(range.startContainer);
+        const end = this.getNodeElement(range.endContainer);
+        if (!start || !end) return null;
+        if (!this.editorElement.contains(start) || !this.editorElement.contains(end)) {
+            return null;
+        }
+        return range;
+    }
+
+    private getNodeElement(node: Node | null): HTMLElement | null {
+        if (!node) return null;
+        if (node instanceof HTMLElement) return node;
+        return node.parentElement;
+    }
+
+    private getBoundaryElement(range: Range, isStart: boolean): HTMLElement | null {
+        const container = isStart ? range.startContainer : range.endContainer;
+        const offset = isStart ? range.startOffset : range.endOffset;
+
+        if (container.nodeType === Node.ELEMENT_NODE) {
+            const element = container as Element;
+            const index = isStart ? offset : Math.max(0, offset - 1);
+            const child = element.childNodes.item(index);
+            if (child) {
+                const childElement = this.getNodeElement(child);
+                if (childElement) {
+                    return childElement;
+                }
+            }
+        }
+
+        return this.getNodeElement(container);
+    }
+
+    private findClosestWithinEditor(
+        element: HTMLElement | null,
+        selector: string,
+    ): HTMLElement | null {
+        if (!element) return null;
+        const hit = element.closest(selector);
+        if (!(hit instanceof HTMLElement)) return null;
+        if (!this.editorElement.contains(hit)) return null;
+        return hit;
+    }
+
+    private findCommonTagAncestor(
+        start: HTMLElement | null,
+        end: HTMLElement | null,
+        tagSet: Set<string>,
+    ): HTMLElement | null {
+        let cursor = start;
+        while (cursor && cursor !== this.editorElement) {
+            const tagName = cursor.tagName.toLowerCase();
+            if (tagSet.has(tagName) && end && cursor.contains(end)) {
+                return cursor;
+            }
+            cursor = cursor.parentElement;
+        }
+        return null;
+    }
+
+    private wrapRange(range: Range, wrapper: HTMLElement): void {
+        try {
+            range.surroundContents(wrapper);
+            return;
+        } catch {
+            const fragment = range.extractContents();
+            if (!fragment.hasChildNodes()) {
+                return;
+            }
+            wrapper.appendChild(fragment);
+            range.insertNode(wrapper);
+        }
+    }
+
+    private collectIntersectingElements(
+        range: Range,
+        selector: string,
+    ): HTMLElement[] {
+        const base = this.getNodeElement(range.commonAncestorContainer);
+        if (!base) return [];
+
+        const root = this.findClosestWithinEditor(base, "*") ?? this.editorElement;
+        const candidates = Array.from(root.querySelectorAll(selector)).filter(
+            (node): node is HTMLElement => node instanceof HTMLElement,
+        );
+        return candidates.filter((node) => range.intersectsNode(node));
+    }
+
+    private replaceTagName(element: HTMLElement, tagName: string): HTMLElement {
+        const replacement = document.createElement(tagName);
+        for (const attr of Array.from(element.attributes)) {
+            if (attr.name === "data-block-id") continue;
+            replacement.setAttribute(attr.name, attr.value);
+        }
+        while (element.firstChild) {
+            replacement.appendChild(element.firstChild);
+        }
+        element.replaceWith(replacement);
+        return replacement;
+    }
+
 	/**
 	 * Clear all formatting
 	 */
@@ -539,10 +795,7 @@ export class FormattingManager {
 			ranges.push(range.cloneRange());
 		}
 
-		// まずは標準のフォーマット解除を実行
-		document.execCommand("removeFormat", false);
-
-		// mark / strike / underline / 背景色など、removeFormatが拾わないものを明示的に解除
+		// mark / strike / underline / bold / italic / link / 背景色などを明示的に解除
 		for (const range of ranges) {
 			this.stripCustomInlineFormatting(range);
 		}
@@ -630,15 +883,20 @@ export class FormattingManager {
 		}
 	}
 
-	private isFormattingElement(element: HTMLElement): boolean {
-		const tag = element.tagName.toLowerCase();
-		if (
-			tag === "mark" ||
-			tag === "del" ||
-			tag === "s" ||
-			tag === "strike" ||
-			tag === "u"
-		) {
+		private isFormattingElement(element: HTMLElement): boolean {
+			const tag = element.tagName.toLowerCase();
+			if (
+				tag === "mark" ||
+				tag === "a" ||
+				tag === "b" ||
+				tag === "strong" ||
+				tag === "i" ||
+				tag === "em" ||
+				tag === "del" ||
+				tag === "s" ||
+				tag === "strike" ||
+				tag === "u"
+			) {
 			return true;
 		}
 
@@ -652,15 +910,20 @@ export class FormattingManager {
 		const hasUnderline =
 			style.textDecorationLine.includes("underline") ||
 			style.textDecoration.includes("underline");
-		const hasStrikethrough =
-			style.textDecorationLine.includes("line-through") ||
-			style.textDecoration.includes("line-through");
-		const backgroundColor = style.backgroundColor ?? "";
-		const hasBackground =
-			backgroundColor !== "" && backgroundColor !== "rgba(0, 0, 0, 0)";
+			const hasStrikethrough =
+				style.textDecorationLine.includes("line-through") ||
+				style.textDecoration.includes("line-through");
+			const hasBold =
+				style.fontWeight === "bold" ||
+				style.fontWeight === "700" ||
+				Number.parseInt(style.fontWeight, 10) >= 700;
+			const hasItalic = style.fontStyle === "italic";
+			const backgroundColor = style.backgroundColor ?? "";
+			const hasBackground =
+				backgroundColor !== "" && backgroundColor !== "rgba(0, 0, 0, 0)";
 
-		return hasUnderline || hasStrikethrough || hasBackground;
-	}
+			return hasUnderline || hasStrikethrough || hasBold || hasItalic || hasBackground;
+		}
 
 	private removeRedundantSpans(range: Range): void {
 		const root = this.editorElement;

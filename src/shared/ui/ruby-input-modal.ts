@@ -30,48 +30,26 @@ export class RubyInputModal extends Modal {
 		contentEl.empty();
 
 		this.modalEl.addClass('tategaki-ruby-input-modal');
-
-		// モーダルのスタイル調整
-		this.modalEl.style.cssText = `
-			max-width: 500px;
-			width: 90%;
-		`;
-		contentEl.style.cssText = `
-			padding: 20px;
-		`;
+		contentEl.addClass("tategaki-ruby-input-content");
 
 		contentEl.createEl("h2", { text: "ルビの挿入" });
 
 		// 選択テキストを表示
-		const textDisplay = contentEl.createDiv({ cls: "tategaki-modal-text-display" });
-		textDisplay.style.cssText = `
-			margin-bottom: 15px;
-			display: flex;
-			flex-direction: column;
-			gap: 8px;
-		`;
-		const label = textDisplay.createEl("label", { text: "対象テキスト:" });
-		label.style.fontWeight = "bold";
-		const selectedDiv = textDisplay.createEl("div", { text: this.selectedText, cls: "tategaki-modal-selected-text" });
-		selectedDiv.style.cssText = `
-			padding: 8px 12px;
-			background: var(--background-secondary);
-			border-radius: 4px;
-			color: var(--text-normal);
-		`;
+		const textDisplay = contentEl.createDiv("tategaki-ruby-input-text-display");
+		textDisplay.createEl("label", {
+			text: "対象テキスト:",
+			cls: "tategaki-ruby-input-label-strong",
+		});
+		textDisplay.createEl("div", {
+			text: this.selectedText,
+			cls: "tategaki-ruby-input-selected-text",
+		});
 
 		// ルビ入力
-		const rubyContainer = contentEl.createDiv({ cls: "tategaki-modal-input-container" });
-		rubyContainer.style.cssText = `
-			margin-bottom: 15px;
-			display: flex;
-			flex-direction: column;
-			gap: 8px;
-		`;
+		const rubyContainer = contentEl.createDiv("tategaki-ruby-input-field");
 		rubyContainer.createEl("label", { text: "ルビ:" });
 		this.rubyInput = new TextComponent(rubyContainer);
-		this.rubyInput.inputEl.addClass('tategaki-modal-input-full');
-		this.rubyInput.inputEl.style.width = "100%";
+		this.rubyInput.inputEl.addClass("tategaki-ruby-input-control");
 		this.rubyInput.inputEl.placeholder = "ふりがな";
 
 		// IMEの変換状態を追跡
@@ -91,13 +69,7 @@ export class RubyInputModal extends Modal {
 		});
 
 		// 傍点オプション
-		const dotContainer = contentEl.createDiv({ cls: "tategaki-modal-input-container" });
-		dotContainer.style.cssText = `
-			margin-bottom: 20px;
-			display: flex;
-			align-items: center;
-			gap: 10px;
-		`;
+		const dotContainer = contentEl.createDiv("tategaki-ruby-input-dot");
 		dotContainer.createEl("label", { text: "傍点:" });
 		this.dotToggle = new ToggleComponent(dotContainer);
 		this.dotToggle.onChange((value) => {
@@ -112,13 +84,7 @@ export class RubyInputModal extends Modal {
 		});
 
 		// ボタン
-		const buttonContainer = contentEl.createDiv({ cls: "tategaki-modal-button-container" });
-		buttonContainer.style.cssText = `
-			display: flex;
-			justify-content: flex-end;
-			gap: 10px;
-			margin-top: 20px;
-		`;
+		const buttonContainer = contentEl.createDiv("tategaki-ruby-input-buttons");
 
 		new ButtonComponent(buttonContainer)
 			.setButtonText("挿入")

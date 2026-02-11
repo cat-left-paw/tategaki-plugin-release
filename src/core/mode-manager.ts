@@ -534,12 +534,12 @@ export class ModeManager {
 	}
 
 	private getCurrentManagedFilePath(): string | null {
-		const activeLeaf = this.app.workspace.activeLeaf;
-		const activePath = this.extractFilePathFromLeaf(activeLeaf);
+		const recentLeaf = this.getMostRecentLeaf();
+		const activePath = this.extractFilePathFromLeaf(recentLeaf);
 		if (activePath) {
 			return activePath;
 		}
-		if (this.primaryLeaf && this.primaryLeaf !== activeLeaf) {
+		if (this.primaryLeaf && this.primaryLeaf !== recentLeaf) {
 			const primaryPath = this.extractFilePathFromLeaf(this.primaryLeaf);
 			if (primaryPath) {
 				return primaryPath;
@@ -657,11 +657,11 @@ export class ModeManager {
 			return;
 		}
 
-		const activeLeaf = this.app.workspace.activeLeaf;
+		const recentLeaf = this.getMostRecentLeaf();
 
 		let keepLeaf: WorkspaceLeaf | null = null;
-		if (activeLeaf && leaves.includes(activeLeaf)) {
-			keepLeaf = activeLeaf;
+		if (recentLeaf && leaves.includes(recentLeaf)) {
+			keepLeaf = recentLeaf;
 		} else if (this.isLeafAvailable(this.primaryLeaf) && this.primaryLeaf) {
 			keepLeaf = this.primaryLeaf;
 		} else {
@@ -686,9 +686,13 @@ export class ModeManager {
 			}
 		}
 
-		if (this.app.workspace.activeLeaf !== keepLeaf) {
+		if (this.getMostRecentLeaf() !== keepLeaf) {
 			this.app.workspace.setActiveLeaf(keepLeaf);
 		}
+	}
+
+	private getMostRecentLeaf(): WorkspaceLeaf | null {
+		return this.app.workspace.getMostRecentLeaf?.() ?? null;
 	}
 
 	private getReusableLeaf(popoutOnly = false): WorkspaceLeaf | null {

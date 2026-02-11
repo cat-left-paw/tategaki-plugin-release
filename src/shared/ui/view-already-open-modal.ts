@@ -6,18 +6,13 @@ export class ViewAlreadyOpenModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.titleEl.setText("Tategakiビューが既に開かれています");
+		this.titleEl.setText("縦書きビューは既に開かれています");
 
 		this.contentEl.createEl("p", {
-			text: "既にTategakiビュー（執筆モード、参照モード、または書籍モード）が開かれています。新しいビューを開くには、既存のビューを閉じてください。",
+			text: "既に縦書きビュー（執筆モード、参照モード、または書籍モード）が開かれています。新しいビューを開くには、既存のビューを閉じてください。",
 		});
 
-		const footer = this.contentEl.createDiv();
-		footer.style.cssText = `
-			display: flex;
-			justify-content: flex-end;
-			margin-top: 16px;
-		`;
+		const footer = this.contentEl.createDiv("tategaki-view-already-open-footer");
 
 		footer
 			.createEl("button", { text: "OK", cls: "mod-cta" })

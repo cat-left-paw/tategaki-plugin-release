@@ -74,7 +74,7 @@ export async function activateMarkdownLeafForCommand(
 	}
 	const markdownView = await host.ensureMarkdownViewForFile(host.currentFile);
 	if (!markdownView || !host.pairedMarkdownLeaf) {
-		new Notice("MarkdownView が見つからないため実行できません。", 2500);
+		new Notice("Markdown ビューが見つからないため実行できません。", 2500);
 		return null;
 	}
 	host.app.workspace.setActiveLeaf(host.pairedMarkdownLeaf, {

@@ -18,13 +18,9 @@ export class UnsavedChangesModal extends Modal {
 		contentEl.createEl("h2", { text: "未保存の変更" });
 		contentEl.createEl("p", { text: this.message });
 
-		const buttonContainer = contentEl.createDiv({ cls: "modal-button-container" });
-		buttonContainer.style.cssText = `
-			display: flex;
-			justify-content: flex-end;
-			gap: 8px;
-			margin-top: 16px;
-		`;
+		const buttonContainer = contentEl.createDiv({
+			cls: "modal-button-container tategaki-unsaved-changes-buttons",
+		});
 
 		// 保存ボタン
 		const saveButton = buttonContainer.createEl("button", {

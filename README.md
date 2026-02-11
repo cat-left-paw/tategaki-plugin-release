@@ -27,6 +27,20 @@ Until it is available in Community Plugins, install from GitHub Releases:
 
 See `INSTALL.md` for detailed steps: `INSTALL.md`
 
+## Migration Note (ID change)
+
+As of `1.2.2`, the plugin ID changed from `tategaki-plugin` to `tategaki` (submission requirement alignment).
+
+If you are updating from older versions, Obsidian may treat this as a different plugin.
+
+- Disable old plugin: `tategaki-plugin`
+- Install/enable new plugin: `tategaki`
+- If needed, copy settings manually:
+  - from `.obsidian/plugins/tategaki-plugin/data.json`
+  - to `.obsidian/plugins/tategaki/data.json`
+- Re-check custom hotkeys for plugin commands
+- After confirming everything works, remove old folder `tategaki-plugin`
+
 ## Documentation
 
 - Quick start: `QUICKSTART.md`

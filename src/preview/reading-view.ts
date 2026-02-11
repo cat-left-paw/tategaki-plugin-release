@@ -90,7 +90,10 @@ export class TategakiReadingView extends ItemView {
 		};
 	}
 
-	async setState(state: ReadingViewState, _result: ViewStateResult): Promise<void> {
+	setState(
+		state: ReadingViewState,
+		_result: ViewStateResult
+	): Promise<void> {
 		if (state?.filePath) {
 			this.filePath = state.filePath;
 		} else {
@@ -106,26 +109,16 @@ export class TategakiReadingView extends ItemView {
 		}
 		if (!this.isReady) {
 			this.pendingState = state;
-			return;
+			return Promise.resolve();
 		}
 		this.scheduleRender();
+		return Promise.resolve();
 	}
 
-	async onOpen(): Promise<void> {
+	onOpen(): Promise<void> {
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
-		container.style.cssText = `
-			position: relative;
-			width: 100%;
-			height: 100%;
-			display: flex;
-			flex-direction: column;
-			min-height: 0;
-			overflow: hidden;
-			box-sizing: border-box;
-			margin: 0;
-			padding: 0;
-		`;
+		container.addClass("tategaki-reading-view-container");
 		const phoneQuery =
 			"(hover: none) and (pointer: coarse) and (max-width: 700px)";
 		const updateHeaderInset = (): void => {
@@ -164,33 +157,11 @@ export class TategakiReadingView extends ItemView {
 		const toolbarRow = container.createDiv(
 			"tategaki-reading-toolbar-row"
 		);
-		toolbarRow.style.cssText = `
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			flex: 0 0 auto;
-			padding: 0;
-			background: var(--background-secondary);
-			border-bottom: 1px solid var(--background-modifier-border);
-		`;
 
-		const toolbarLeft = toolbarRow.createDiv();
-		toolbarLeft.style.cssText = `
-			display: flex;
-			align-items: center;
-			flex: 1;
-			min-width: 0;
-		`;
+		const toolbarLeft = toolbarRow.createDiv("tategaki-reading-toolbar-left");
 		this.toolbarLeftEl = toolbarLeft;
 
-		const toolbarRight = toolbarRow.createDiv();
-		toolbarRight.style.cssText = `
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			padding: 0 8px;
-			flex-shrink: 0;
-		`;
+		const toolbarRight = toolbarRow.createDiv("tategaki-reading-toolbar-right");
 		this.toolbarRightEl = toolbarRight;
 
 		this.buildToolbar(toolbarLeft, toolbarRight);
@@ -198,35 +169,10 @@ export class TategakiReadingView extends ItemView {
 		const contentArea = container.createDiv(
 			"tategaki-reading-view-area"
 		);
-		contentArea.style.cssText = `
-			position: relative;
-			flex: 1 1 auto;
-			min-height: 0;
-			width: 100%;
-			overflow: hidden;
-			display: flex;
-		`;
 
 		this.rootEl = contentArea.createDiv("tategaki-reading-view-root");
-		this.rootEl.style.cssText = `
-			position: relative;
-			flex: 1 1 auto;
-			min-width: 0;
-			min-height: 0;
-			width: 100%;
-			height: 100%;
-			overflow: hidden;
-			box-sizing: border-box;
-			background: var(--tategaki-page-background-color, var(--background-primary));
-		`;
 
 		this.hostEl = this.rootEl.createDiv("tategaki-reading-view-host");
-		this.hostEl.style.cssText = `
-			position: relative;
-			width: 100%;
-			height: 100%;
-			overflow: hidden;
-		`;
 
 		this.isReady = true;
 
@@ -255,14 +201,15 @@ export class TategakiReadingView extends ItemView {
 				this.registerFileWatchers();
 				this.scheduleRender();
 			}, 0);
-			return;
+			return Promise.resolve();
 		}
 
 		this.registerFileWatchers();
 		this.scheduleRender();
+		return Promise.resolve();
 	}
 
-	async onClose(): Promise<void> {
+	onClose(): Promise<void> {
 		this.clearRenderTimer();
 		this.destroyPager();
 		if (this.outlinePanelEl) {
@@ -284,6 +231,7 @@ export class TategakiReadingView extends ItemView {
 		this.isReady = false;
 		this.pendingState = null;
 		this.returnViewMode = "sot";
+		return Promise.resolve();
 	}
 
 	updateSettings(settings: TategakiV2Settings): Promise<void> {
@@ -337,18 +285,7 @@ export class TategakiReadingView extends ItemView {
 
 		const modeBadge = toolbarRight.createDiv();
 		modeBadge.textContent = "書籍";
-		modeBadge.style.cssText = `
-			display: inline-flex;
-			align-items: center;
-			gap: 6px;
-			padding: 2px 8px;
-			border-radius: 999px;
-			background: var(--background-modifier-hover);
-			border: 1px solid var(--background-modifier-border);
-			color: var(--text-normal);
-			font-size: 11px;
-			white-space: nowrap;
-		`;
+		modeBadge.addClass("tategaki-reading-mode-badge");
 		this.modeBadgeEl = modeBadge;
 	}
 
@@ -358,54 +295,12 @@ export class TategakiReadingView extends ItemView {
 		const isMobile = Platform.isMobile || Platform.isMobileApp;
 		if (isMobile) {
 			toolbarLeft.addClass("tiptap-toolbar-mobile");
-			toolbarLeft.style.cssText = `
-				display: flex;
-				align-items: center;
-				gap: 4px;
-				padding: 8px;
-				background-color: var(--background-secondary);
-				flex-wrap: nowrap;
-				flex: 1 1 auto;
-				min-width: 0;
-				width: 100%;
-				max-width: 100%;
-				overflow-x: auto;
-				overflow-y: hidden;
-				-webkit-overflow-scrolling: touch;
-				scrollbar-width: none;
-				touch-action: pan-x;
-				overscroll-behavior-x: contain;
-			`;
-			const doc = toolbarLeft.ownerDocument;
-			if (
-				!doc.getElementById(
-					"tategaki-reading-toolbar-mobile-scrollbar-style"
-				)
-			) {
-				const style = doc.createElement("style");
-				style.id = "tategaki-reading-toolbar-mobile-scrollbar-style";
-				style.textContent = `
-					.tiptap-toolbar-mobile::-webkit-scrollbar {
-						display: none;
-					}
-					.tiptap-toolbar-mobile .contenteditable-toolbar-button,
-					.tiptap-toolbar-mobile .contenteditable-toolbar-separator {
-						flex: 0 0 auto;
-					}
-				`;
-				doc.head.appendChild(style);
-			}
+			toolbarLeft.addClass("tategaki-reading-toolbar-left-mobile");
+			toolbarLeft.removeClass("tategaki-reading-toolbar-left-desktop");
 		} else {
-			toolbarLeft.style.cssText = `
-				display: flex;
-				align-items: center;
-				gap: 4px;
-				padding: 8px;
-				background-color: var(--background-secondary);
-				flex-wrap: wrap;
-				flex: 1 1 auto;
-				min-width: 0;
-			`;
+			toolbarLeft.removeClass("tiptap-toolbar-mobile");
+			toolbarLeft.removeClass("tategaki-reading-toolbar-left-mobile");
+			toolbarLeft.addClass("tategaki-reading-toolbar-left-desktop");
 		}
 	}
 
@@ -445,32 +340,22 @@ export class TategakiReadingView extends ItemView {
 		}) as HTMLButtonElement;
 		setIcon(button, icon);
 		button.disabled = true;
-		button.style.opacity = "0.35";
+		button.addClass("is-disabled");
 		return button;
 	}
 
 	private createSeparator(container: HTMLElement): void {
-		const separator = container.createDiv(
+		container.createDiv(
 			"contenteditable-toolbar-separator"
 		);
-		separator.style.cssText = `
-			width: 1px;
-			height: 24px;
-			background-color: var(--background-modifier-border);
-			margin: 0 4px;
-		`;
 	}
 
 	private setButtonActive(button: HTMLButtonElement | null, active: boolean): void {
 		if (!button) return;
 		if (active) {
 			button.addClass("is-active");
-			button.style.backgroundColor = "var(--interactive-accent)";
-			button.style.color = "var(--text-on-accent)";
 		} else {
 			button.removeClass("is-active");
-			button.style.backgroundColor = "";
-			button.style.color = "";
 		}
 	}
 
@@ -589,41 +474,13 @@ export class TategakiReadingView extends ItemView {
 		const panel = this.rootEl.createDiv(
 			"tategaki-reading-outline-panel"
 		);
-		panel.style.cssText = `
-			position: absolute;
-			top: 0;
-			right: 0;
-			bottom: 0;
-			width: 280px;
-			background: color-mix(in srgb, var(--background-primary) 80%, transparent);
-			backdrop-filter: blur(8px);
-			-webkit-backdrop-filter: blur(8px);
-			border-left: 1px solid var(--background-modifier-border);
-			z-index: 900;
-			overflow: auto;
-			padding: 8px 0;
-		`;
 		this.outlinePanelEl = panel;
 		this.renderOutline(panel);
 	}
 
 	private renderOutline(panel: HTMLElement): void {
 		panel.empty();
-		const header = panel.createDiv();
-		header.style.cssText = `
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			padding: 8px 12px;
-			border-bottom: 1px solid var(--background-modifier-border);
-			font-weight: 600;
-			position: sticky;
-			top: 0;
-			background: color-mix(in srgb, var(--background-primary) 90%, transparent);
-			backdrop-filter: blur(8px);
-			-webkit-backdrop-filter: blur(8px);
-			z-index: 1;
-		`;
+		const header = panel.createDiv("tategaki-reading-outline-header");
 		header.createSpan({ text: "アウトライン" });
 		const closeBtn = header.createEl("button", {
 			cls: "clickable-icon contenteditable-toolbar-button",
@@ -635,27 +492,20 @@ export class TategakiReadingView extends ItemView {
 			this.toggleOutlinePanel();
 		});
 
-		const list = panel.createDiv();
-		list.style.cssText = "padding: 6px 0;";
+		const list = panel.createDiv("tategaki-reading-outline-list");
 
 		if (this.outlineItems.length === 0) {
-			const empty = list.createDiv();
+			const empty = list.createDiv("tategaki-reading-outline-empty");
 			empty.textContent = "見出しがありません";
-			empty.style.cssText =
-				"padding: 8px 12px; color: var(--text-muted);";
 			return;
 		}
 
 		for (const item of this.outlineItems) {
-			const row = list.createDiv();
-			row.style.cssText = `
-				padding: 6px 12px;
-				cursor: pointer;
-				white-space: nowrap;
-				overflow: hidden;
-				text-overflow: ellipsis;
-				padding-left: ${12 + Math.max(0, item.level - 1) * 12}px;
-			`;
+			const row = list.createDiv("tategaki-reading-outline-row");
+			row.style.setProperty(
+				"--tategaki-reading-outline-indent",
+				`${12 + Math.max(0, item.level - 1) * 12}px`,
+			);
 			row.textContent = item.text;
 			row.addEventListener("click", (event) => {
 				event.preventDefault();
@@ -1123,22 +973,15 @@ export class TategakiReadingView extends ItemView {
 	}
 
 	private applyFrontmatterInlineEndAlignment(element: HTMLElement): void {
-		element.style.display = "block";
-		element.style.setProperty("text-align", "end", "important");
-		element.style.setProperty("text-align-last", "end", "important");
-		element.style.marginInlineStart = "auto";
-		element.style.marginInlineEnd = "0";
-		element.style.marginLeft = "auto";
-		element.style.marginRight = "0";
-		element.style.justifySelf = "end";
+		element.addClass("tategaki-frontmatter-inline-end");
 	}
 
 	private applyFrontmatterWritingMode(
 		element: HTMLElement,
 		writingMode: string
 	): void {
+		element.addClass("tategaki-frontmatter-writing-mode");
 		element.style.writingMode = writingMode;
-		element.style.textOrientation = "mixed";
 	}
 
 	private getDisplayFile(): TFile | null {

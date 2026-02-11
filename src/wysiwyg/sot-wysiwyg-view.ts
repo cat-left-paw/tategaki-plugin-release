@@ -78,6 +78,7 @@ import {
 } from "./sot/sot-selection-geometry";
 import { SoTPointerHandler } from "./sot/sot-pointer";
 import { SoTSelectionOverlay } from "./sot/sot-selection-overlay";
+import { openExternalUrl } from "../shared/open-external-url";
 import { tryRenderNativeSelectionFallback } from "./sot/sot-selection-fallback";
 import { SoTNativeContextMenuHold } from "./sot/sot-native-contextmenu-hold";
 import { SoTCeSelectionSync } from "./sot/sot-ce-selection-sync";
@@ -88,7 +89,7 @@ import {
 } from "./sot/selection-guard";
 import { SoTRenderPipeline } from "./sot/sot-render-pipeline";
 import type { FrontmatterData } from "./sot/sot-wysiwyg-view-frontmatter";
-import { debugLog } from "../shared/logger";
+import { debugLog, debugWarn } from "../shared/logger";
 import {
 	isPhoneLikeMobile,
 	PHONE_MEDIA_QUERY,
@@ -1678,9 +1679,20 @@ export class SoTWysiwygView extends ItemView {
 		}
 		const range = this.lineRanges[lineIndex];
 		if (!range) return safeOffset;
+		const lineKind = this.lineBlockKinds[lineIndex] ?? "normal";
+		const hiddenFrontmatterLine =
+			this.hideFrontmatter &&
+			this.frontmatterDetected &&
+			(lineKind === "frontmatter" || lineKind === "frontmatter-fence");
+		if (hiddenFrontmatterLine) {
+			return this.findNearestCaretVisibleOffset(lineIndex, preferForward);
+		}
 		const segments = this.buildSegmentsForLine(range.from, range.to);
 		if (segments.length === 0) {
-			return range.from;
+			if (range.from === range.to) {
+				return range.from;
+			}
+			return this.findNearestCaretVisibleOffset(lineIndex, preferForward);
 		}
 		const first = segments[0]!;
 		const last = segments[segments.length - 1]!;
@@ -1697,6 +1709,53 @@ export class SoTWysiwygView extends ItemView {
 			}
 		}
 		return safeOffset;
+	}
+
+	private findNearestCaretVisibleOffset(
+		lineIndex: number,
+		preferForward: boolean,
+	): number {
+		const step = preferForward ? 1 : -1;
+		for (
+			let i = lineIndex;
+			i >= 0 && i < this.lineRanges.length;
+			i += step
+		) {
+			if (this.isLineInSourceMode(i)) {
+				const range = this.lineRanges[i];
+				if (range) return preferForward ? range.from : range.to;
+				continue;
+			}
+			const kind = this.lineBlockKinds[i] ?? "normal";
+			const hiddenFrontmatterLine =
+				this.hideFrontmatter &&
+				this.frontmatterDetected &&
+				(kind === "frontmatter" || kind === "frontmatter-fence");
+			if (hiddenFrontmatterLine) {
+				continue;
+			}
+			const range = this.lineRanges[i];
+			if (!range) continue;
+			const segments = this.buildSegmentsForLine(range.from, range.to);
+			if (segments.length === 0) {
+				if (range.from === range.to) {
+					return range.from;
+				}
+				continue;
+			}
+			const first = segments[0];
+			const last = segments[segments.length - 1];
+			if (!first || !last) continue;
+			return preferForward ? first.from : last.to;
+		}
+		return preferForward
+			? this.sotEditor?.getDoc().length ?? 0
+			: 0;
+	}
+
+	private getVisibleDocStartOffset(): number {
+		if (!this.sotEditor || this.lineRanges.length === 0) return 0;
+		return this.findNearestCaretVisibleOffset(0, true);
 	}
 
 	private setSelectionNormalized(
@@ -4236,18 +4295,7 @@ export class SoTWysiwygView extends ItemView {
 		const container = this.containerEl.children[1] as HTMLElement;
 		this.viewRootEl = container;
 		container.empty();
-		container.style.cssText = `
-			position: relative;
-			width: 100%;
-			height: 100%;
-			display: flex;
-			flex-direction: column;
-			min-height: 0;
-			overflow: hidden;
-			box-sizing: border-box;
-			margin: 0;
-			padding: 0;
-		`;
+		container.addClass("tategaki-sot-view-container");
 		const phoneQuery = PHONE_MEDIA_QUERY;
 		const updateHeaderInset = (): void => {
 			const headerEl = this.containerEl.querySelector(
@@ -4305,23 +4353,7 @@ export class SoTWysiwygView extends ItemView {
 		}
 
 		const toolbarRow = container.createDiv("tategaki-sot-toolbar-row");
-		toolbarRow.style.cssText = `
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			flex: 0 0 auto;
-			padding: 0;
-			background: var(--background-secondary);
-			border-bottom: 1px solid var(--background-modifier-border);
-		`;
-
-		const toolbarLeft = toolbarRow.createDiv();
-		toolbarLeft.style.cssText = `
-			display: flex;
-			align-items: center;
-			flex: 1;
-			min-width: 0;
-		`;
+		const toolbarLeft = toolbarRow.createDiv("tategaki-sot-toolbar-left");
 
 		this.commandAdapter = this.createCommandAdapter();
 		this.commandToolbar = new CommandToolbar(
@@ -4335,66 +4367,16 @@ export class SoTWysiwygView extends ItemView {
 		});
 
 		const content = container.createDiv("tategaki-sot-content");
-		content.style.cssText = `
-			position: relative;
-			flex: 1 1 auto;
-			min-height: 0;
-			overflow: hidden;
-			display: flex;
-			flex-direction: column;
-		`;
 
 		this.pageContainerEl = content.createDiv("tategaki-sot-page-container");
-		this.pageContainerEl.style.cssText = `
-			flex: 1 1 auto;
-			min-width: 0;
-			min-height: 0;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			box-sizing: border-box;
-			overflow: visible;
-			padding: 40px 32px 22px 32px;
-			background: transparent;
-		`;
 
 		this.borderWrapperEl = this.pageContainerEl.createDiv(
 			"tategaki-sot-border-wrapper",
 		);
-		this.borderWrapperEl.style.cssText = `
-			position: relative;
-			width: 100%;
-			height: 100%;
-			min-width: 0;
-			min-height: 0;
-			border: none !important;
-			outline: none !important;
-			border-radius: 0;
-			background: ${this.plugin.settings.common.backgroundColor} !important;
-			box-shadow: 0 6px 12px rgba(0,0,0,0.4);
-			box-sizing: border-box;
-			overflow: hidden;
-			transform-origin: center center;
-			transform: scale(1);
-		`;
 
 		this.contentWrapperEl = this.borderWrapperEl.createDiv(
 			"tategaki-sot-content-wrapper",
 		);
-		this.contentWrapperEl.style.cssText = `
-			position: absolute;
-			top: 0;
-			left: 0;
-			width: 100%;
-			height: 100%;
-			background: ${this.plugin.settings.common.backgroundColor};
-			color: var(--text-normal);
-			display: flex;
-			flex-direction: column;
-			overflow: hidden;
-			border: none !important;
-			outline: none !important;
-		`;
 
 		this.loadingOverlayEl = this.contentWrapperEl.createDiv(
 			"tategaki-sot-loading-overlay",
@@ -4954,13 +4936,14 @@ export class SoTWysiwygView extends ItemView {
 					this.setNativeSelectionAssistActive(false, "pointercancel");
 				}
 			});
-		this.registerDomEvent(this.derivedRootEl, "keydown", (event) => {
-			const key = (event as KeyboardEvent).key;
-			if (
-				key === "Meta" ||
-				key === "Control" ||
-				key === "Shift" ||
-				key === "Alt"
+			this.registerDomEvent(this.derivedRootEl, "keydown", (event) => {
+				const key = (event as KeyboardEvent).key;
+				const keyboardEvent = event as KeyboardEvent;
+				if (
+					key === "Meta" ||
+					key === "Control" ||
+					key === "Shift" ||
+					key === "Alt"
 			) {
 				return;
 			}
@@ -4977,17 +4960,36 @@ export class SoTWysiwygView extends ItemView {
 				this.focusInputSurface(true);
 				return;
 			}
-			// クリックせずにタイピングを始めた場合のフォーカス救済
-			if (this.ceImeMode) {
-				this.focusInputSurface(true);
-				return;
-			}
-			if (
-				(key === "Backspace" || key === "Delete") &&
-				!this.overlayTextarea?.isFocused() &&
-				this.isNativeSelectionEnabled() &&
-				!this.sourceModeEnabled
-			) {
+				// クリックせずにタイピングを始めた場合のフォーカス救済
+				if (this.ceImeMode) {
+					this.focusInputSurface(true);
+					return;
+				}
+				if (
+					!this.isNativeSelectionEnabled() &&
+					!this.sourceModeEnabled &&
+					!this.overlayTextarea?.isFocused() &&
+					!keyboardEvent.metaKey &&
+					!keyboardEvent.ctrlKey &&
+					!keyboardEvent.altKey &&
+					["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
+						key,
+					)
+				) {
+					event.preventDefault();
+					event.stopPropagation();
+					this.handleNavigate(keyboardEvent);
+					window.requestAnimationFrame(() => {
+						this.focusInputSurface(true);
+					});
+					return;
+				}
+				if (
+					(key === "Backspace" || key === "Delete") &&
+					!this.overlayTextarea?.isFocused() &&
+					this.isNativeSelectionEnabled() &&
+					!this.sourceModeEnabled
+				) {
 				const selection =
 					this.derivedContentEl?.ownerDocument.getSelection() ?? null;
 				const hasDomSelection =
@@ -5075,6 +5077,9 @@ export class SoTWysiwygView extends ItemView {
 					}, 0);
 					return;
 				}
+				if (this.sourceModeEnabled) {
+					this.disablePlainEditMode();
+				}
 				if (this.ceImeMode) {
 					this.setCeImeMode(false, { suspend: true });
 				}
@@ -5110,7 +5115,7 @@ export class SoTWysiwygView extends ItemView {
 		}
 	}
 
-	async updateSettings(settings: TategakiV2Settings): Promise<void> {
+	updateSettings(settings: TategakiV2Settings): Promise<void> {
 		const prevHideFrontmatter = this.hideFrontmatter;
 		this.applySettingsToView(settings);
 		this.commandToolbar?.update();
@@ -5119,9 +5124,10 @@ export class SoTWysiwygView extends ItemView {
 		} else {
 			this.scheduleRender();
 		}
+		return Promise.resolve();
 	}
 
-	async onClose(): Promise<void> {
+	onClose(): Promise<void> {
 		this.clearPairedMarkdownBadge();
 		this.clearSoTTabBadge();
 		this.renderPipeline?.dispose();
@@ -5244,6 +5250,7 @@ export class SoTWysiwygView extends ItemView {
 		this.plainTextViewEnabled = false;
 		this.writingMode = "vertical-rl";
 		this.isReady = false;
+		return Promise.resolve();
 	}
 
 	private async openFile(file: TFile): Promise<void> {
@@ -5264,13 +5271,17 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private isLeafActive(): boolean {
-		return (this.app.workspace as any).activeLeaf === this.leaf;
+		return (
+			(this.app.workspace.getMostRecentLeaf?.() ?? null) === this.leaf
+		);
 	}
 
 	private isPairedMarkdownLeafActive(): boolean {
 		const pairedLeaf = this.getValidPairedMarkdownLeaf();
 		if (!pairedLeaf) return false;
-		return (this.app.workspace as any).activeLeaf === pairedLeaf;
+		return (
+			(this.app.workspace.getMostRecentLeaf?.() ?? null) === pairedLeaf
+		);
 	}
 
 	private registerEscapeKeymap(): void {
@@ -5284,7 +5295,7 @@ export class SoTWysiwygView extends ItemView {
 	private runCommand(
 		action: () => void | Promise<void>,
 		options?: { skipFinalizeFocus?: boolean },
-	): void | Promise<void> {
+	): void {
 		const finalize = () => {
 			this.commandToolbar?.update();
 			this.scheduleCaretUpdate(true);
@@ -5292,7 +5303,7 @@ export class SoTWysiwygView extends ItemView {
 				this.focusInputSurface(true);
 			}
 		};
-		let result: void | Promise<void>;
+		let result: void | Promise<void> | undefined;
 		if (this.ceImeMode) {
 			this.runCeMutation(() => {
 				result = action();
@@ -5301,7 +5312,8 @@ export class SoTWysiwygView extends ItemView {
 			result = action();
 		}
 		if (result && typeof (result as Promise<void>).then === "function") {
-			return (result as Promise<void>).finally(() => finalize());
+			void (result as Promise<void>).finally(() => finalize());
+			return;
 		}
 		finalize();
 	}
@@ -5309,7 +5321,7 @@ export class SoTWysiwygView extends ItemView {
 	private wrapCommand(
 		action: () => void | Promise<void>,
 		options?: { skipFinalizeFocus?: boolean },
-	): () => void | Promise<void> {
+	): () => void {
 		return () => this.runCommand(action, options);
 	}
 
@@ -5336,8 +5348,9 @@ export class SoTWysiwygView extends ItemView {
 			toggleInlineCode: wrap(() => this.toggleInlineStyle("code")),
 			isInlineCodeActive: () =>
 				this.isInlineStyleActive("tategaki-md-code"),
-			setHeading: (level: number) =>
-				this.runCommand(() => this.setHeading(level)),
+			setHeading: (level: number) => {
+				this.runCommand(() => this.setHeading(level));
+			},
 			clearHeading: wrap(() => this.clearHeading()),
 			getHeadingLevel: () => this.getHeadingLevel(),
 			toggleBulletList: wrap(() => this.toggleList("bullet")),
@@ -5352,7 +5365,9 @@ export class SoTWysiwygView extends ItemView {
 			insertRuby: wrap(() => this.insertRuby()),
 			insertHorizontalRule: wrap(() => this.insertHorizontalRule()),
 			openSettings: wrap(() => this.openSettingsPanel()),
-			openOutline: () => this.openOutline(),
+			openOutline: () => {
+				this.openOutline();
+			},
 			clearFormatting: wrap(() => this.clearFormatting()),
 			toggleRuby: wrap(() => this.toggleRubyVisibility()),
 			isRubyEnabled: () =>
@@ -5461,6 +5476,32 @@ export class SoTWysiwygView extends ItemView {
 		return this.sotEditor.getDoc().slice(from, to);
 	}
 
+	private getNativeSelectionText(): string {
+		if (!this.derivedContentEl) return "";
+		const selection = this.derivedContentEl.ownerDocument.getSelection();
+		if (!selection || selection.rangeCount === 0) return "";
+		const anchorNode = selection.anchorNode;
+		const focusNode = selection.focusNode;
+		if (anchorNode && !this.derivedContentEl.contains(anchorNode)) {
+			return "";
+		}
+		if (focusNode && !this.derivedContentEl.contains(focusNode)) {
+			return "";
+		}
+		return selection.toString();
+	}
+
+	private selectAllDerivedContent(): boolean {
+		if (!this.derivedContentEl) return false;
+		const selection = this.derivedContentEl.ownerDocument.getSelection();
+		if (!selection) return false;
+		const range = this.derivedContentEl.ownerDocument.createRange();
+		range.selectNodeContents(this.derivedContentEl);
+		selection.removeAllRanges();
+		selection.addRange(range);
+		return true;
+	}
+
 	private selectAllText(): void {
 		if (this.sourceModeEnabled && this.plainEditOverlayEl) {
 			this.plainEditOverlayEl.focus({ preventScroll: true });
@@ -5469,23 +5510,27 @@ export class SoTWysiwygView extends ItemView {
 		}
 		if (this.ceImeMode && this.derivedContentEl) {
 			this.focusInputSurface(true);
-			document.execCommand("selectAll");
-			this.selectAllActive = false;
+			if (!this.sotEditor) {
+				this.selectAllDerivedContent();
+				this.selectAllActive = false;
+				this.clearSoftSelection();
+				this.scheduleCaretUpdate();
+				return;
+			}
+			const docLength = this.sotEditor.getDoc().length;
+			this.selectAllActive = docLength > 0;
 			this.clearSoftSelection();
+			this.setSelectionNormalized(0, docLength);
+			this.ceImeSelectionChangeSuppressedUntil = Date.now() + 120;
+			this.syncSelectionToCe();
+			this.updateCeEditableRangeFromSelection();
+			this.scheduleSelectionOverlayUpdate();
 			this.scheduleCaretUpdate();
 			return;
 		}
 		if (this.isNativeSelectionEnabled() && this.derivedContentEl) {
 			if (this.shouldAllowDomSelectAll()) {
-				const selection =
-					this.derivedContentEl.ownerDocument.getSelection();
-				if (selection) {
-					const range =
-						this.derivedContentEl.ownerDocument.createRange();
-					range.selectNodeContents(this.derivedContentEl);
-					selection.removeAllRanges();
-					selection.addRange(range);
-				}
+				this.selectAllDerivedContent();
 				this.selectAllActive = false;
 				this.clearSoftSelection();
 				this.scheduleCaretUpdate();
@@ -5511,15 +5556,14 @@ export class SoTWysiwygView extends ItemView {
 			if (this.ceImeMode) {
 				this.focusInputSurface(true);
 			}
-			document.execCommand("copy");
+			const text = this.getNativeSelectionText() || this.getSelectionText();
+			if (!text) return;
+			await this.writeTextToClipboard(text);
 			return;
 		}
 		const text = this.getSelectionText();
 		if (!text) return;
-		const copied = await this.writeTextToClipboard(text);
-		if (!copied) {
-			document.execCommand("copy");
-		}
+		await this.writeTextToClipboard(text);
 	}
 
 	private async cutSelection(): Promise<void> {
@@ -5527,16 +5571,26 @@ export class SoTWysiwygView extends ItemView {
 			if (this.ceImeMode) {
 				this.focusInputSurface(true);
 			}
-			document.execCommand("cut");
+			const text = this.getNativeSelectionText() || this.getSelectionText();
+			if (!text) return;
+			const copied = await this.writeTextToClipboard(text);
+			if (!copied) return;
+			if (this.ceImeMode) {
+				const selection = this.syncSelectionFromCe();
+				if (!selection) return;
+				const from = Math.min(selection.anchor, selection.head);
+				const to = Math.max(selection.anchor, selection.head);
+				this.applyCeReplaceRange(from, to, "");
+				return;
+			}
+			this.replaceSelection("");
 			return;
 		}
 		if (this.sourceModeEnabled && this.plainEditOverlayEl) {
 			const text = this.getSelectionText();
 			if (!text) return;
 			const copied = await this.writeTextToClipboard(text);
-			if (!copied) {
-				document.execCommand("copy");
-			}
+			if (!copied) return;
 			replacePlainEditSelection(this.plainEditOverlayEl, "", {
 				onResize: () => this.adjustPlainEditOverlaySize(),
 			});
@@ -5545,9 +5599,7 @@ export class SoTWysiwygView extends ItemView {
 		const text = this.getSelectionText();
 		if (!text) return;
 		const copied = await this.writeTextToClipboard(text);
-		if (!copied) {
-			document.execCommand("copy");
-		}
+		if (!copied) return;
 		this.replaceSelection("");
 	}
 
@@ -5556,7 +5608,6 @@ export class SoTWysiwygView extends ItemView {
 			const text = await this.readTextFromClipboard();
 			if (!text) {
 				this.plainEditOverlayEl.focus({ preventScroll: true });
-				document.execCommand("paste");
 				return;
 			}
 			const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -5568,10 +5619,6 @@ export class SoTWysiwygView extends ItemView {
 		if (!this.sotEditor) return;
 		const text = await this.readTextFromClipboard();
 		if (!text) {
-			if (this.ceImeMode) {
-				return;
-			}
-			document.execCommand("paste");
 			return;
 		}
 		const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -5589,15 +5636,14 @@ export class SoTWysiwygView extends ItemView {
 
 	private async writeTextToClipboard(text: string): Promise<boolean> {
 		if (!text) return false;
-		if (navigator.clipboard?.writeText) {
-			try {
-				await navigator.clipboard.writeText(text);
-				return true;
-			} catch (error) {
-				console.warn("Tategaki SoT: clipboard write failed", error);
-			}
+		if (!navigator.clipboard?.writeText) return false;
+		try {
+			await navigator.clipboard.writeText(text);
+			return true;
+		} catch (error) {
+			debugWarn("Tategaki SoT: clipboard write failed", error);
+			return false;
 		}
-		return this.fallbackCopyText(text);
 	}
 
 	private async readTextFromClipboard(): Promise<string> {
@@ -5605,35 +5651,19 @@ export class SoTWysiwygView extends ItemView {
 			try {
 				return await navigator.clipboard.readText();
 			} catch (error) {
-				console.warn("Tategaki SoT: clipboard read failed", error);
+				debugWarn("Tategaki SoT: clipboard read failed", error);
 			}
 		}
 		return "";
 	}
 
-	private fallbackCopyText(text: string): boolean {
-		const textarea = document.createElement("textarea");
-		textarea.value = text;
-		textarea.style.position = "fixed";
-		textarea.style.top = "-9999px";
-		textarea.style.left = "-9999px";
-		textarea.style.opacity = "0";
-		document.body.appendChild(textarea);
-		textarea.focus();
-		textarea.select();
-		let success = false;
-		try {
-			success = document.execCommand("copy");
-		} catch (_) {
-			success = false;
-		}
-		textarea.remove();
-		return success;
-	}
-
 	private toggleInlineStyle(
 		kind: "bold" | "italic" | "strike" | "highlight" | "code",
 	): void {
+		if (this.ceImeMode && !this.sourceModeEnabled) {
+			const selection = this.syncSelectionFromCe();
+			if (!selection) return;
+		}
 		if (this.sourceModeEnabled && this.plainEditOverlayEl) {
 			switch (kind) {
 				case "bold":
@@ -5721,6 +5751,10 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private clearFormatting(): void {
+		if (this.ceImeMode && !this.sourceModeEnabled) {
+			const selection = this.syncSelectionFromCe();
+			if (!selection) return;
+		}
 		if (this.sourceModeEnabled && this.plainEditOverlayEl) {
 			clearPlainEditSelectionFormatting(this.plainEditOverlayEl, () =>
 				this.adjustPlainEditOverlaySize(),
@@ -5932,21 +5966,9 @@ export class SoTWysiwygView extends ItemView {
 			return;
 		}
 
-		const selectionHasStyle = className
-			? this.isInlineStyleActive(className)
-			: false;
-		let mergeLeft =
-			!selectionHasStyle && className
-				? this.hasInlineClassBefore(from, className)
-				: false;
-		let mergeRight =
-			!selectionHasStyle && className
-				? this.hasInlineClassAfter(to, className)
-				: false;
-
 		let adjustedFrom = from;
 		let adjustedTo = to;
-		if (selectionHasStyle && className) {
+		if (className) {
 			const adjusted = this.stripInlineStyleInSelection(
 				adjustedFrom,
 				adjustedTo,
@@ -5955,12 +5977,30 @@ export class SoTWysiwygView extends ItemView {
 			);
 			adjustedFrom = adjusted.from;
 			adjustedTo = adjusted.to;
-			if (adjusted.removedOnly) {
+			if (adjusted.removedOnly || adjusted.removedAny) {
+				this.setSelectionNormalized(adjustedFrom, adjustedTo);
+				this.focusInputSurface(true);
+				return;
+			}
+			if (adjusted.hadStyled) {
+				// スタイル検出はできたが除去できなかった場合、再付与に進むと
+				// 記号が増殖しやすいため安全側で no-op にする。
 				this.setSelectionNormalized(adjustedFrom, adjustedTo);
 				this.focusInputSurface(true);
 				return;
 			}
 		}
+
+		const selectionHasStyle =
+			!!className && (adjustedFrom !== from || adjustedTo !== to);
+		let mergeLeft =
+			!selectionHasStyle && className
+				? this.hasInlineClassBefore(adjustedFrom, className)
+				: false;
+		let mergeRight =
+			!selectionHasStyle && className
+				? this.hasInlineClassAfter(adjustedTo, className)
+				: false;
 
 		let doc = this.sotEditor.getDoc();
 		for (const pair of pairs) {
@@ -5981,6 +6021,32 @@ export class SoTWysiwygView extends ItemView {
 				);
 				const nextFrom = adjustedFrom - openLen;
 				const nextTo = adjustedTo - openLen;
+				if (forward) {
+					this.setSelectionNormalized(nextFrom, nextTo);
+				} else {
+					this.setSelectionNormalized(nextTo, nextFrom);
+				}
+				this.focusInputSurface(true);
+				return;
+			}
+		}
+		for (const pair of pairs) {
+			const openLen = pair.open.length;
+			const closeLen = pair.close.length;
+			if (adjustedTo - adjustedFrom < openLen + closeLen) {
+				continue;
+			}
+			if (
+				doc.slice(adjustedFrom, adjustedFrom + openLen) === pair.open &&
+				doc.slice(adjustedTo - closeLen, adjustedTo) === pair.close
+			) {
+				const content = doc.slice(
+					adjustedFrom + openLen,
+					adjustedTo - closeLen,
+				);
+				this.sotEditor.replaceRange(adjustedFrom, adjustedTo, content);
+				const nextFrom = adjustedFrom;
+				const nextTo = adjustedFrom + content.length;
 				if (forward) {
 					this.setSelectionNormalized(nextFrom, nextTo);
 				} else {
@@ -6886,7 +6952,7 @@ export class SoTWysiwygView extends ItemView {
 			this.currentFile,
 		);
 		if (!markdownView || !this.pairedMarkdownLeaf) {
-			new Notice("MarkdownView が見つからないため実行できません。", 2500);
+			new Notice("Markdown ビューが見つからないため実行できません。", 2500);
 			return null;
 		}
 		this.app.workspace.setActiveLeaf(this.pairedMarkdownLeaf, {
@@ -6896,7 +6962,7 @@ export class SoTWysiwygView extends ItemView {
 		return markdownView;
 	}
 
-	private async openOutline(): Promise<void> {
+	private openOutline(): void {
 		if (!this.outlinePanel) {
 			new Notice("アウトラインを開けませんでした。", 2000);
 			return;
@@ -6955,13 +7021,32 @@ export class SoTWysiwygView extends ItemView {
 		to: number,
 		className: InlineStyleClass,
 		pairs: { open: string; close: string }[],
-	): { from: number; to: number; removedOnly: boolean } {
-		if (!this.sotEditor) return { from, to, removedOnly: false };
+	): {
+		from: number;
+		to: number;
+		removedOnly: boolean;
+		removedAny: boolean;
+		hadStyled: boolean;
+	} {
+		if (!this.sotEditor)
+			return {
+				from,
+				to,
+				removedOnly: false,
+				removedAny: false,
+				hadStyled: false,
+			};
 		const doc = this.sotEditor.getDoc();
 		const startLine = this.findLineIndex(from);
 		const endLine = this.findLineIndex(to);
 		if (startLine === null || endLine === null) {
-			return { from, to, removedOnly: false };
+			return {
+				from,
+				to,
+				removedOnly: false,
+				removedAny: false,
+				hadStyled: false,
+			};
 		}
 		const markerExact = pairs.some((pair) => {
 			const openLen = pair.open.length;
@@ -6979,6 +7064,14 @@ export class SoTWysiwygView extends ItemView {
 		let hasUnstyled = false;
 		let minStyled = Number.POSITIVE_INFINITY;
 		let maxStyled = Number.NEGATIVE_INFINITY;
+		this.collectInlineStyleRemovalsBySyntaxNode(
+			from,
+			to,
+			className,
+			pairs,
+			doc,
+			removals,
+		);
 
 		for (let i = startLine; i <= endLine; i += 1) {
 			const range = this.lineRanges[i];
@@ -7025,7 +7118,13 @@ export class SoTWysiwygView extends ItemView {
 		}
 
 		if (removals.length === 0) {
-			return { from, to, removedOnly: false };
+			return {
+				from,
+				to,
+				removedOnly: false,
+				removedAny: false,
+				hadStyled: hasStyled,
+			};
 		}
 
 		const merged = this.mergeRanges(removals).sort(
@@ -7049,7 +7148,109 @@ export class SoTWysiwygView extends ItemView {
 				!hasUnstyled &&
 				minStyled === from &&
 				maxStyled === to);
-		return { from: nextFrom, to: nextTo, removedOnly: fullyStyled };
+		return {
+			from: nextFrom,
+			to: nextTo,
+			removedOnly: fullyStyled,
+			removedAny: true,
+			hadStyled: hasStyled,
+		};
+	}
+
+	private isInlineStyleNodeTargetForRemoval(
+		name: string,
+		className: InlineStyleClass,
+		doc: string,
+		nodeFrom: number,
+		nodeTo: number,
+	): boolean {
+		const mapped = this.isInlineStyleNode(name);
+		if (mapped === className) {
+			return true;
+		}
+		if (className !== "tategaki-md-em" || name !== "StrongEmphasis") {
+			return false;
+		}
+		if (nodeTo - nodeFrom < 6) {
+			return false;
+		}
+		const open3 = doc.slice(nodeFrom, nodeFrom + 3);
+		const close3 = doc.slice(nodeTo - 3, nodeTo);
+		return (
+			(open3 === "***" && close3 === "***") ||
+			(open3 === "___" && close3 === "___")
+		);
+	}
+
+	private collectInlineStyleRemovalsBySyntaxNode(
+		from: number,
+		to: number,
+		className: InlineStyleClass,
+		pairs: { open: string; close: string }[],
+		doc: string,
+		removals: HiddenRange[],
+	): void {
+		if (className === "tategaki-md-code") {
+			return;
+		}
+		const view = this.getEditorViewForSyntax();
+		if (!view) {
+			return;
+		}
+		try {
+			syntaxTree(view.state).iterate({
+				from,
+				to,
+				enter: (node) => {
+					if (
+						node.to <= from ||
+						node.from >= to ||
+						node.to <= node.from
+					) {
+						return;
+					}
+					if (
+						!this.isInlineStyleNodeTargetForRemoval(
+							node.type.name,
+							className,
+							doc,
+							node.from,
+							node.to,
+						)
+					) {
+						return;
+					}
+					for (const pair of pairs) {
+						const openLen = pair.open.length;
+						const closeLen = pair.close.length;
+						if (
+							openLen <= 0 ||
+							closeLen <= 0 ||
+							node.from + openLen > node.to - closeLen
+						) {
+							continue;
+						}
+						if (
+							doc.slice(node.from, node.from + openLen) !== pair.open ||
+							doc.slice(node.to - closeLen, node.to) !== pair.close
+						) {
+							continue;
+						}
+						removals.push({
+							from: node.from,
+							to: node.from + openLen,
+						});
+						removals.push({
+							from: node.to - closeLen,
+							to: node.to,
+						});
+						return;
+					}
+				},
+			});
+		} catch (_) {
+			// noop: syntaxTree解析失敗時は既存のセグメント境界推定にフォールバック
+		}
 	}
 
 	private collectInlineStyleRemovalsForRange(
@@ -7555,6 +7756,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private focusInputSurface(preventScroll = true): void {
+		if (!this.isLeafActive()) return;
 		if (this.sourceModeEnabled && this.plainEditOverlayEl) {
 			try {
 				this.plainEditOverlayEl.focus({ preventScroll });
@@ -8167,6 +8369,12 @@ export class SoTWysiwygView extends ItemView {
 				}
 				return;
 			}
+			return;
+		}
+		if ((event.key === "a" || event.key === "A") && !event.altKey) {
+			event.preventDefault();
+			event.stopPropagation();
+			this.selectAllText();
 			return;
 		}
 		if (event.key === "z" || event.key === "Z") {
@@ -9629,12 +9837,15 @@ export class SoTWysiwygView extends ItemView {
 			/^mailto:/i.test(trimmed) ||
 			/^tel:/i.test(trimmed);
 		if (isExternal) {
-			// Obsidian型定義に openExternal が無い環境でも動くように window.open を使う
-			window.open(trimmed);
+			void openExternalUrl(this.app, trimmed).then((opened) => {
+				if (!opened) {
+					new Notice("リンクを開けませんでした。", 2500);
+				}
+			});
 			return;
 		}
 		const sourcePath = this.currentFile?.path ?? "";
-		this.app.workspace.openLinkText(trimmed, sourcePath, false);
+		void this.app.workspace.openLinkText(trimmed, sourcePath, false);
 	}
 
 	private replaceSelection(text: string): void {
@@ -9753,6 +9964,17 @@ export class SoTWysiwygView extends ItemView {
 		const writingMode = window.getComputedStyle(
 			this.derivedRootEl,
 		).writingMode;
+		const visibleDocStart = this.getVisibleDocStartOffset();
+		if (
+			!event.shiftKey &&
+			selection.anchor === selection.head &&
+			head === visibleDocStart &&
+			this.isBackwardNavigationKey(event.key, writingMode)
+		) {
+			this.pendingCaretScroll = false;
+			this.scheduleCaretUpdate();
+			return;
+		}
 		const visualInfo = this.getVisualMoveInfo(event.key, writingMode);
 		let next = visualInfo?.offset ?? null;
 		if (next === null) {
@@ -9769,12 +9991,31 @@ export class SoTWysiwygView extends ItemView {
 			next = normalized;
 		}
 		const anchor = event.shiftKey ? selection.anchor : next;
+		const selectionUnchanged =
+			anchor === selection.anchor && next === selection.head;
+		if (selectionUnchanged) {
+			this.pendingCaretScroll = false;
+			this.scheduleCaretUpdate();
+			return;
+		}
 		const skipDomSync = this.isNativeSelectionEnabled() && !event.shiftKey;
 		this.setSelectionNormalized(anchor, next, {
 			syncDom: !skipDomSync,
 		});
 		this.pendingCaretScroll = true;
 		this.scheduleCaretUpdate(true);
+	}
+
+	private isBackwardNavigationKey(key: string, writingMode: string): boolean {
+		const isVertical = writingMode.startsWith("vertical");
+		if (isVertical) {
+			const isVerticalRL = writingMode !== "vertical-lr";
+			if (key === "ArrowUp") return true;
+			if (key === "ArrowRight") return isVerticalRL;
+			if (key === "ArrowLeft") return !isVerticalRL;
+			return false;
+		}
+		return key === "ArrowLeft" || key === "ArrowUp";
 	}
 
 	private shouldPrepareImeReplaceRange(event: KeyboardEvent): boolean {
@@ -9931,9 +10172,13 @@ export class SoTWysiwygView extends ItemView {
 			event.preventDefault();
 			event.stopPropagation();
 			if (isCut) {
-				this.updatePendingText("", true);
-				this.immediateRender = true;
-				this.sotEditor.replaceRange(range.from, range.to, "");
+				if (this.ceImeMode) {
+					this.applyCeReplaceRange(range.from, range.to, "");
+				} else {
+					this.updatePendingText("", true);
+					this.immediateRender = true;
+					this.sotEditor.replaceRange(range.from, range.to, "");
+				}
 				this.clearSoftSelection();
 				this.selectAllActive = false;
 			}
@@ -9957,9 +10202,13 @@ export class SoTWysiwygView extends ItemView {
 		event.preventDefault();
 		event.stopPropagation();
 		if (isCut) {
-			this.updatePendingText("", true);
-			this.immediateRender = true;
-			this.sotEditor.replaceRange(from, to, "");
+			if (this.ceImeMode) {
+				this.applyCeReplaceRange(from, to, "");
+			} else {
+				this.updatePendingText("", true);
+				this.immediateRender = true;
+				this.sotEditor.replaceRange(from, to, "");
+			}
 		}
 	}
 
@@ -11893,6 +12142,11 @@ export class SoTWysiwygView extends ItemView {
 		if (!position) return null;
 		const { node, offset } = position;
 		if (!lineEl.contains(node)) return null;
+		const avoidMarkerGapJump = this.isCeRangeSelectionBoundary(
+			lineEl,
+			node,
+			offset,
+		);
 		if (
 			node instanceof Element &&
 			node.classList.contains("tategaki-sot-line")
@@ -11915,7 +12169,12 @@ export class SoTWysiwygView extends ItemView {
 			return 0;
 		}
 		if (node.nodeType === Node.TEXT_NODE) {
-			return this.calculateOffsetWithinLine(lineEl, node as Text, offset);
+			return this.calculateOffsetWithinLine(
+				lineEl,
+				node as Text,
+				offset,
+				avoidMarkerGapJump,
+			);
 		}
 		if (node instanceof Element) {
 			if (node.classList.contains("tategaki-sot-run")) {
@@ -11927,6 +12186,7 @@ export class SoTWysiwygView extends ItemView {
 						lineEl,
 						textNode,
 						safeOffset,
+						avoidMarkerGapJump,
 					);
 				}
 			}
@@ -11945,10 +12205,25 @@ export class SoTWysiwygView extends ItemView {
 					lineEl,
 					textNode,
 					safeOffset,
+					avoidMarkerGapJump,
 				);
 			}
 		}
 		return null;
+	}
+
+	private isCeRangeSelectionBoundary(
+		lineEl: HTMLElement,
+		node: Node,
+		offset: number,
+	): boolean {
+		if (!this.ceImeMode) return false;
+		const selection = lineEl.ownerDocument.getSelection();
+		if (!selection || selection.isCollapsed) return false;
+		return (
+			(selection.anchorNode === node && selection.anchorOffset === offset) ||
+			(selection.focusNode === node && selection.focusOffset === offset)
+		);
 	}
 
 	private resolveOffsetFromLineElementSelection(
@@ -12106,6 +12381,7 @@ export class SoTWysiwygView extends ItemView {
 		lineEl: HTMLElement,
 		node: Text,
 		nodeOffset: number,
+		avoidMarkerGapJump = false,
 	): number {
 		const lineFrom = Number.parseInt(lineEl.dataset.from ?? "0", 10);
 		const lineTo = Number.parseInt(lineEl.dataset.to ?? "0", 10);
@@ -12119,7 +12395,7 @@ export class SoTWysiwygView extends ItemView {
 			if (Number.isFinite(runFrom) && Number.isFinite(runTo)) {
 				const runLen = Math.max(0, runTo - runFrom);
 				const safeOffset = Math.max(0, Math.min(nodeOffset, runLen));
-				if (safeOffset >= runLen) {
+				if (safeOffset >= runLen && !avoidMarkerGapJump) {
 					let next = runEl.nextElementSibling as HTMLElement | null;
 					while (next) {
 						if (next.classList.contains("tategaki-sot-run")) {

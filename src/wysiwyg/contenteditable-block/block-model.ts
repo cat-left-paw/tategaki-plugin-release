@@ -1,5 +1,10 @@
-// @ts-ignore
-import TurndownService = require('turndown');
+import * as TurndownModule from "turndown";
+
+type TurndownConstructor = typeof import("turndown");
+const TurndownServiceCtor = (
+	(TurndownModule as unknown as { default?: TurndownConstructor }).default ??
+	(TurndownModule as unknown as TurndownConstructor)
+);
 
 export type BlockType =
 	| "paragraph"
@@ -198,7 +203,7 @@ export class DocumentModel {
 	 * HTMLからMarkdownへのフォールバック変換（Turndown使用）
 	 */
 	private htmlToMarkdownFallback(html: string): string {
-		const turndownService = new TurndownService({
+		const turndownService = new TurndownServiceCtor({
 			headingStyle: 'atx',
 			hr: '---',
 			bulletListMarker: '-',
@@ -211,7 +216,7 @@ export class DocumentModel {
 
 		// プレースホルダーのbrタグを除外
 			turndownService.addRule('removePlaceholderBr', {
-				filter: (node) => {
+				filter: (node: HTMLElement) => {
 					return (
 						node.nodeName === "BR" &&
 						node.getAttribute("data-tategaki-placeholder") === "1"

@@ -5,6 +5,7 @@ import type {
 	HeaderFooterContent,
 } from "../../types/settings";
 import { MeasuredPagination } from "./measured-pagination";
+import { debugLog } from "../../shared/logger";
 
 export interface PagedReadingModeOptions {
 	container: HTMLElement;
@@ -103,7 +104,7 @@ export class PagedReadingMode {
 	private pendingViewportSize: { width: number; height: number } | null =
 		null;
 	private activePagination: MeasuredPagination | null = null;
-	private debugLayout = true;
+	private debugLayout = false;
 	private lastLayoutMetrics: {
 		width: number;
 		height: number;
@@ -1618,7 +1619,7 @@ export class PagedReadingMode {
 			const stride =
 				this.getRenderStridePx() ??
 				calculatePageStridePx(viewportHeight, pageGap);
-			console.debug("[Tategaki] layout metrics", {
+			debugLog("[Tategaki] layout metrics", {
 				viewportWidth,
 				viewportHeight,
 				viewportScrollHeight,

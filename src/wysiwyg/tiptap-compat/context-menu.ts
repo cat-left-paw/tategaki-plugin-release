@@ -50,6 +50,105 @@ export class TipTapCompatContextMenu {
 		return this.options.isReadOnly?.() ?? false;
 	}
 
+	private getActiveInputSelectionText(): string {
+		const activeElement = document.activeElement;
+		if (
+			activeElement instanceof HTMLTextAreaElement ||
+			activeElement instanceof HTMLInputElement
+		) {
+			const start = activeElement.selectionStart ?? 0;
+			const end = activeElement.selectionEnd ?? 0;
+			if (end > start) {
+				return activeElement.value.slice(start, end);
+			}
+		}
+		return "";
+	}
+
+	private replaceActiveInputSelection(text: string): boolean {
+		const activeElement = document.activeElement;
+		if (
+			activeElement instanceof HTMLTextAreaElement ||
+			activeElement instanceof HTMLInputElement
+		) {
+			const start = activeElement.selectionStart ?? 0;
+			const end = activeElement.selectionEnd ?? start;
+			activeElement.setRangeText(text, start, end, "end");
+			activeElement.dispatchEvent(new Event("input", { bubbles: true }));
+			return true;
+		}
+		return false;
+	}
+
+	private getSelectedText(editor: Editor): string {
+		const activeInputSelection = this.getActiveInputSelectionText();
+		if (activeInputSelection.length > 0) {
+			return activeInputSelection;
+		}
+		const selection = editor.state.selection;
+		if (selection.empty) return "";
+		return editor.state.doc.textBetween(selection.from, selection.to, "\n");
+	}
+
+	private async writeTextToClipboard(text: string): Promise<boolean> {
+		if (!text) return false;
+		if (!navigator.clipboard?.writeText) return false;
+		try {
+			await navigator.clipboard.writeText(text);
+			return true;
+		} catch (error) {
+			debugWarn("Tategaki TipTap: clipboard write failed", error);
+			return false;
+		}
+	}
+
+	private copySelection(editor: Editor): void {
+		void (async () => {
+			const text = this.getSelectedText(editor);
+			if (!text) return;
+			const copied = await this.writeTextToClipboard(text);
+			if (!copied) {
+				new Notice("コピーに失敗しました。", 2500);
+			}
+		})();
+	}
+
+	private cutSelection(editor: Editor): void {
+		void (async () => {
+			const text = this.getSelectedText(editor);
+			if (!text) return;
+			const copied = await this.writeTextToClipboard(text);
+			if (!copied) {
+				new Notice("切り取りに失敗しました。", 2500);
+				return;
+			}
+			if (this.replaceActiveInputSelection("")) {
+				return;
+			}
+			editor.chain().focus().deleteSelection().run();
+		})();
+	}
+
+	private pasteFromClipboard(editor: Editor): void {
+		void (async () => {
+			try {
+				if (!navigator.clipboard?.readText) {
+					new Notice("貼り付けに失敗しました。ブラウザの権限設定を確認してください。", 3000);
+					return;
+				}
+				const text = await navigator.clipboard.readText();
+				if (!text) return;
+				if (this.replaceActiveInputSelection(text)) {
+					return;
+				}
+				editor.chain().focus().insertContent(text).run();
+			} catch (error) {
+				debugWarn("Tategaki TipTap: paste failed", error);
+				new Notice("貼り付けに失敗しました。ブラウザの権限設定を確認してください。", 3000);
+			}
+		})();
+	}
+
 	private getDefaultActions(): ContextMenuAction[] {
 		const reapplyWritingMode = (editor: Editor): void => {
 			const host = (editor.view?.dom as HTMLElement | undefined)?.closest(
@@ -71,47 +170,27 @@ export class TipTapCompatContextMenu {
 				}
 			};
 
-		return [
-			{
-				name: "cut",
-				title: "切り取り",
-				icon: "scissors",
-				action: () => {
-					document.execCommand("cut");
+			return [
+				{
+					name: "cut",
+					title: "切り取り",
+					icon: "scissors",
+					action: (editor) => this.cutSelection(editor),
+					isDisabled: (editor) => this.getSelectedText(editor).length === 0,
 				},
-				isDisabled: (editor) => editor.state.selection.empty,
-			},
-			{
-				name: "copy",
-				title: "コピー",
-				icon: "copy",
-				action: () => {
-					document.execCommand("copy");
+				{
+					name: "copy",
+					title: "コピー",
+					icon: "copy",
+					action: (editor) => this.copySelection(editor),
+					isDisabled: (editor) => this.getSelectedText(editor).length === 0,
 				},
-				isDisabled: (editor) => editor.state.selection.empty,
-			},
-			{
-				name: "paste",
-				title: "貼り付け",
-				icon: "clipboard-paste",
-				action: async (editor) => {
-					try {
-						// Clipboard APIを使って貼り付け
-						if (navigator.clipboard && navigator.clipboard.readText) {
-							const text = await navigator.clipboard.readText();
-							if (text) {
-								editor.chain().focus().insertContent(text).run();
-							}
-						} else {
-							// フォールバック: execCommandを試す
-							document.execCommand("paste");
-						}
-					} catch (error) {
-						debugWarn("Tategaki TipTap: paste failed", error);
-						new Notice("貼り付けに失敗しました。ブラウザの権限設定を確認してください。", 3000);
-					}
+				{
+					name: "paste",
+					title: "貼り付け",
+					icon: "clipboard-paste",
+					action: (editor) => this.pasteFromClipboard(editor),
 				},
-			},
 			{
 				name: "selectAll",
 				title: "すべて選択",

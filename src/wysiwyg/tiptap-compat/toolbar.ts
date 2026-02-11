@@ -71,6 +71,8 @@ export class TipTapCompatToolbar {
 	private createToolbar(): void {
 		this.container.empty();
 		this.container.addClass("contenteditable-toolbar");
+		this.container.removeClass("tiptap-toolbar-mobile");
+		this.container.removeClass("tategaki-toolbar-desktop");
 		this.separators = [];
 
 		// モバイルとデスクトップで異なるスタイルを適用
@@ -79,58 +81,9 @@ export class TipTapCompatToolbar {
 		if (isMobile) {
 			// モバイル: 一列表示、横スクロール可能
 			this.container.addClass("tiptap-toolbar-mobile");
-			this.container.style.cssText = `
-				display: flex;
-				align-items: center;
-				gap: 4px;
-				padding: 8px;
-				background-color: var(--background-secondary);
-				border-bottom: 1px solid var(--background-modifier-border);
-				flex-wrap: nowrap;
-				flex: 1 1 auto;
-				min-width: 0;
-				width: 100%;
-				max-width: 100%;
-				overflow-x: auto;
-				overflow-y: hidden;
-				-webkit-overflow-scrolling: touch;
-				scrollbar-width: none;
-				touch-action: pan-x;
-				overscroll-behavior-x: contain;
-			`;
-
-			// スクロールバーを非表示にするCSSを動的に追加（一度だけ）
-			if (
-				!document.getElementById(
-					"tiptap-toolbar-mobile-scrollbar-style"
-				)
-			) {
-				const style = document.createElement("style");
-				style.id = "tiptap-toolbar-mobile-scrollbar-style";
-				style.textContent = `
-					.tiptap-toolbar-mobile::-webkit-scrollbar {
-						display: none;
-					}
-					.tiptap-toolbar-mobile .contenteditable-toolbar-button,
-					.tiptap-toolbar-mobile .contenteditable-toolbar-separator {
-						flex: 0 0 auto;
-					}
-				`;
-				document.head.appendChild(style);
-			}
 		} else {
 			// デスクトップ: 折り返し表示
-			this.container.style.cssText = `
-				display: flex;
-				align-items: center;
-				gap: 4px;
-				padding: 8px;
-				background-color: var(--background-secondary);
-				border-bottom: 1px solid var(--background-modifier-border);
-				flex-wrap: wrap;
-				flex: 1 1 auto;
-				min-width: 0;
-			`;
+			this.container.addClass("tategaki-toolbar-desktop");
 		}
 
 		// 書字方向切り替えボタン（一番左に配置）
@@ -317,14 +270,6 @@ export class TipTapCompatToolbar {
 		this.statusElement = this.container.createDiv(
 			"contenteditable-toolbar-status"
 		);
-		this.statusElement.style.cssText = `
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			margin-left: 8px;
-			font-size: 12px;
-			color: var(--text-muted);
-		`;
 
 		this.updateButtonStates();
 	}
@@ -434,12 +379,6 @@ export class TipTapCompatToolbar {
 		const separator = this.container.createEl("div", {
 			cls: "contenteditable-toolbar-separator",
 		});
-		separator.style.cssText = `
-			width: 1px;
-			height: 24px;
-			background-color: var(--background-modifier-border);
-			margin: 0 4px;
-		`;
 		this.separators.push(separator);
 	}
 
@@ -742,13 +681,13 @@ export class TipTapCompatToolbar {
 		const undoButton = this.buttons.get("undo");
 		if (undoButton) {
 			undoButton.disabled = !this.editor.can().undo();
-			undoButton.style.opacity = undoButton.disabled ? "0.5" : "1";
+			undoButton.classList.toggle("is-disabled", undoButton.disabled);
 		}
 
 		const redoButton = this.buttons.get("redo");
 		if (redoButton) {
 			redoButton.disabled = !this.editor.can().redo();
-			redoButton.style.opacity = redoButton.disabled ? "0.5" : "1";
+			redoButton.classList.toggle("is-disabled", redoButton.disabled);
 		}
 	}
 
@@ -797,12 +736,7 @@ export class TipTapCompatToolbar {
 
 		// 読み取り専用の場合は保存・同期ステータスを表示しない
 		if (this.isReadOnly) return;
-		this.statusElement.style.cssText = `
-			display: flex;
-			align-items: center;
-			gap: 4px;
-			margin-left: auto;
-		`;
+		this.statusElement.addClass("tategaki-toolbar-status-sync");
 
 		// 同期モードアイコン
 		if (state.mode) {
@@ -810,7 +744,7 @@ export class TipTapCompatToolbar {
 			const hasToggle =
 				Boolean(this.options.onToggleSyncMode) && !this.isReadOnly;
 			const modeButton = this.statusElement.createEl("button", {
-				cls: "clickable-icon contenteditable-toolbar-button",
+				cls: "clickable-icon contenteditable-toolbar-button contenteditable-toolbar-mode-button",
 				attr: {
 					"aria-label": isManual
 						? "手動同期モード（クリックで自動同期に切替）"
@@ -821,10 +755,8 @@ export class TipTapCompatToolbar {
 			const modeIcon = isManual ? "refresh-cw-off" : "refresh-ccw";
 			setIcon(modeButton, modeIcon);
 
-			modeButton.style.cssText = `
-				opacity: ${hasToggle ? 0.85 : 0.7};
-				cursor: ${hasToggle ? "pointer" : "default"};
-			`;
+			modeButton.classList.toggle("is-toggleable", hasToggle);
+			modeButton.classList.toggle("is-static", !hasToggle);
 			modeButton.disabled = !hasToggle;
 
 			if (hasToggle) {
@@ -838,42 +770,40 @@ export class TipTapCompatToolbar {
 
 		// 保存ステータスアイコン
 		const statusButton = this.statusElement.createEl("button", {
-			cls: "clickable-icon contenteditable-toolbar-button",
+			cls: "clickable-icon contenteditable-toolbar-button contenteditable-toolbar-status-button",
 		});
 
 		let statusIcon = "check-circle";
 		let statusTitle = "保存済み";
-		let iconColor = "var(--text-success)";
+		statusButton.addClass("is-success");
 
 		if (state.saving) {
 			statusIcon = "loader";
 			statusTitle = "保存中...";
-			iconColor = "var(--text-accent)";
+			statusButton.removeClass("is-success");
+			statusButton.addClass("is-accent");
 			statusButton.addClass("is-loading");
 		} else if (state.lastSyncResult === "error") {
 			statusIcon = "x-circle";
 			statusTitle = state.lastSyncMessage || "同期エラー";
-			iconColor = "var(--text-error)";
+			statusButton.removeClass("is-success");
+			statusButton.addClass("is-error");
 		} else if (state.dirty) {
 			statusIcon = "circle-dot";
 			statusTitle = "未保存";
-			iconColor = "var(--text-warning)";
+			statusButton.removeClass("is-success");
+			statusButton.addClass("is-warning");
 		}
 
 		statusButton.setAttribute("aria-label", statusTitle);
 		setIcon(statusButton, statusIcon);
-		statusButton.style.cssText = `
-			color: ${iconColor};
-			opacity: 1;
-			cursor: default;
-		`;
 		statusButton.disabled = true;
 
 		// 手動保存ボタン（手動モードの場合のみ）
 		if (!this.isReadOnly && state.mode === "manual" && this.options.onManualSync) {
 			const modKey = Platform.isMacOS ? "⌘" : "Ctrl";
 			const saveButton = this.statusElement.createEl("button", {
-				cls: "clickable-icon contenteditable-toolbar-button",
+				cls: "clickable-icon contenteditable-toolbar-button contenteditable-toolbar-save-button",
 				attr: {
 					"aria-label": `保存 (${modKey}+Shift+S)`,
 				},
@@ -881,13 +811,9 @@ export class TipTapCompatToolbar {
 			setIcon(saveButton, "save");
 
 			if (state.dirty) {
-				saveButton.style.cssText = `
-					color: var(--text-accent);
-				`;
+				saveButton.addClass("is-dirty");
 			} else {
-				saveButton.style.cssText = `
-					opacity: 0.5;
-				`;
+				saveButton.addClass("is-clean");
 			}
 
 			saveButton.addEventListener("click", (event) => {
@@ -910,12 +836,8 @@ export class TipTapCompatToolbar {
 	): void {
 		if (isActive) {
 			button.addClass("is-active");
-			button.style.backgroundColor = "var(--interactive-accent)";
-			button.style.color = "var(--text-on-accent)";
 		} else {
 			button.removeClass("is-active");
-			button.style.backgroundColor = "";
-			button.style.color = "";
 		}
 	}
 
@@ -1089,7 +1011,7 @@ export class TipTapCompatToolbar {
 		this.applyReadOnlyButtonStates();
 		this.updateButtonStates();
 		if (this.statusElement) {
-			this.statusElement.style.opacity = readOnly ? "0.6" : "1";
+			this.statusElement.classList.toggle("is-read-only", readOnly);
 		}
 	}
 
@@ -1108,18 +1030,18 @@ export class TipTapCompatToolbar {
 		for (const [key, button] of this.buttons.entries()) {
 			const enabled = !this.isReadOnly || allowedKeys.has(key);
 			button.disabled = !enabled;
-			button.style.opacity = button.disabled ? "0.35" : "1";
+			button.classList.toggle("is-disabled", button.disabled);
 			if (this.hideEditingButtonsWhenReadOnly && !enabled) {
-				button.style.display = "none";
+				button.addClass("is-hidden");
 			} else {
-				button.style.display = "";
+				button.removeClass("is-hidden");
 			}
 		}
 
 		this.updateSeparatorVisibility();
 		this.updateReadingModeButton();
 		if (this.statusElement) {
-			this.statusElement.style.opacity = this.isReadOnly ? "0.6" : "1";
+			this.statusElement.classList.toggle("is-read-only", this.isReadOnly);
 		}
 	}
 
@@ -1127,7 +1049,7 @@ export class TipTapCompatToolbar {
 		const children = Array.from(this.container.children) as HTMLElement[];
 		const isSeparator = (el: HTMLElement) =>
 			el.classList.contains("contenteditable-toolbar-separator");
-		const isVisible = (el: HTMLElement) => el.style.display !== "none";
+		const isVisible = (el: HTMLElement) => !el.classList.contains("is-hidden");
 
 		const findPrevControl = (startIndex: number) => {
 			for (let i = startIndex - 1; i >= 0; i--) {
@@ -1153,12 +1075,12 @@ export class TipTapCompatToolbar {
 			const el = children[i];
 			if (!isSeparator(el)) continue;
 			if (!this.hideEditingButtonsWhenReadOnly) {
-				el.style.display = "";
+				el.removeClass("is-hidden");
 				continue;
 			}
 			const hasPrev = !!findPrevControl(i);
 			const hasNext = !!findNextControl(i);
-			el.style.display = hasPrev && hasNext ? "" : "none";
+			el.classList.toggle("is-hidden", !(hasPrev && hasNext));
 		}
 
 		// 連続したセパレーターや先頭・末尾のセパレーターを潰す（読み取り専用時のみ強化）
@@ -1172,7 +1094,7 @@ export class TipTapCompatToolbar {
 			}
 			// 先頭に来たセパレーター、または直前がコントロールでない場合は隠す
 			if (!prevWasControl) {
-				el.style.display = "none";
+				el.addClass("is-hidden");
 				continue;
 			}
 			// 直後にコントロールがなければ隠す
@@ -1185,7 +1107,7 @@ export class TipTapCompatToolbar {
 				}
 			}
 			if (!nextControl) {
-				el.style.display = "none";
+				el.addClass("is-hidden");
 				continue;
 			}
 			prevWasControl = false;
@@ -1200,7 +1122,7 @@ export class TipTapCompatToolbar {
 				continue;
 			}
 			if (lastWasSeparator) {
-				el.style.display = "none";
+				el.addClass("is-hidden");
 				continue;
 			}
 			lastWasSeparator = true;

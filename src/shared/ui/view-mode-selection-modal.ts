@@ -63,19 +63,14 @@ export class ViewModeSelectionModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.modalEl.addClass("tategaki-view-mode-selection-modal");
 		this.titleEl.setText("Tategakiエディタを開く");
 
 		this.contentEl.createEl("p", {
 			text: "表示モードを選択してください。",
 		});
 
-		const optionsEl = this.contentEl.createDiv();
-		optionsEl.style.cssText = `
-			display: flex;
-			flex-direction: column;
-			gap: 12px;
-			margin: 12px 0;
-		`;
+		const optionsEl = this.contentEl.createDiv("tategaki-view-mode-options");
 
 		this.createModeButton(
 			optionsEl,
@@ -98,14 +93,7 @@ export class ViewModeSelectionModal extends Modal {
 			);
 		}
 
-		const actions = this.contentEl.createDiv();
-		actions.style.cssText = `
-			display: flex;
-			align-items: center;
-			gap: 12px;
-			margin-top: 8px;
-			flex-wrap: wrap;
-		`;
+		const actions = this.contentEl.createDiv("tategaki-view-mode-actions");
 
 		const setPlacement = (p: ViewOpenPlacementType) => {
 			this.result.placement = p;
@@ -114,9 +102,9 @@ export class ViewModeSelectionModal extends Modal {
 		};
 		const placement = this.result.placement;
 
-		const rightSideLabel = actions.createEl("label");
-		rightSideLabel.style.cssText =
-			"display: inline-flex; gap: 6px; align-items: center;";
+		const rightSideLabel = actions.createEl("label", {
+			cls: "tategaki-view-mode-placement-label",
+		});
 		const rightSideRadio = rightSideLabel.createEl("input", {
 			type: "radio",
 		});
@@ -129,9 +117,9 @@ export class ViewModeSelectionModal extends Modal {
 		});
 		rightSideLabel.appendText("右側に開く");
 
-		const tabLabel = actions.createEl("label");
-		tabLabel.style.cssText =
-			"display: inline-flex; gap: 6px; align-items: center;";
+		const tabLabel = actions.createEl("label", {
+			cls: "tategaki-view-mode-placement-label",
+		});
 		const tabRadio = tabLabel.createEl("input", {
 			type: "radio",
 		});
@@ -144,9 +132,9 @@ export class ViewModeSelectionModal extends Modal {
 		});
 		tabLabel.appendText("隣のタブに開く");
 
-		const windowLabel = actions.createEl("label");
-		windowLabel.style.cssText =
-			"display: inline-flex; gap: 6px; align-items: center;";
+		const windowLabel = actions.createEl("label", {
+			cls: "tategaki-view-mode-placement-label",
+		});
 		const windowRadio = windowLabel.createEl("input", {
 			type: "radio",
 		});
@@ -159,13 +147,7 @@ export class ViewModeSelectionModal extends Modal {
 		});
 		windowLabel.appendText("新規ウィンドウで開く");
 
-		const footer = this.contentEl.createDiv();
-		footer.style.cssText = `
-			display: flex;
-			justify-content: flex-end;
-			gap: 8px;
-			margin-top: 16px;
-		`;
+		const footer = this.contentEl.createDiv("tategaki-view-mode-footer");
 
 		footer
 			.createEl("button", { text: "キャンセル" })
@@ -213,20 +195,9 @@ export class ViewModeSelectionModal extends Modal {
 		title: string,
 		description: string
 	): void {
-		const wrapper = parent.createDiv();
-		wrapper.style.cssText = `
-			border: 1px solid var(--background-modifier-border);
-			border-radius: 8px;
-			padding: 10px 12px;
-			background: var(--background-primary);
-		`;
+		const wrapper = parent.createDiv("tategaki-view-mode-card");
 
-		const buttonRow = wrapper.createDiv();
-		buttonRow.style.cssText = `
-			display: flex;
-			align-items: center;
-			gap: 10px;
-		`;
+		const buttonRow = wrapper.createDiv("tategaki-view-mode-card-row");
 
 		const radio = buttonRow.createEl("input", { type: "radio" });
 		radio.name = "tategaki-view-mode";
@@ -235,12 +206,14 @@ export class ViewModeSelectionModal extends Modal {
 			this.result.mode = mode;
 		});
 
-		const titleEl = buttonRow.createEl("div");
-		titleEl.style.cssText = "font-weight: 700;";
+		const titleEl = buttonRow.createEl("div", {
+			cls: "tategaki-view-mode-card-title",
+		});
 		titleEl.setText(title);
 
-		const desc = wrapper.createEl("div");
-		desc.style.cssText = "margin-top: 6px; color: var(--text-muted);";
+		const desc = wrapper.createEl("div", {
+			cls: "tategaki-view-mode-card-desc",
+		});
 		desc.setText(description);
 
 		wrapper.addEventListener("click", () => {

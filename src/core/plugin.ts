@@ -19,6 +19,7 @@ import {
 } from "../wysiwyg/sot-wysiwyg-view";
 import { moveSyncBackupsToTrash, SYNC_BACKUP_ROOT } from "../shared/sync-backup";
 import { debugWarn, setDebugLogging } from "../shared/logger";
+import { showConfirmModal } from "../shared/ui/confirm-modal";
 
 /**
  * Tategaki Plugin v2.0 - メインプラグインクラス
@@ -128,13 +129,13 @@ export default class TategakiV2Plugin extends Plugin {
 
 		// リボンアイコンを追加
 		this.addRibbonIcon("tally-4", "縦書きビューを開く", () => {
-			this.modeManager.openView();
+			void this.modeManager.openView();
 		});
 
 		// 初期化完了
 	}
 
-	async onunload() {
+	onunload() {
 		// モードマネージャーをクリーンアップ
 		if (this.modeManager) {
 			this.modeManager.cleanup();
@@ -193,7 +194,7 @@ export default class TategakiV2Plugin extends Plugin {
 	private addCommands(): void {
 		// ビューを開くコマンド（右に分割表示）
 		this.addCommand({
-			id: "open-tategaki-view",
+			id: "open-view",
 			name: "縦書きビューを開く",
 			callback: async () => {
 				await this.modeManager.openView({ openOnRightSide: true });
@@ -201,14 +202,14 @@ export default class TategakiV2Plugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: "tategaki-sot-list-move-up",
-			name: "SoT: リスト項目を上へ移動",
+			id: "sot-list-move-up",
+			name: "リスト項目を上へ移動",
 			callback: () => this.runSoTListOutlinerAction("move-up"),
 		});
 
 		this.addCommand({
-			id: "tategaki-sot-list-move-down",
-			name: "SoT: リスト項目を下へ移動",
+			id: "sot-list-move-down",
+			name: "リスト項目を下へ移動",
 			callback: () => this.runSoTListOutlinerAction("move-down"),
 		});
 
@@ -238,9 +239,14 @@ export default class TategakiV2Plugin extends Plugin {
 	}
 
 	async moveSyncBackupsToTrash(): Promise<void> {
-		const ok = confirm(
-			"同期バックアップをゴミ箱へ移動しますか？\n\n移動すると、バックアップからの復元はできなくなります。"
-		);
+		const ok = await showConfirmModal(this.app, {
+			title: "同期バックアップをゴミ箱へ移動",
+			message:
+				"同期バックアップをゴミ箱へ移動しますか？\n\n移動すると、バックアップからの復元はできなくなります。",
+			confirmText: "移動する",
+			cancelText: "キャンセル",
+			confirmIsWarning: true,
+		});
 		if (!ok) {
 			return;
 		}

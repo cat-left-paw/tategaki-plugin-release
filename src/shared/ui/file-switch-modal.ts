@@ -29,13 +29,6 @@ export class FileSwitchModal extends FuzzySuggestModal<TFile> {
 		this.footerEl = this.modalEl.createDiv(
 			"tategaki-file-switch-footer"
 		);
-		this.footerEl.style.cssText = `
-			display: flex;
-			justify-content: flex-end;
-			padding-top: 8px;
-			border-top: 1px solid var(--background-modifier-border);
-			margin-top: 8px;
-		`;
 		new ButtonComponent(this.footerEl)
 			.setButtonText("新規ノートを作成")
 			.setClass("mod-cta")

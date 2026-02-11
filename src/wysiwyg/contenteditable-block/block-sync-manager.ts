@@ -599,43 +599,51 @@ export class BlockContentSyncManager {
 			const modal = new ConflictResolutionModal(
 				this.app,
 				conflictData,
-				async (result: ConflictResolutionResult | null) => {
-					if (!result || result.action === "cancel") {
-						new Notice("競合解決がキャンセルされました。", 3000);
-						resolve();
-						return;
-					}
-
-					try {
-						switch (result.action) {
-							case "overwrite":
-								await this.persistChanges({ force: true, skipConflictCheck: true });
-								new Notice("現在の内容で上書き保存しました。", 3000);
-								break;
-
-							case "accept-external":
-								this.setEditorMarkdown(externalMarkdown);
-								this.lastSavedMarkdown = externalMarkdown;
-								this.lastAppliedMarkdown = this.editor.getMarkdown();
-								this.dirty = false;
-								this.updateState({
-									dirty: false,
-									saving: false,
-									lastSavedAt: Date.now(),
-								});
-								new Notice("外部変更を取り込みました。", 3000);
-								break;
-
-							case "keep-both":
-								await this.saveBothVersions(currentMarkdown, externalMarkdown);
-								break;
+				(result: ConflictResolutionResult | null) => {
+					void (async () => {
+						if (!result || result.action === "cancel") {
+							new Notice("競合解決がキャンセルされました。", 3000);
+							resolve();
+							return;
 						}
-					} catch (error) {
-						console.error("Tategaki BlockSync: conflict resolution failed", error);
-						new Notice("競合解決処理でエラーが発生しました。", 4000);
-					}
 
-					resolve();
+						try {
+							switch (result.action) {
+								case "overwrite":
+									await this.persistChanges({
+										force: true,
+										skipConflictCheck: true,
+									});
+									new Notice("現在の内容で上書き保存しました。", 3000);
+									break;
+
+								case "accept-external":
+									this.setEditorMarkdown(externalMarkdown);
+									this.lastSavedMarkdown = externalMarkdown;
+									this.lastAppliedMarkdown = this.editor.getMarkdown();
+									this.dirty = false;
+									this.updateState({
+										dirty: false,
+										saving: false,
+										lastSavedAt: Date.now(),
+									});
+									new Notice("外部変更を取り込みました。", 3000);
+									break;
+
+								case "keep-both":
+									await this.saveBothVersions(
+										currentMarkdown,
+										externalMarkdown,
+									);
+									break;
+							}
+						} catch (error) {
+							console.error("Tategaki BlockSync: conflict resolution failed", error);
+							new Notice("競合解決処理でエラーが発生しました。", 4000);
+						}
+
+						resolve();
+					})();
 				}
 			);
 			modal.open();

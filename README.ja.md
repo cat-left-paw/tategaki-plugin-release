@@ -33,6 +33,20 @@ Obsidian 上で、文章を**縦書きで「見たまま」編集**できるよ�
 
 - [INSTALL.md](./INSTALL.md)
 
+## 移行メモ（ID変更）
+
+`1.2.2` から、申請要件対応のためプラグインIDを `tategaki-plugin` から `tategaki` に変更しました。
+
+旧版から更新する場合、Obsidian上で別プラグインとして扱われることがあります。必要に応じて次を実施してください。
+
+- 旧プラグイン `tategaki-plugin` を無効化
+- 新プラグイン `tategaki` をインストール/有効化
+- 必要であれば設定を手動コピー
+  - `.obsidian/plugins/tategaki-plugin/data.json`
+  - `.obsidian/plugins/tategaki/data.json`
+- プラグインコマンドのホットキーを再確認
+- 動作確認後、旧フォルダ `tategaki-plugin` を削除
+
 ---
 
 ## できること（主な機能）
@@ -181,13 +195,13 @@ License: Apache-2.0
 猫乃 左手  
 GitHub: https://github.com/cat-left-paw
 
-## 寄付リンク（Buy Me a Coffee）
+## 寄付リンク（Buy me a coffee）
 
 気に入って使っていただけましたら、寄付をしていただくと励みになります。
 
 https://www.buymeacoffee.com/hidarite
 
-<a href="https://www.buymeacoffee.com/hidarite" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+<a href="https://www.buymeacoffee.com/hidarite" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 ---
 

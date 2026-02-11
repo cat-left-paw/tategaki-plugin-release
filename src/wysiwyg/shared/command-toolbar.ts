@@ -51,61 +51,15 @@ export class CommandToolbar {
 	private createToolbar(): void {
 		this.container.empty();
 		this.container.addClass("contenteditable-toolbar");
+		this.container.removeClass("tiptap-toolbar-mobile");
+		this.container.removeClass("tategaki-toolbar-desktop");
 		this.buttons = [];
 
 		const isMobile = Platform.isMobile || Platform.isMobileApp;
 		if (isMobile) {
 			this.container.addClass("tiptap-toolbar-mobile");
-			this.container.style.cssText = `
-				display: flex;
-				align-items: center;
-				gap: 4px;
-				padding: 8px;
-				background-color: var(--background-secondary);
-				border-bottom: 1px solid var(--background-modifier-border);
-				flex-wrap: nowrap;
-				flex: 1 1 auto;
-				min-width: 0;
-				width: 100%;
-				max-width: 100%;
-				overflow-x: auto;
-				overflow-y: hidden;
-				-webkit-overflow-scrolling: touch;
-				scrollbar-width: none;
-				touch-action: pan-x;
-				overscroll-behavior-x: contain;
-			`;
-
-			if (
-				!document.getElementById(
-					"tiptap-toolbar-mobile-scrollbar-style"
-				)
-			) {
-				const style = document.createElement("style");
-				style.id = "tiptap-toolbar-mobile-scrollbar-style";
-				style.textContent = `
-					.tiptap-toolbar-mobile::-webkit-scrollbar {
-						display: none;
-					}
-					.tiptap-toolbar-mobile .contenteditable-toolbar-button,
-					.tiptap-toolbar-mobile .contenteditable-toolbar-separator {
-						flex: 0 0 auto;
-					}
-				`;
-				document.head.appendChild(style);
-			}
 		} else {
-			this.container.style.cssText = `
-				display: flex;
-				align-items: center;
-				gap: 4px;
-				padding: 8px;
-				background-color: var(--background-secondary);
-				border-bottom: 1px solid var(--background-modifier-border);
-				flex-wrap: wrap;
-				flex: 1 1 auto;
-				min-width: 0;
-			`;
+			this.container.addClass("tategaki-toolbar-desktop");
 		}
 
 		this.createWritingModeButton();
@@ -202,15 +156,9 @@ export class CommandToolbar {
 	}
 
 	private createSeparator(): void {
-		const separator = this.container.createEl("div", {
+		this.container.createEl("div", {
 			cls: "contenteditable-toolbar-separator",
 		});
-		separator.style.cssText = `
-			width: 1px;
-			height: 24px;
-			background-color: var(--background-modifier-border);
-			margin: 0 4px;
-		`;
 	}
 
 	private createWritingModeButton(): void {

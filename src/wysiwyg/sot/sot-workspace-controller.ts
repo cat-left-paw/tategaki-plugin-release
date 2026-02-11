@@ -33,7 +33,7 @@ export class SoTWorkspaceController {
 		this.host.showLoadingOverlay();
 		const markdownView = await this.ensureMarkdownViewForFile(file);
 		if (!markdownView) {
-			new Notice("MarkdownView が見つからないため閉じます。", 2500);
+			new Notice("Markdown ビューが見つからないため閉じます。", 2500);
 			this.host.closeSelf();
 			return;
 		}
@@ -137,7 +137,11 @@ export class SoTWorkspaceController {
 	}
 
 	isLeafActive(): boolean {
-		return (this.host.app.workspace as any).activeLeaf === this.host.leaf;
+		const mostRecentLeaf = this.host.app.workspace.getMostRecentLeaf();
+		if (mostRecentLeaf) {
+			return mostRecentLeaf === this.host.leaf;
+		}
+		return this.host.leaf.containerEl.matches(".workspace-leaf.mod-active");
 	}
 
 	isInModalLayer(el: HTMLElement | null): boolean {
@@ -306,7 +310,7 @@ export class SoTWorkspaceController {
 		const pairedLeaf = this.getValidPairedMarkdownLeaf();
 		if (!pairedLeaf) {
 			new Notice(
-				"ペアのMarkdownViewが見つからないため切り替えできません。",
+				"ペアの Markdown ビューが見つからないため切り替えできません。",
 				2500
 			);
 			return;
@@ -418,13 +422,13 @@ export class SoTWorkspaceController {
 			this.host.pairedMismatchNotified = false;
 			return true;
 		}
-		if (!this.host.pairedMismatchNotified) {
-			this.host.pairedMismatchNotified = true;
-			new Notice(
-				"ペアのMarkdownViewが対象ファイルと一致しないため閉じます。",
-				2500
-			);
-		}
+			if (!this.host.pairedMismatchNotified) {
+				this.host.pairedMismatchNotified = true;
+				new Notice(
+					"ペアの Markdown ビューが対象ファイルと一致しないため閉じます。",
+					2500
+				);
+			}
 		return false;
 	}
 

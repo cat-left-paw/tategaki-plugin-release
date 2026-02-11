@@ -69,146 +69,76 @@ export class SearchReplacePanel {
 	private createPanel(replaceMode: boolean): void {
 		this.panel = document.createElement("div");
 		this.panel.className = "tategaki-search-replace-panel";
-		this.panel.style.cssText = `
-			position: absolute;
-			top: 10px;
-			right: 10px;
-			width: 320px;
-			background: var(--background-primary);
-			border: 1px solid var(--background-modifier-border);
-			border-radius: 6px;
-			box-shadow: var(--shadow-s);
-			z-index: 1000;
-			padding: 12px;
-			font-size: 13px;
-		`;
 
-		const searchSection = this.panel.createDiv("search-section");
-		searchSection.style.cssText = "margin-bottom: 8px;";
+		const searchSection = this.panel.createDiv(
+			"tategaki-search-replace-section tategaki-search-replace-section-search"
+		);
 
-		const searchRow = searchSection.createDiv();
-		searchRow.style.cssText =
-			"display: flex; align-items: center; margin-bottom: 6px;";
+		const searchRow = searchSection.createDiv("tategaki-search-replace-row");
 
 		this.searchInput = searchRow.createEl("input");
 		this.searchInput.type = "text";
 		this.searchInput.placeholder = "検索...";
-		this.searchInput.style.cssText = `
-			flex: 1;
-			padding: 4px 8px;
-			border: 1px solid var(--background-modifier-border);
-			border-radius: 3px;
-			margin-right: 6px;
-			background: var(--background-primary);
-			color: var(--text-normal);
-		`;
+		this.searchInput.className = "tategaki-search-replace-input";
 
-		const navContainer = searchRow.createDiv();
-		navContainer.style.cssText =
-			"display: flex; gap: 2px; margin-right: 6px;";
+		const navContainer = searchRow.createDiv("tategaki-search-replace-nav");
 
 		const prevButton = navContainer.createEl("button");
 		prevButton.textContent = "↑";
 		prevButton.title = "前を検索";
-		prevButton.style.cssText = `
-			width: 24px; height: 24px;
-			border: 1px solid var(--background-modifier-border);
-			background: var(--background-primary);
-			border-radius: 3px;
-			cursor: pointer;
-		`;
+		prevButton.className = "tategaki-search-replace-icon-button";
 		prevButton.addEventListener("click", () => this.findPrevious());
 
 		const nextButton = navContainer.createEl("button");
 		nextButton.textContent = "↓";
 		nextButton.title = "次を検索";
-		nextButton.style.cssText = `
-			width: 24px; height: 24px;
-			border: 1px solid var(--background-modifier-border);
-			background: var(--background-primary);
-			border-radius: 3px;
-			cursor: pointer;
-		`;
+		nextButton.className = "tategaki-search-replace-icon-button";
 		nextButton.addEventListener("click", () => this.findNext());
 
 		const closeButton = searchRow.createEl("button");
 		closeButton.textContent = "×";
 		closeButton.title = "閉じる";
-		closeButton.style.cssText = `
-			width: 24px; height: 24px;
-			border: 1px solid var(--background-modifier-border);
-			background: var(--background-primary);
-			border-radius: 3px;
-			cursor: pointer;
-		`;
+		closeButton.className = "tategaki-search-replace-icon-button";
 		closeButton.addEventListener("click", () => this.hide());
 
 		this.matchCountElement = searchSection.createDiv();
-		this.matchCountElement.style.cssText = `
-			font-size: 11px;
-			color: var(--text-muted);
-			margin-bottom: 6px;
-		`;
+		this.matchCountElement.className = "tategaki-search-replace-match-count";
 		this.matchCountElement.textContent = "";
 
 		if (replaceMode) {
-			const replaceSection = this.panel.createDiv("replace-section");
-			replaceSection.style.cssText = "margin-bottom: 8px;";
+			const replaceSection = this.panel.createDiv(
+				"tategaki-search-replace-section tategaki-search-replace-section-replace"
+			);
 
-			const replaceRow = replaceSection.createDiv();
-			replaceRow.style.cssText =
-				"display: flex; align-items: center; margin-bottom: 6px;";
+			const replaceRow = replaceSection.createDiv("tategaki-search-replace-row");
 
 			this.replaceInput = replaceRow.createEl("input");
 			this.replaceInput.type = "text";
 			this.replaceInput.placeholder = "置換...";
-			this.replaceInput.style.cssText = `
-				flex: 1;
-				padding: 4px 8px;
-				border: 1px solid var(--background-modifier-border);
-				border-radius: 3px;
-				margin-right: 6px;
-				background: var(--background-primary);
-				color: var(--text-normal);
-			`;
+			this.replaceInput.className = "tategaki-search-replace-input";
 
-			const replaceButtonContainer = replaceRow.createDiv();
-			replaceButtonContainer.style.cssText = "display: flex; gap: 4px;";
+			const replaceButtonContainer = replaceRow.createDiv(
+				"tategaki-search-replace-actions"
+			);
 
 			const replaceOneButton = replaceButtonContainer.createEl("button");
 			replaceOneButton.textContent = "置換";
-			replaceOneButton.style.cssText = `
-				padding: 4px 8px;
-				border: 1px solid var(--background-modifier-border);
-				background: var(--background-primary);
-				border-radius: 3px;
-				cursor: pointer;
-				font-size: 11px;
-			`;
+			replaceOneButton.className = "tategaki-search-replace-action-button";
 			replaceOneButton.addEventListener("click", () => this.replaceOne());
 
 			const replaceAllButton = replaceButtonContainer.createEl("button");
 			replaceAllButton.textContent = "全置換";
-			replaceAllButton.style.cssText = `
-				padding: 4px 8px;
-				border: 1px solid var(--background-modifier-border);
-				background: var(--background-primary);
-				border-radius: 3px;
-				cursor: pointer;
-				font-size: 11px;
-			`;
+			replaceAllButton.className = "tategaki-search-replace-action-button";
 			replaceAllButton.addEventListener("click", () => this.replaceAll());
 		}
 
-		const optionsSection = this.panel.createDiv("options-section");
-		optionsSection.style.cssText = "display: flex; gap: 12px; font-size: 11px;";
+		const optionsSection = this.panel.createDiv("tategaki-search-replace-options");
 
 		const caseSensitiveLabel = optionsSection.createEl("label");
-		caseSensitiveLabel.style.cssText =
-			"display: flex; align-items: center; cursor: pointer;";
+		caseSensitiveLabel.className = "tategaki-search-replace-option-label";
 		this.caseSensitiveCheckbox = caseSensitiveLabel.createEl("input");
 		this.caseSensitiveCheckbox.type = "checkbox";
-		this.caseSensitiveCheckbox.style.cssText = "margin-right: 4px;";
+		this.caseSensitiveCheckbox.className = "tategaki-search-replace-option-checkbox";
 		caseSensitiveLabel.createSpan().textContent = "大文字小文字区別";
 
 		this.setupEventListeners();

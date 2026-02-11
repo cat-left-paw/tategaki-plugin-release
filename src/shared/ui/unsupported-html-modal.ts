@@ -23,24 +23,15 @@ export class UnsupportedHtmlModal extends Modal {
 		});
 
 		if (this.tags.length > 0) {
-			const list = contentEl.createDiv();
-			list.style.marginTop = "8px";
-			list.style.marginBottom = "8px";
+			const list = contentEl.createDiv("tategaki-unsupported-html-tag-list");
 			list.createEl("div", {
 				text: `検出されたタグ: ${this.tags.join(", ")}`,
 			});
 		}
 
 		const buttonContainer = contentEl.createDiv({
-			cls: "modal-button-container",
+			cls: "modal-button-container tategaki-unsupported-html-buttons",
 		});
-		buttonContainer.style.cssText = `
-			display: flex;
-			justify-content: flex-end;
-			gap: 8px;
-			margin-top: 16px;
-			flex-wrap: wrap;
-		`;
 
 		const readOnlyButton = buttonContainer.createEl("button", {
 			text: "読み取り専用で開く",

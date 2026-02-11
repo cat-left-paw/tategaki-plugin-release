@@ -14,7 +14,6 @@ export class ConflictResolutionModal extends Modal {
 	private result: ConflictResolutionResult | null = null;
 	private conflictData: ConflictData;
 	private onResolve: (result: ConflictResolutionResult | null) => void;
-	private styleElement: HTMLStyleElement | null = null;
 
 	constructor(
 		app: App,
@@ -37,22 +36,14 @@ export class ConflictResolutionModal extends Modal {
 		contentEl.createEl("h2", { text: "ファイル競合の解決" });
 
 		// 説明
-		const description = contentEl.createDiv("conflict-description");
+		const description = contentEl.createDiv("tategaki-conflict-description");
 		description.createEl("p", { text: `ファイル: ${this.conflictData.filePath}` });
 		description.createEl("p", {
 			text: "このファイルが外部で変更されましたが、未保存の編集内容があります。保存方法を選択してください。",
 		});
 
 		// アクションボタン
-		const buttonContainer = contentEl.createDiv("conflict-buttons");
-		buttonContainer.style.cssText = `
-			display: flex;
-			gap: 0.5em;
-			justify-content: flex-end;
-			margin-top: 1em;
-			padding-top: 1em;
-			border-top: 1px solid var(--background-modifier-border);
-		`;
+		const buttonContainer = contentEl.createDiv("tategaki-conflict-buttons");
 
 		// 上書き保存ボタン
 		new ButtonComponent(buttonContainer)
@@ -86,43 +77,11 @@ export class ConflictResolutionModal extends Modal {
 				this.result = { action: "cancel" };
 				this.close();
 			});
-
-		// スタイル追加
-		this.addModalStyles();
-	}
-
-	private addModalStyles() {
-		this.styleElement = document.createElement('style');
-		this.styleElement.textContent = `
-			.tategaki-conflict-resolution-modal .conflict-description {
-				margin-bottom: 1em;
-				padding: 0.75em;
-				background: var(--background-secondary);
-				border-radius: 4px;
-			}
-
-			.tategaki-conflict-resolution-modal .conflict-buttons .clickable-icon {
-				padding: 0.5em 1em;
-				margin: 0;
-			}
-
-			.tategaki-conflict-resolution-modal .conflict-buttons {
-				flex-wrap: wrap;
-				justify-content: flex-end;
-			}
-		`;
-		document.head.appendChild(this.styleElement);
 	}
 
 	onClose() {
 		const { contentEl } = this;
 		contentEl.empty();
-
-		// スタイル要素をクリーンアップ
-		if (this.styleElement) {
-			this.styleElement.remove();
-			this.styleElement = null;
-		}
 
 		this.onResolve(this.result);
 	}

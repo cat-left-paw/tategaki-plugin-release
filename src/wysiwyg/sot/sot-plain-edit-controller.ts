@@ -48,7 +48,13 @@ type PlainEditHost = {
 		lineIndex: number
 	) => { start: number; end: number } | null;
 	toggleSourceMode: () => void;
+	isLeafActive?: () => boolean;
 };
+
+const isImeCompositionKey = (event: KeyboardEvent): boolean =>
+	event.isComposing ||
+	event.key === "Process" ||
+	event.key === "Unidentified";
 
 export class SoTPlainEditController {
 	private readonly host: PlainEditHost;
@@ -107,9 +113,8 @@ export class SoTPlainEditController {
 					!event.altKey &&
 					!event.metaKey &&
 					!event.ctrlKey &&
-					!event.isComposing &&
 					!this.host.plainEditComposing &&
-					event.keyCode !== 229
+					!isImeCompositionKey(event)
 				) {
 					if (event.key.startsWith("Arrow")) {
 						if (this.handleArrowKey(event.key)) {
@@ -778,7 +783,10 @@ export class SoTPlainEditController {
 		const text = doc.slice(next.from, next.to);
 		this.host.plainEditOverlayEl.value = text;
 		this.host.plainEditOverlayEl.style.display = "";
-		this.host.plainEditOverlayEl.focus({ preventScroll: true });
+		const isLeafActive = this.host.isLeafActive?.() ?? true;
+		if (isLeafActive) {
+			this.host.plainEditOverlayEl.focus({ preventScroll: true });
+		}
 		if (!this.host.plainEditComposing) {
 			this.host.plainEditOverlayEl.setSelectionRange(
 				next.selectionStart,
