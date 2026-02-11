@@ -4,13 +4,18 @@ import {
 	Platform,
 	setIcon,
 	TFile,
+	TFolder,
 	type ViewStateResult,
 	WorkspaceLeaf,
+	normalizePath,
 } from "obsidian";
 import type TategakiV2Plugin from "../core/plugin";
 import type { CommonSettings, TategakiV2Settings } from "../types/settings";
 import { PagedReadingMode } from "../wysiwyg/reading-mode/paged-reading-mode";
 import { SettingsPanelModal } from "../wysiwyg/contenteditable/settings-panel";
+import { t } from "../shared/i18n";
+import { FileSwitchModal } from "../shared/ui/file-switch-modal";
+import { NewNoteModal } from "../shared/ui/new-note-modal";
 import {
 	extractFrontmatterBlock,
 	normalizeMarkdownForTipTap,
@@ -18,6 +23,7 @@ import {
 } from "../wysiwyg/tiptap-compat/markdown-adapter";
 
 export const TATEGAKI_READING_VIEW_TYPE = "tategaki-reading-view";
+const RECENT_FILE_LIMIT = 20;
 
 type FrontmatterData = {
 	title?: string;
@@ -57,6 +63,8 @@ export class TategakiReadingView extends ItemView {
 	private pinButton: HTMLButtonElement | null = null;
 	private outlinePanelEl: HTMLElement | null = null;
 	private outlineItems: OutlineItem[] = [];
+	private recentFilePaths: string[] = [];
+	private recentFilePathsInitialized = false;
 	private pager: PagedReadingMode | null = null;
 	private filePath: string | null = null;
 	private returnViewMode: ReadingReturnMode = "sot";
@@ -78,9 +86,9 @@ export class TategakiReadingView extends ItemView {
 		const file = this.getDisplayFile();
 		const title = this.getFrontmatterTitle(file);
 		if (title) {
-			return `Tategaki 書籍: - ${title} -`;
+			return t("view.reading.displayWithTitle", { title });
 		}
-		return "Tategaki 書籍";
+		return t("view.reading.display");
 	}
 
 	getState(): Record<string, unknown> {
@@ -187,6 +195,12 @@ export class TategakiReadingView extends ItemView {
 		}
 		this.pendingState = null;
 		this.updateReturnButton();
+		this.recordRecentFile(this.getDisplayFile());
+		this.registerEvent(
+			this.app.workspace.on("file-open", (file: TFile | null) => {
+				this.recordRecentFile(file);
+			}),
+		);
 
 		if (!this.filePath) {
 			window.setTimeout(() => {
@@ -260,7 +274,7 @@ export class TategakiReadingView extends ItemView {
 		this.writingModeButton = this.createToolbarButton(
 			toolbarLeft,
 			"arrow-down-up",
-			"書字方向切り替え",
+			t("toolbar.writingMode.toggle"),
 			() => void this.toggleWritingMode()
 		);
 		this.updateWritingModeButton();
@@ -269,22 +283,30 @@ export class TategakiReadingView extends ItemView {
 		this.outlineButton = this.createToolbarButton(
 			toolbarLeft,
 			"list-tree",
-			"アウトライン",
+			t("toolbar.outline"),
 			() => this.toggleOutlinePanel()
+		);
+		this.createSeparator(toolbarLeft);
+
+		this.createToolbarButton(
+			toolbarLeft,
+			"folder-open",
+			t("toolbar.fileSwitch"),
+			() => this.openFileSwitcher(),
 		);
 		this.createSeparator(toolbarLeft);
 
 		this.readingModeButton = this.createToolbarButton(
 			toolbarLeft,
 			"corner-left-up",
-			"戻る",
+			t("toolbar.reading.return"),
 			() => this.exitReadingView()
 		);
 		this.setButtonActive(this.readingModeButton, true);
 		this.updateReturnButton();
 
 		const modeBadge = toolbarRight.createDiv();
-		modeBadge.textContent = "書籍";
+		modeBadge.textContent = t("badge.mode.reading");
 		modeBadge.addClass("tategaki-reading-mode-badge");
 		this.modeBadgeEl = modeBadge;
 	}
@@ -370,7 +392,9 @@ export class TategakiReadingView extends ItemView {
 		setIcon(iconEl, isVertical ? "arrow-down-up" : "arrow-left-right");
 		this.writingModeButton.setAttribute(
 			"aria-label",
-			isVertical ? "横書きに切り替え" : "縦書きに切り替え"
+			isVertical
+				? t("toolbar.writingMode.toHorizontal")
+				: t("toolbar.writingMode.toVertical")
 		);
 	}
 
@@ -384,7 +408,7 @@ export class TategakiReadingView extends ItemView {
 		setIcon(iconEl, "corner-left-up");
 		this.readingModeButton.setAttribute(
 			"aria-label",
-			`${label}へ戻る`
+			t("toolbar.reading.returnTo", { view: label })
 		);
 	}
 
@@ -400,7 +424,7 @@ export class TategakiReadingView extends ItemView {
 			});
 		} catch (error) {
 			console.error("[Tategaki] Failed to toggle writing mode", error);
-			new Notice("書字方向の切り替えに失敗しました。", 2500);
+			new Notice(t("notice.writingMode.toggleFailed"), 2500);
 		}
 	}
 
@@ -409,7 +433,7 @@ export class TategakiReadingView extends ItemView {
 		// 既存の「レイアウト変更時は元のビューへ切替」方針に合わせ、先に戻してから開く。
 		const label = this.getReturnViewLabel();
 		new Notice(
-			`表示設定を開くため、${label}へ切り替えます。`,
+			t("notice.displaySettings.switchingTo", { view: label }),
 			2000
 		);
 		void this.returnToOriginView().finally(() => {
@@ -433,18 +457,18 @@ export class TategakiReadingView extends ItemView {
 	private getReturnViewLabel(): string {
 		switch (this.returnViewMode) {
 			case "sot":
-				return "SoT編集ビュー";
+				return t("reading.returnLabel.sot");
 			case "edit":
-				return "互換モード";
+				return t("reading.returnLabel.compat");
 			default:
-				return "互換モード";
+				return t("reading.returnLabel.compat");
 		}
 	}
 
 	private async returnToOriginView(): Promise<void> {
 		const file = this.getDisplayFile();
 		if (!file) {
-			new Notice("対象ファイルが見つかりません。", 2500);
+			new Notice(t("notice.targetFileNotFound"), 2500);
 			return;
 		}
 		if (this.returnViewMode === "sot") {
@@ -478,13 +502,175 @@ export class TategakiReadingView extends ItemView {
 		this.renderOutline(panel);
 	}
 
+	private ensureRecentFilePathsInitialized(): void {
+		if (this.recentFilePathsInitialized) return;
+		this.recentFilePathsInitialized = true;
+		const active = this.app.workspace.getActiveFile();
+		if (active?.extension === "md") {
+			this.pushRecentFilePath(active.path, false);
+		}
+		const current = this.getDisplayFile();
+		if (current?.extension === "md") {
+			this.pushRecentFilePath(current.path, true);
+		}
+	}
+
+	private pushRecentFilePath(path: string, preferFront = true): void {
+		const trimmed = String(path || "").trim();
+		if (!trimmed) return;
+		const existing = this.recentFilePaths.indexOf(trimmed);
+		if (existing === 0 && preferFront) return;
+		if (existing >= 0) {
+			this.recentFilePaths.splice(existing, 1);
+		}
+		if (preferFront) {
+			this.recentFilePaths.unshift(trimmed);
+		} else {
+			this.recentFilePaths.push(trimmed);
+		}
+		if (this.recentFilePaths.length > RECENT_FILE_LIMIT) {
+			this.recentFilePaths.length = RECENT_FILE_LIMIT;
+		}
+	}
+
+	private recordRecentFile(file: TFile | null): void {
+		if (!file || file.extension !== "md") return;
+		this.ensureRecentFilePathsInitialized();
+		this.pushRecentFilePath(file.path, true);
+	}
+
+	private buildFileSwitchItems(): TFile[] {
+		const files = this.app.vault.getMarkdownFiles();
+		if (files.length === 0) return [];
+		this.ensureRecentFilePathsInitialized();
+
+		const fileMap = new Map<string, TFile>();
+		for (const file of files) {
+			fileMap.set(file.path, file);
+		}
+
+		const ordered: TFile[] = [];
+		const used = new Set<string>();
+		for (const path of this.recentFilePaths) {
+			const file = fileMap.get(path);
+			if (!file) continue;
+			ordered.push(file);
+			used.add(path);
+		}
+
+		for (const file of files) {
+			if (used.has(file.path)) continue;
+			ordered.push(file);
+		}
+		return ordered;
+	}
+
+	private openFileSwitcher(): void {
+		const files = this.buildFileSwitchItems();
+		const modal = new FileSwitchModal(
+			this.app,
+			files,
+			(file) => {
+				void this.switchToFile(file);
+			},
+			(input) => {
+				this.openNewNoteModal(input);
+			},
+		);
+		modal.open();
+		if (files.length === 0) {
+			new Notice(t("notice.switchableFilesNotFound"), 2000);
+		}
+	}
+
+	private openNewNoteModal(initialValue = ""): void {
+		const baseFolder = this.getDisplayFile()?.parent?.path ?? "";
+		const modal = new NewNoteModal(
+			this.app,
+			{
+				defaultFolder: baseFolder,
+				initialValue,
+			},
+			(name) => {
+				void this.createNewNote(name, baseFolder);
+			},
+		);
+		modal.open();
+	}
+
+	private async createNewNote(
+		name: string,
+		baseFolder: string,
+	): Promise<void> {
+		const trimmed = name.trim();
+		if (!trimmed) {
+			new Notice(t("notice.fileNameRequired"), 2000);
+			return;
+		}
+		const cleaned = trimmed.replace(/^[\\/]+/, "").replace(/^\.\//, "");
+		const hasExtension = cleaned.toLowerCase().endsWith(".md");
+		const fileName = hasExtension ? cleaned : `${cleaned}.md`;
+		const joined = baseFolder ? `${baseFolder}/${fileName}` : fileName;
+		const filePath = normalizePath(joined);
+		const existing = this.app.vault.getAbstractFileByPath(filePath);
+		if (existing instanceof TFile) {
+			new Notice(t("notice.openExistingNote"), 2000);
+			await this.switchToFile(existing);
+			return;
+		}
+		const folderPath = filePath.split("/").slice(0, -1).join("/");
+		if (folderPath) {
+			const folder = this.app.vault.getAbstractFileByPath(folderPath);
+			if (!folder) {
+				try {
+					await this.app.vault.createFolder(folderPath);
+				} catch (error) {
+					console.error(
+						"[Tategaki Reading] Failed to create folder",
+						error,
+					);
+					new Notice(t("notice.createFolderFailed"), 2500);
+					return;
+				}
+			} else if (!(folder instanceof TFolder)) {
+				new Notice(t("notice.invalidFolderName"), 2500);
+				return;
+			}
+		}
+		try {
+			const file = await this.app.vault.create(filePath, "");
+			await this.switchToFile(file);
+		} catch (error) {
+			console.error("[Tategaki Reading] Failed to create note", error);
+			new Notice(t("notice.createNoteFailed"), 2500);
+		}
+	}
+
+	private async switchToFile(file: TFile): Promise<void> {
+		if (this.filePath === file.path) {
+			new Notice(t("notice.fileAlreadyDisplayed"), 1500);
+			return;
+		}
+		this.filePath = file.path;
+		this.recordRecentFile(file);
+		await this.leaf.setViewState({
+			type: TATEGAKI_READING_VIEW_TYPE,
+			state: {
+				filePath: file.path,
+				returnViewMode: this.returnViewMode,
+			},
+			active: false,
+		});
+		this.scheduleRender();
+	}
+
 	private renderOutline(panel: HTMLElement): void {
 		panel.empty();
 		const header = panel.createDiv("tategaki-reading-outline-header");
-		header.createSpan({ text: "アウトライン" });
+		header.createSpan({ text: t("outline.title") });
 		const closeBtn = header.createEl("button", {
 			cls: "clickable-icon contenteditable-toolbar-button",
-			attr: { "aria-label": "閉じる" },
+			attr: { "aria-label": t("common.close") },
 		}) as HTMLButtonElement;
 		setIcon(closeBtn, "x");
 		closeBtn.addEventListener("click", (event) => {
@@ -496,7 +682,7 @@ export class TategakiReadingView extends ItemView {
 
 		if (this.outlineItems.length === 0) {
 			const empty = list.createDiv("tategaki-reading-outline-empty");
-			empty.textContent = "見出しがありません";
+			empty.textContent = t("outline.empty");
 			return;
 		}
 
@@ -673,7 +859,7 @@ export class TategakiReadingView extends ItemView {
 				onRepaginationRequired: () => {
 					const label = this.getReturnViewLabel();
 					new Notice(
-						`レイアウト変更を検出したため、${label}へ切り替えました。`,
+						t("notice.layoutChanged.switchedTo", { view: label }),
 						2500
 					);
 					this.exitReadingView();

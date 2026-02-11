@@ -17,9 +17,13 @@ import {
 	SoTWysiwygView,
 	TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
 } from "../wysiwyg/sot-wysiwyg-view";
-import { moveSyncBackupsToTrash, SYNC_BACKUP_ROOT } from "../shared/sync-backup";
+import {
+	moveSyncBackupsToTrash,
+	SYNC_BACKUP_ROOT,
+} from "../shared/sync-backup";
 import { debugWarn, setDebugLogging } from "../shared/logger";
 import { showConfirmModal } from "../shared/ui/confirm-modal";
+import { t } from "../shared/i18n";
 
 /**
  * Tategaki Plugin v2.0 - メインプラグインクラス
@@ -32,24 +36,22 @@ export default class TategakiV2Plugin extends Plugin {
 		// 既存のビューが残っている場合は強制クリーンアップ
 		try {
 			const existingPreviewLeaves = this.app.workspace.getLeavesOfType(
-				"tategaki-preview-view"
+				"tategaki-preview-view",
 			);
 			const existingWysiwygLeaves = this.app.workspace.getLeavesOfType(
-				"tategaki-wysiwyg-view"
+				"tategaki-wysiwyg-view",
 			);
 			const existingTipTapLeaves = [
-				...this.app.workspace.getLeavesOfType(
-					TIPTAP_COMPAT_VIEW_TYPE,
-				),
+				...this.app.workspace.getLeavesOfType(TIPTAP_COMPAT_VIEW_TYPE),
 				...this.app.workspace.getLeavesOfType(
 					TIPTAP_COMPAT_VIEW_TYPE_LEGACY,
 				),
 			];
 			const existingReadingLeaves = this.app.workspace.getLeavesOfType(
-				TATEGAKI_READING_VIEW_TYPE
+				TATEGAKI_READING_VIEW_TYPE,
 			);
 			const existingSoTLeaves = this.app.workspace.getLeavesOfType(
-				TATEGAKI_SOT_WYSIWYG_VIEW_TYPE
+				TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
 			);
 
 			if (
@@ -78,7 +80,7 @@ export default class TategakiV2Plugin extends Plugin {
 					} catch (flushError) {
 						debugWarn(
 							"Tategaki: failed to flush view before cleanup",
-							flushError
+							flushError,
 						);
 					}
 				}
@@ -99,7 +101,9 @@ export default class TategakiV2Plugin extends Plugin {
 						TIPTAP_COMPAT_VIEW_TYPE_LEGACY
 					];
 					delete viewRegistry.viewByType[TATEGAKI_READING_VIEW_TYPE];
-					delete viewRegistry.viewByType[TATEGAKI_SOT_WYSIWYG_VIEW_TYPE];
+					delete viewRegistry.viewByType[
+						TATEGAKI_SOT_WYSIWYG_VIEW_TYPE
+					];
 				}
 
 				// 少し待つ
@@ -128,7 +132,7 @@ export default class TategakiV2Plugin extends Plugin {
 		this.registerQuitHandler();
 
 		// リボンアイコンを追加
-		this.addRibbonIcon("tally-4", "縦書きビューを開く", () => {
+		this.addRibbonIcon("tally-4", t("command.openView"), () => {
 			void this.modeManager.openView();
 		});
 
@@ -145,24 +149,22 @@ export default class TategakiV2Plugin extends Plugin {
 		try {
 			// 全てのビューを閉じる
 			const allPreviewLeaves = this.app.workspace.getLeavesOfType(
-				"tategaki-preview-view"
+				"tategaki-preview-view",
 			);
 			const allWysiwygLeaves = this.app.workspace.getLeavesOfType(
-				"tategaki-wysiwyg-view"
+				"tategaki-wysiwyg-view",
 			);
 			const allTipTapCompatLeaves = [
-				...this.app.workspace.getLeavesOfType(
-					TIPTAP_COMPAT_VIEW_TYPE,
-				),
+				...this.app.workspace.getLeavesOfType(TIPTAP_COMPAT_VIEW_TYPE),
 				...this.app.workspace.getLeavesOfType(
 					TIPTAP_COMPAT_VIEW_TYPE_LEGACY,
 				),
 			];
 			const allReadingLeaves = this.app.workspace.getLeavesOfType(
-				TATEGAKI_READING_VIEW_TYPE
+				TATEGAKI_READING_VIEW_TYPE,
 			);
 			const allSoTLeaves = this.app.workspace.getLeavesOfType(
-				TATEGAKI_SOT_WYSIWYG_VIEW_TYPE
+				TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
 			);
 
 			allPreviewLeaves.forEach((leaf) => leaf.detach());
@@ -177,9 +179,7 @@ export default class TategakiV2Plugin extends Plugin {
 				delete viewRegistry.viewByType["tategaki-preview-view"];
 				delete viewRegistry.viewByType["tategaki-wysiwyg-view"];
 				delete viewRegistry.viewByType[TIPTAP_COMPAT_VIEW_TYPE];
-				delete viewRegistry.viewByType[
-					TIPTAP_COMPAT_VIEW_TYPE_LEGACY
-				];
+				delete viewRegistry.viewByType[TIPTAP_COMPAT_VIEW_TYPE_LEGACY];
 				delete viewRegistry.viewByType[TATEGAKI_READING_VIEW_TYPE];
 				delete viewRegistry.viewByType[TATEGAKI_SOT_WYSIWYG_VIEW_TYPE];
 			}
@@ -195,7 +195,7 @@ export default class TategakiV2Plugin extends Plugin {
 		// ビューを開くコマンド（右に分割表示）
 		this.addCommand({
 			id: "open-view",
-			name: "縦書きビューを開く",
+			name: t("command.openView"),
 			callback: async () => {
 				await this.modeManager.openView({ openOnRightSide: true });
 			},
@@ -203,16 +203,15 @@ export default class TategakiV2Plugin extends Plugin {
 
 		this.addCommand({
 			id: "sot-list-move-up",
-			name: "リスト項目を上へ移動",
+			name: t("command.listMoveUp"),
 			callback: () => this.runSoTListOutlinerAction("move-up"),
 		});
 
 		this.addCommand({
 			id: "sot-list-move-down",
-			name: "リスト項目を下へ移動",
+			name: t("command.listMoveDown"),
 			callback: () => this.runSoTListOutlinerAction("move-down"),
 		});
-
 	}
 
 	private getActiveSoTView(): SoTWysiwygView | null {
@@ -230,9 +229,7 @@ export default class TategakiV2Plugin extends Plugin {
 		return null;
 	}
 
-	private runSoTListOutlinerAction(
-		action: "move-up" | "move-down",
-	): void {
+	private runSoTListOutlinerAction(action: "move-up" | "move-down"): void {
 		const view = this.getActiveSoTView();
 		if (!view) return;
 		view.runListOutlinerAction(action);
@@ -240,11 +237,10 @@ export default class TategakiV2Plugin extends Plugin {
 
 	async moveSyncBackupsToTrash(): Promise<void> {
 		const ok = await showConfirmModal(this.app, {
-			title: "同期バックアップをゴミ箱へ移動",
-			message:
-				"同期バックアップをゴミ箱へ移動しますか？\n\n移動すると、バックアップからの復元はできなくなります。",
-			confirmText: "移動する",
-			cancelText: "キャンセル",
+			title: t("plugin.syncBackupTrash.title"),
+			message: t("plugin.syncBackupTrash.message"),
+			confirmText: t("plugin.syncBackupTrash.confirm"),
+			cancelText: t("common.cancel"),
 			confirmIsWarning: true,
 		});
 		if (!ok) {
@@ -253,20 +249,20 @@ export default class TategakiV2Plugin extends Plugin {
 		try {
 			const result = await moveSyncBackupsToTrash(this.app);
 			if (result === "none") {
-				new Notice("同期バックアップは見つかりませんでした。", 2500);
+				new Notice(t("plugin.notice.syncBackup.none"), 2500);
 				return;
 			}
 			if (result === "system") {
-				new Notice("同期バックアップをゴミ箱へ移動しました。", 3000);
+				new Notice(t("plugin.notice.syncBackup.movedSystem"), 3000);
 			} else {
-				new Notice("同期バックアップを .trash に移動しました。", 3500);
+				new Notice(t("plugin.notice.syncBackup.movedDotTrash"), 3500);
 			}
 		} catch (error) {
 			console.error(
 				"Tategaki: failed to move sync backups to trash",
-				error
+				error,
 			);
-			new Notice("同期バックアップの移動に失敗しました。", 3500);
+			new Notice(t("plugin.notice.syncBackup.moveFailed"), 3500);
 		}
 	}
 
@@ -277,10 +273,7 @@ export default class TategakiV2Plugin extends Plugin {
 				? adapter.getBasePath()
 				: null;
 		if (!basePath) {
-			new Notice(
-				"バックアップフォルダを開くにはデスクトップ版が必要です。",
-				3000
-			);
+			new Notice(t("plugin.notice.backup.desktopOnly"), 3000);
 			return;
 		}
 		const fullPath = path.join(basePath, SYNC_BACKUP_ROOT);
@@ -292,10 +285,7 @@ export default class TategakiV2Plugin extends Plugin {
 			}
 		})();
 		if (fs?.existsSync && !fs.existsSync(fullPath)) {
-			new Notice(
-				"同期バックアップフォルダが見つかりませんでした。",
-				3000,
-			);
+			new Notice(t("plugin.notice.backup.notFound"), 3000);
 			return;
 		}
 		const shell = (() => {
@@ -308,13 +298,8 @@ export default class TategakiV2Plugin extends Plugin {
 		if (shell?.openPath) {
 			const result = await shell.openPath(fullPath);
 			if (!result) return;
-			if (
-				/(enoent|no such file|not found)/i.test(result)
-			) {
-				new Notice(
-					"同期バックアップフォルダが見つかりませんでした。",
-					3000
-				);
+			if (/(enoent|no such file|not found)/i.test(result)) {
+				new Notice(t("plugin.notice.backup.notFound"), 3000);
 				return;
 			}
 		}
@@ -331,7 +316,7 @@ export default class TategakiV2Plugin extends Plugin {
 				// fall through
 			}
 		}
-		new Notice("バックアップフォルダを開けませんでした。", 3000);
+		new Notice(t("plugin.notice.backup.openFailed"), 3000);
 	}
 
 	private registerQuitHandler(): void {
@@ -350,7 +335,7 @@ export default class TategakiV2Plugin extends Plugin {
 					return;
 				}
 				void this.handleAppQuit(action, { awaitSaves: false, leaves });
-			})
+			}),
 		);
 	}
 
@@ -376,7 +361,7 @@ export default class TategakiV2Plugin extends Plugin {
 
 	private async handleAppQuit(
 		action: AppCloseAction,
-		options: { awaitSaves?: boolean; leaves?: any[] } = {}
+		options: { awaitSaves?: boolean; leaves?: any[] } = {},
 	): Promise<void> {
 		const awaitSaves = options.awaitSaves !== false;
 		const leaves = options.leaves ?? this.collectSyncLeaves();
@@ -443,7 +428,7 @@ export default class TategakiV2Plugin extends Plugin {
 			previewChanges &&
 			Object.prototype.hasOwnProperty.call(
 				previewChanges,
-				"pageModeEnabled"
+				"pageModeEnabled",
 			);
 
 		if (
@@ -463,14 +448,14 @@ export default class TategakiV2Plugin extends Plugin {
 			this.settings.preview = Object.assign(
 				{},
 				currentPreview,
-				nextChanges.preview
+				nextChanges.preview,
 			);
 		}
 		if (nextChanges.common) {
 			this.settings.common = Object.assign(
 				{},
 				currentCommon,
-				nextChanges.common
+				nextChanges.common,
 			);
 		}
 		await this.saveSettings();
@@ -486,7 +471,7 @@ export default class TategakiV2Plugin extends Plugin {
 	async saveTheme(theme: ThemePreset): Promise<void> {
 		// 既存のテーマIDをチェック
 		const existingIndex = this.settings.themes.findIndex(
-			(t) => t.id === theme.id
+			(t) => t.id === theme.id,
 		);
 
 		if (existingIndex >= 0) {
@@ -740,7 +725,7 @@ export default class TategakiV2Plugin extends Plugin {
 
 		// テーマを削除
 		this.settings.themes = this.settings.themes.filter(
-			(t) => t.id !== themeId
+			(t) => t.id !== themeId,
 		);
 
 		// 削除したテーマがアクティブだった場合、obsidian-baseに戻す
@@ -756,8 +741,9 @@ export default class TategakiV2Plugin extends Plugin {
 	 */
 	async createThemeFromCurrentSettings(
 		name: string,
-		description = "ユーザー作成テーマ"
+		description?: string,
 	): Promise<ThemePreset> {
+		const safeDescription = description ?? t("theme.userCreatedDescription");
 		const themeId = `theme-${Date.now()}`;
 
 		// 実効設定を取得（temporaryOverridesも考慮）
@@ -766,7 +752,7 @@ export default class TategakiV2Plugin extends Plugin {
 		const newTheme: ThemePreset = {
 			id: themeId,
 			name: name,
-			description: description,
+			description: safeDescription,
 			mode: "custom",
 			settings: {
 				fontFamily: effectiveSettings.fontFamily,
@@ -853,10 +839,10 @@ export default class TategakiV2Plugin extends Plugin {
 	 * 一時的な上書き設定を更新
 	 */
 	async updateTemporaryOverride<
-		K extends keyof TategakiV2Settings["temporaryOverrides"]
+		K extends keyof TategakiV2Settings["temporaryOverrides"],
 	>(
 		key: K,
-		value: TategakiV2Settings["temporaryOverrides"][K]
+		value: TategakiV2Settings["temporaryOverrides"][K],
 	): Promise<void> {
 		this.settings.temporaryOverrides[key] = value;
 		await this.saveSettings();

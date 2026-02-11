@@ -3054,8 +3054,32 @@ ruby {
 .tategaki-ruby-input-dot {
 	margin-bottom: 20px;
 	display: flex;
-	align-items: center;
+	flex-direction: column;
+	align-items: stretch;
 	gap: 10px;
+}
+
+.tategaki-ruby-input-emphasis-select {
+	width: 100%;
+	font-family: var(--tategaki-font-family, var(--font-text));
+	font-size: inherit;
+}
+
+.tategaki-ruby-input-custom-row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.tategaki-ruby-input-custom-row .setting-item-control {
+	width: auto;
+}
+
+.tategaki-ruby-input-note {
+	font-size: 12px;
+	color: var(--text-muted);
+	line-height: 1.45;
 }
 
 .tategaki-ruby-input-buttons {
@@ -4273,6 +4297,14 @@ ruby {
 	background-color: rgba(255, 221, 0, 0.25);
 }
 
+.tategaki-md-tcy {
+	display: inline-block;
+	text-combine-upright: all;
+	-webkit-text-combine: horizontal;
+	text-orientation: mixed;
+	line-height: 1;
+}
+
 .tategaki-md-underline {
 	text-decoration: underline;
 	text-decoration-color: color-mix(
@@ -5408,9 +5440,13 @@ ruby {
 	color: transparent;
 	pointer-events: none;
 	user-select: none;
-	font-family: var(--tategaki-font-family, var(--font-text));
-	font-size: var(--tategaki-font-size, 18px);
-	line-height: var(--tategaki-line-height, 1.8);
+	font-family: inherit;
+	font-size: inherit;
+	line-height: inherit;
+	font-weight: inherit;
+	font-style: inherit;
+	letter-spacing: inherit;
+	text-decoration-line: inherit;
 	writing-mode: inherit;
 	text-orientation: inherit;
 }

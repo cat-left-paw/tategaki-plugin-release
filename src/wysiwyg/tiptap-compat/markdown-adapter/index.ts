@@ -4,6 +4,10 @@ import {
 	convertRubyElementsToAozora,
 	createAozoraRubyRegExp,
 } from "../../../shared/aozora-ruby";
+import {
+	convertAozoraTcySyntaxToHtml,
+	isValidAozoraTcyBody,
+} from "../../../shared/aozora-tcy";
 import type { TategakiV2Settings } from "../../../types/settings";
 
 const BLANK_LINE_MARKER = "\u2060";
@@ -499,8 +503,8 @@ function convertInlineSyntaxToTipTapHtml(
 	let converted = text;
 	if (enableRuby) {
 		converted = convertAozoraRubyTextToTipTapHtml(converted);
-		return converted;
 	}
+	converted = convertAozoraTcySyntaxToHtml(converted);
 	converted = convertObsidianHighlightSyntaxToTipTapHtml(converted);
 	return converted;
 }
@@ -517,7 +521,7 @@ export function renderInlineMarkdownToTipTapHtml(
 function convertAozoraRubyTextToTipTapHtml(text: string): string {
 	const regex = createAozoraRubyRegExp();
 	regex.lastIndex = 0;
-	let converted = text.replace(regex, (match: string, ...args: any[]) => {
+	return text.replace(regex, (match: string, ...args: any[]) => {
 		const groups = args[args.length - 1] as
 			| Record<string, string | undefined>
 			| undefined;
@@ -532,8 +536,6 @@ function convertAozoraRubyTextToTipTapHtml(text: string): string {
 
 		return `<ruby data-aozora-ruby="1" data-aozora-delimiter="${delimiterAttr}"><span data-aozora-base="1">${escapeHtml(base)}</span><rt>${escapeHtml(ruby)}</rt></ruby>`;
 	});
-	converted = convertObsidianHighlightSyntaxToTipTapHtml(converted);
-	return converted;
 }
 
 function sanitizeTipTapHtml(html: string): string {
@@ -824,6 +826,12 @@ function serializeInline(node: any): string {
 		if (!base || !ruby) return base;
 		const delimiter = node.attrs?.hasDelimiter ? "｜" : "";
 		return `${delimiter}${base}《${ruby}》`;
+	}
+
+	if (node.type.name === "aozoraTcy") {
+		const base = node.textContent ?? "";
+		if (!isValidAozoraTcyBody(base)) return base;
+		return `｟${base}｠`;
 	}
 
 	let text = "";

@@ -8,12 +8,10 @@ import {
 } from "obsidian";
 import TategakiV2Plugin from "../../core/plugin";
 import { showConfirmModal } from "./confirm-modal";
-import {
-	TategakiV2Settings,
-	PRESET_THEME_IDS,
-} from "../../types/settings";
+import { TategakiV2Settings, PRESET_THEME_IDS } from "../../types/settings";
 import { compareSemver } from "../version";
 import { openExternalUrl } from "../open-external-url";
+import { t } from "../i18n";
 
 const UPDATE_CHECK_URL =
 	"https://raw.githubusercontent.com/cat-left-paw/tategaki-plugin-release/main/latest.json";
@@ -33,7 +31,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		this.addSectionHeading(containerEl, "Tategaki設定");
+		this.addSectionHeading(containerEl, t("settings.section.main"));
 
 		this.addTiptapSettings(this.plugin.settings);
 		const legacyEnabled = this.plugin.settings.enableLegacyTiptap ?? true;
@@ -117,10 +115,8 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 		const legacyEnabled = settings.enableLegacyTiptap ?? true;
 
 		new Setting(containerEl)
-			.setName("互換モード（旧エディタ）")
-			.setDesc(
-				"互換ビューと同期機能を有効化します。オフにすると互換用の同期/バックアップ設定を非表示にします",
-			)
+			.setName(t("settings.compatMode.name"))
+			.setDesc(t("settings.compatMode.desc"))
 			.addToggle((toggle) => {
 				toggle.setValue(legacyEnabled).onChange(async (value) => {
 					await this.plugin.updateSettings({
@@ -133,10 +129,8 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 		// 互換モードのアクティブファイル追従は廃止
 
 		new Setting(containerEl)
-			.setName("ビュー起動時にモード選択を表示")
-			.setDesc(
-				"縦書きビューを開くときに、執筆モード/参照モードを選択するダイアログを表示します",
-			)
+			.setName(t("settings.showModeDialog.name"))
+			.setDesc(t("settings.showModeDialog.desc"))
 			.addToggle((toggle) => {
 				toggle
 					.setValue(!!settings.showModeDialog)
@@ -148,13 +142,14 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 			});
 
 		if (legacyEnabled) {
-			this.addSectionHeading(containerEl, "同期と更新（互換モード専用）");
+			this.addSectionHeading(
+				containerEl,
+				t("settings.section.syncAndUpdateCompat"),
+			);
 
 			new Setting(containerEl)
-				.setName("外部同期の更新間隔(ms)")
-				.setDesc(
-					"カーソル同期や追従時のポーリング間隔です。0=リアルタイム（高負荷の可能性）。値を大きくするほど負荷は軽くなります",
-				)
+				.setName(t("settings.updateInterval.name"))
+				.setDesc(t("settings.updateInterval.desc"))
 				.addSlider((slider) => {
 					slider
 						.setLimits(0, 1000, 50)
@@ -183,14 +178,12 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 				});
 
 			new Setting(containerEl)
-				.setName("同期モード")
-				.setDesc(
-					"自動: 編集時に自動保存、手動: 同期ボタンで保存します（縦書きエディタ）",
-				)
+				.setName(t("settings.syncMode.name"))
+				.setDesc(t("settings.syncMode.desc"))
 				.addDropdown((dropdown) => {
 					dropdown
-						.addOption("auto", "自動同期")
-						.addOption("manual", "手動同期")
+						.addOption("auto", t("settings.syncMode.auto"))
+						.addOption("manual", t("settings.syncMode.manual"))
 						.setValue(settings.wysiwyg.syncMode)
 						.onChange(async (value) => {
 							await this.plugin.updateSettings({
@@ -203,10 +196,8 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 				});
 
 			new Setting(containerEl)
-				.setName("同期バックアップを作成")
-				.setDesc(
-					"互換モードの同期時にバックアップを作成します。無効にするとバックアップは作成されません（事故時は Obsidian の「ファイル履歴」を利用してください）。",
-				)
+				.setName(t("settings.syncBackupCreate.name"))
+				.setDesc(t("settings.syncBackupCreate.desc"))
 				.addToggle((toggle) => {
 					toggle
 						.setValue(
@@ -223,24 +214,20 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 				});
 
 			new Setting(containerEl)
-				.setName("同期バックアップフォルダを開く")
-				.setDesc(
-					"バックアップ保存先フォルダを開きます。",
-				)
+				.setName(t("settings.syncBackupOpen.name"))
+				.setDesc(t("settings.syncBackupOpen.desc"))
 				.addButton((button) => {
-					button.setButtonText("開く").onClick(async () => {
+					button.setButtonText(t("common.open")).onClick(async () => {
 						await this.plugin.openSyncBackupFolder();
 					});
 				});
 
 			new Setting(containerEl)
-				.setName("同期バックアップをゴミ箱へ移動")
-				.setDesc(
-					"同期の安全策として作成されたバックアップをゴミ箱へ移動します（復元できなくなるので注意）",
-				)
+				.setName(t("settings.syncBackupMove.name"))
+				.setDesc(t("settings.syncBackupMove.desc"))
 				.addButton((button) => {
 					button
-						.setButtonText("移動")
+						.setButtonText(t("common.move"))
 						.setWarning()
 						.onClick(async () => {
 							await this.plugin.moveSyncBackupsToTrash();
@@ -248,14 +235,15 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 				});
 
 			new Setting(containerEl)
-				.setName("アプリ終了時の未保存変更")
-				.setDesc(
-					"未保存の変更がある場合に、終了時に保存するか破棄するかを選びます",
-				)
+				.setName(t("settings.appCloseAction.name"))
+				.setDesc(t("settings.appCloseAction.desc"))
 				.addDropdown((dropdown) => {
 					dropdown
-						.addOption("save", "保存して終了")
-						.addOption("discard", "破棄して終了")
+						.addOption("save", t("settings.appCloseAction.save"))
+						.addOption(
+							"discard",
+							t("settings.appCloseAction.discard"),
+						)
 						.setValue(settings.wysiwyg.appCloseAction ?? "save")
 						.onChange(async (value) => {
 							await this.plugin.updateSettings({
@@ -268,10 +256,8 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 				});
 
 			new Setting(containerEl)
-				.setName("カーソル同期")
-				.setDesc(
-					"標準エディタでアクティブなカーソル位置を縦書きエディタにも反映します",
-				)
+				.setName(t("settings.syncCursor.name"))
+				.setDesc(t("settings.syncCursor.desc"))
 				.addToggle((toggle) => {
 					toggle
 						.setValue(!!settings.wysiwyg.syncCursor)
@@ -285,80 +271,107 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 						});
 				});
 		}
-
 	}
 
 	private addUpdateAndSupportSection(legacyEnabled: boolean): void {
 		const { containerEl } = this;
 
-		this.addSectionHeading(containerEl, "アップデート");
+		this.addSectionHeading(containerEl, t("settings.section.update"));
 
 		const updateSetting = new Setting(containerEl)
-			.setName("手動でアップデートを確認")
-			.setDesc(
-				"ボタンを押したときだけ通信して、公開URL上の最新版情報を確認します",
-			)
+			.setName(t("settings.manualUpdate.name"))
+			.setDesc(t("settings.manualUpdate.desc"))
 			.addButton((button) => {
-				button.setButtonText("更新の確認").onClick(async () => {
-					const current = this.plugin.manifest.version;
-					try {
-						const resp = await requestUrl({
-							url: UPDATE_CHECK_URL,
-						});
-						const data = resp.json ?? {};
-						const latest = String(data.version ?? "").trim();
-						const downloadUrl = String(data.url ?? "").trim();
+				button
+					.setButtonText(t("settings.manualUpdate.button"))
+					.onClick(async () => {
+						const current = this.plugin.manifest.version;
+						try {
+							const resp = await requestUrl({
+								url: UPDATE_CHECK_URL,
+							});
+							const data = resp.json ?? {};
+							const latest = String(data.version ?? "").trim();
+							const downloadUrl = String(data.url ?? "").trim();
 
-						if (!latest) {
-							new Notice(
-								"更新情報を取得できませんでした（latest.jsonの形式を確認してください）。",
-								3000,
-							);
-							return;
-						}
+							if (!latest) {
+								new Notice(
+									t("settings.notice.update.invalidResponse"),
+									3000,
+								);
+								return;
+							}
 
-						if (latest === current) {
-							new Notice(
-								`Tategakiエディタは最新です（現在: ${current}）。`,
-								2500,
-							);
-							return;
-						}
+							if (latest === current) {
+								new Notice(
+									t("settings.notice.update.latest", {
+										current,
+									}),
+									2500,
+								);
+								return;
+							}
 
-						const cmp = compareSemver(latest, current);
-						if (cmp === null) {
+							const cmp = compareSemver(latest, current);
+							if (cmp === null) {
+								const msg = downloadUrl
+									? t(
+											"settings.notice.update.compareUnavailableWithUrl",
+											{
+												latest,
+												current,
+												url: downloadUrl,
+											},
+										)
+									: t(
+											"settings.notice.update.compareUnavailableNoUrl",
+											{
+												latest,
+												current,
+											},
+										);
+								new Notice(msg, 6000);
+								return;
+							}
+
+							if (cmp < 0) {
+								new Notice(
+									t("settings.notice.update.currentNewer", {
+										current,
+										latest,
+									}),
+									4000,
+								);
+								return;
+							}
+
 							const msg = downloadUrl
-								? `更新情報を取得しました（公開: ${latest} / 現在: ${current}）。バージョン比較ができないため、Releases を確認してください: ${downloadUrl}`
-								: `更新情報を取得しました（公開: ${latest} / 現在: ${current}）。バージョン比較ができないため、Releases を確認してください。`;
-							new Notice(msg, 6000);
-							return;
-						}
-
-						if (cmp < 0) {
+								? t(
+										"settings.notice.update.newVersionWithUrl",
+										{
+											latest,
+											current,
+											url: downloadUrl,
+										},
+									)
+								: t("settings.notice.update.newVersionNoUrl", {
+										latest,
+										current,
+									});
+							new Notice(msg, 5000);
+						} catch (error) {
+							console.error("Update check failed", error);
 							new Notice(
-								`現在のほうが新しいバージョンです（現在: ${current} / 公開: ${latest}）。`,
-								4000,
+								t("settings.notice.update.failed"),
+								3500,
 							);
-							return;
 						}
-
-						const msg = downloadUrl
-							? `新しいバージョン ${latest} が利用可能です（現在: ${current}）。ダウンロード: ${downloadUrl}`
-							: `新しいバージョン ${latest} が利用可能です（現在: ${current}）。`;
-						new Notice(msg, 5000);
-					} catch (error) {
-						console.error("Update check failed", error);
-						new Notice(
-							"更新確認に失敗しました。通信状況と更新URLを確認してください。",
-							3500,
-						);
-					}
-				});
+					});
 			});
 
 		// リリースページへのリンクを追加
 		const releaseLinkEl = updateSetting.controlEl.createEl("a", {
-			text: "リリースページ",
+			text: t("settings.releasePage"),
 			attr: {
 				href: RELEASE_URL,
 				target: "_blank",
@@ -371,7 +384,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 			void (async () => {
 				const opened = await openExternalUrl(this.app, RELEASE_URL);
 				if (!opened) {
-					new Notice("リンクを開けませんでした。", 2500);
+					new Notice(t("settings.notice.linkOpenFailed"), 2500);
 				}
 			})();
 		});
@@ -384,13 +397,11 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 	private addDonationSection(): void {
 		const { containerEl } = this;
 
-		this.addSectionHeading(containerEl, "サポート");
+		this.addSectionHeading(containerEl, t("settings.section.support"));
 
 		const donationSetting = new Setting(containerEl)
-			.setName("サポート（寄付）")
-			.setDesc(
-				"このプラグインを気に入っていただけたらサポートをしていただくと幸いです（任意）",
-			);
+			.setName(t("settings.supportDonation.name"))
+			.setDesc(t("settings.supportDonation.desc"));
 
 		const donationLinkEl = donationSetting.controlEl.createEl("a", {
 			attr: {
@@ -416,7 +427,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 				const opened = await openExternalUrl(this.app, DONATION_URL);
 				if (!opened) {
 					console.error("Failed to open donation link");
-					new Notice("リンクを開けませんでした。", 2500);
+					new Notice(t("settings.notice.linkOpenFailed"), 2500);
 				}
 			})();
 		});
@@ -424,7 +435,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 
 	private addThemeSettings(settings: TategakiV2Settings) {
 		const { containerEl } = this;
-		this.addSectionHeading(containerEl, "テーマ管理");
+		this.addSectionHeading(containerEl, t("settings.section.theme"));
 
 		// 現在のテーマ表示と説明
 		const currentTheme =
@@ -433,13 +444,13 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 				: settings.themes.find((t) => t.id === settings.activeTheme);
 		const currentThemeName =
 			settings.activeTheme === "obsidian-base"
-				? "Obsidian ベーステーマ"
+				? t("settings.theme.obsidianBase.name")
 				: currentTheme
 					? currentTheme.name
-					: "未知のテーマ";
+					: t("settings.theme.unknown");
 
 		containerEl.createEl("p", {
-			text: `現在のテーマ: ${currentThemeName}`,
+			text: t("settings.theme.current", { themeName: currentThemeName }),
 			cls: "setting-item-description",
 		});
 
@@ -451,7 +462,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 		const themeListTitle = themeListContainer.createDiv(
 			"theme-list-title tategaki-theme-list-title",
 		);
-		themeListTitle.setText("保存されているテーマ");
+		themeListTitle.setText(t("settings.theme.saved"));
 
 		// テーマリストを動的に更新する関数
 		const updateThemeList = () => {
@@ -469,9 +480,8 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 			// Obsidianベーステーマを追加
 			const obsidianBaseTheme = {
 				id: "obsidian-base",
-				name: "Obsidian ベーステーマ",
-				description:
-					"Obsidianで適用されているテーマをベースとしたテーマです",
+				name: t("settings.theme.obsidianBase.name"),
+				description: t("settings.theme.obsidianBase.desc"),
 				mode: "obsidian-base" as const,
 				settings: {
 					fontFamily: "",
@@ -504,7 +514,9 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 					themeItem.addClass("is-active");
 				}
 
-				const themeInfo = themeItem.createDiv("theme-info tategaki-theme-info");
+				const themeInfo = themeItem.createDiv(
+					"theme-info tategaki-theme-info",
+				);
 
 				themeInfo.createEl("div", {
 					text: theme.name,
@@ -525,17 +537,24 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 					// 見出し設定の表示テキストを作成
 					const headingFontDisplay = theme.settings.headingFontFamily
 						? theme.settings.headingFontFamily.split(",")[0].trim()
-						: "本文と同じ";
+						: t("settings.theme.sameAsBody");
 					const headingColorDisplay = theme.settings.colors
 						?.headingText
 						? theme.settings.colors.headingText
-						: "本文と同じ";
+						: t("settings.theme.sameAsBody");
 
 					previewInfo.createDiv({
-						text: `${theme.settings.fontFamily} | ${theme.settings.fontSize}px | 行間${theme.settings.lineHeight}`,
+						text: t("settings.theme.preview", {
+							fontFamily: theme.settings.fontFamily,
+							fontSize: theme.settings.fontSize,
+							lineHeight: theme.settings.lineHeight,
+						}),
 					});
 					previewInfo.createDiv({
-						text: `見出し: ${headingFontDisplay} | ${headingColorDisplay}`,
+						text: t("settings.theme.previewHeading", {
+							headingFont: headingFontDisplay,
+							headingColor: headingColorDisplay,
+						}),
 						cls: "tategaki-theme-preview-heading",
 					});
 				}
@@ -547,7 +566,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 				// 適用ボタン
 				if (theme.id !== settings.activeTheme) {
 					const applyButton = buttonContainer.createEl("button", {
-						text: "適用",
+						text: t("settings.theme.apply"),
 						cls: "tategaki-theme-action-button",
 					});
 
@@ -558,14 +577,20 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 								this.display(); // 設定画面を再表示して現在のテーマ表示を更新
 							})
 							.catch((error) => {
-								console.error("Tategaki: failed to load theme", error);
-								new Notice("テーマの適用に失敗しました。", 2500);
+								console.error(
+									"Tategaki: failed to load theme",
+									error,
+								);
+								new Notice(
+									t("settings.notice.themeApplyFailed"),
+									2500,
+								);
 							});
 					});
 				} else {
 					// 現在のテーマの場合は「現在使用中」を表示
 					buttonContainer.createEl("span", {
-						text: "使用中",
+						text: t("settings.theme.inUse"),
 						cls: "tategaki-theme-current",
 					});
 				}
@@ -576,27 +601,38 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 					(PRESET_THEME_IDS as readonly string[]).includes(theme.id);
 				if (!isPreset) {
 					const deleteButton = buttonContainer.createEl("button", {
-						text: "削除",
+						text: t("common.delete"),
 						cls: "tategaki-theme-action-button tategaki-theme-action-delete",
 					});
 
 					deleteButton.addEventListener("click", () => {
 						void (async () => {
 							// 削除確認
-							const confirmDelete = await showConfirmModal(this.app, {
-								title: "テーマの削除",
-								message: `テーマ「${theme.name}」を削除しますか？この操作は元に戻せません。`,
-								confirmText: "削除",
-								cancelText: "キャンセル",
-								confirmIsWarning: true,
-							});
+							const confirmDelete = await showConfirmModal(
+								this.app,
+								{
+									title: t("settings.theme.deleteTitle"),
+									message: t("settings.theme.deleteMessage", {
+										themeName: theme.name,
+									}),
+									confirmText: t("common.delete"),
+									cancelText: t("common.cancel"),
+									confirmIsWarning: true,
+								},
+							);
 							if (!confirmDelete) return;
 
 							await this.plugin.deleteTheme(theme.id);
 							this.display(); // 設定画面を再表示
 						})().catch((error) => {
-							console.error("Tategaki: failed to delete theme", error);
-							new Notice("テーマの削除に失敗しました。", 2500);
+							console.error(
+								"Tategaki: failed to delete theme",
+								error,
+							);
+							new Notice(
+								t("settings.notice.themeDeleteFailed"),
+								2500,
+							);
 						});
 					});
 				}
@@ -608,9 +644,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 
 		// 使用方法の説明
 		new Setting(containerEl)
-			.setName("テーマの使用方法")
-			.setDesc(
-				"設定パネルで見た目を調整した後、「現在の設定をテーマとして保存」ボタンから新しいテーマとして保存できます。保存されたテーマはここで管理できます。",
-			);
+			.setName(t("settings.theme.usage.name"))
+			.setDesc(t("settings.theme.usage.desc"));
 	}
 }

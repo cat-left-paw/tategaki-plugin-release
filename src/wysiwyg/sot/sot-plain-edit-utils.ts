@@ -1,4 +1,5 @@
 import { createAozoraRubyRegExp } from "../../shared/aozora-ruby";
+import { stripAozoraTcySyntax } from "../../shared/aozora-tcy";
 
 export type PlainEditSelectionRange = {
 	start: number;
@@ -79,6 +80,7 @@ export const stripPlainEditFormatting = (text: string): string => {
 	result = result.replace(/\*([^*\n]+)\*/g, "$1");
 	result = result.replace(/~~([^~\n]+)~~/g, "$1");
 	result = result.replace(/<u>([\s\S]*?)<\/u>/gi, "$1");
+	result = stripAozoraTcySyntax(result);
 	const rubyRegex = createAozoraRubyRegExp();
 	result = result.replace(rubyRegex, (_match, ...args) => {
 		const groups = args[args.length - 1] as

@@ -1,4 +1,5 @@
 import { App, Modal, Setting } from "obsidian";
+import { t } from "../i18n";
 
 export interface ConfirmModalOptions {
 	title?: string;
@@ -11,7 +12,7 @@ export interface ConfirmModalOptions {
 
 export function showConfirmModal(
 	app: App,
-	options: ConfirmModalOptions
+	options: ConfirmModalOptions,
 ): Promise<boolean> {
 	return new Promise((resolve) => {
 		const modal = new ConfirmModal(app, options, resolve);
@@ -25,14 +26,14 @@ class ConfirmModal extends Modal {
 	constructor(
 		app: App,
 		private readonly options: ConfirmModalOptions,
-		private readonly onResolve: (result: boolean) => void
+		private readonly onResolve: (result: boolean) => void,
 	) {
 		super(app);
 	}
 
 	onOpen(): void {
 		const { title, message, confirmText, cancelText } = this.options;
-		this.titleEl.setText(title ?? "確認");
+		this.titleEl.setText(title ?? t("common.confirmation"));
 
 		for (const line of message.split("\n")) {
 			this.contentEl.createEl("p", { text: line });
@@ -41,19 +42,17 @@ class ConfirmModal extends Modal {
 		const actions = new Setting(this.contentEl);
 		actions.addButton((button) =>
 			button
-				.setButtonText(cancelText ?? "キャンセル")
+				.setButtonText(cancelText ?? t("common.cancel"))
 				.onClick(() => {
 					this.result = false;
 					this.close();
-				})
+				}),
 		);
 		actions.addButton((button) => {
-			button
-				.setButtonText(confirmText ?? "OK")
-				.onClick(() => {
-					this.result = true;
-					this.close();
-				});
+			button.setButtonText(confirmText ?? t("common.ok")).onClick(() => {
+				this.result = true;
+				this.close();
+			});
 			if (this.options.confirmIsWarning) {
 				button.setWarning();
 			} else if (this.options.confirmIsCta !== false) {

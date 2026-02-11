@@ -1,4 +1,5 @@
 import { Modal, App, ButtonComponent } from "obsidian";
+import { t } from "../i18n";
 
 export interface ConflictResolutionResult {
 	action: "overwrite" | "accept-external" | "keep-both" | "cancel";
@@ -18,7 +19,7 @@ export class ConflictResolutionModal extends Modal {
 	constructor(
 		app: App,
 		conflictData: ConflictData,
-		onResolve: (result: ConflictResolutionResult | null) => void
+		onResolve: (result: ConflictResolutionResult | null) => void,
 	) {
 		super(app);
 		this.conflictData = conflictData;
@@ -30,33 +31,41 @@ export class ConflictResolutionModal extends Modal {
 		contentEl.empty();
 
 		// モーダルに固有のクラスを追加
-		this.modalEl.addClass('tategaki-conflict-resolution-modal');
+		this.modalEl.addClass("tategaki-conflict-resolution-modal");
 
 		// タイトル
-		contentEl.createEl("h2", { text: "ファイル競合の解決" });
+		contentEl.createEl("h2", { text: t("modal.conflict.title") });
 
 		// 説明
-		const description = contentEl.createDiv("tategaki-conflict-description");
-		description.createEl("p", { text: `ファイル: ${this.conflictData.filePath}` });
+		const description = contentEl.createDiv(
+			"tategaki-conflict-description",
+		);
 		description.createEl("p", {
-			text: "このファイルが外部で変更されましたが、未保存の編集内容があります。保存方法を選択してください。",
+			text: t("modal.conflict.file", {
+				filePath: this.conflictData.filePath,
+			}),
+		});
+		description.createEl("p", {
+			text: t("modal.conflict.desc"),
 		});
 
 		// アクションボタン
-		const buttonContainer = contentEl.createDiv("tategaki-conflict-buttons");
+		const buttonContainer = contentEl.createDiv(
+			"tategaki-conflict-buttons",
+		);
 
 		// 上書き保存ボタン
 		new ButtonComponent(buttonContainer)
-			.setButtonText("現在の内容で上書き保存")
+			.setButtonText(t("modal.conflict.overwrite"))
 			.setClass("mod-cta")
 			.onClick(() => {
-				this.result = { action: 'overwrite' };
+				this.result = { action: "overwrite" };
 				this.close();
 			});
 
 		// 外部変更を取り込みボタン
 		new ButtonComponent(buttonContainer)
-			.setButtonText("外部変更を取り込む")
+			.setButtonText(t("modal.conflict.acceptExternal"))
 			.onClick(() => {
 				this.result = { action: "accept-external" };
 				this.close();
@@ -64,7 +73,7 @@ export class ConflictResolutionModal extends Modal {
 
 		// 両方保存ボタン
 		new ButtonComponent(buttonContainer)
-			.setButtonText("両方のバージョンを保存")
+			.setButtonText(t("modal.conflict.keepBoth"))
 			.onClick(() => {
 				this.result = { action: "keep-both" };
 				this.close();
@@ -72,7 +81,7 @@ export class ConflictResolutionModal extends Modal {
 
 		// キャンセルボタン
 		new ButtonComponent(buttonContainer)
-			.setButtonText("キャンセル")
+			.setButtonText(t("common.cancel"))
 			.onClick(() => {
 				this.result = { action: "cancel" };
 				this.close();

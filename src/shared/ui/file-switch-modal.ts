@@ -1,4 +1,5 @@
 import { App, ButtonComponent, FuzzySuggestModal, TFile } from "obsidian";
+import { t } from "../i18n";
 
 export class FileSwitchModal extends FuzzySuggestModal<TFile> {
 	private files: TFile[];
@@ -16,7 +17,7 @@ export class FileSwitchModal extends FuzzySuggestModal<TFile> {
 		this.files = files;
 		this.onSelect = onSelect;
 		this.onCreateNew = onCreateNew ?? null;
-		this.setPlaceholder("切り替えるファイルを選択");
+		this.setPlaceholder(t("modal.fileSwitch.placeholder"));
 	}
 
 	onOpen() {
@@ -30,7 +31,7 @@ export class FileSwitchModal extends FuzzySuggestModal<TFile> {
 			"tategaki-file-switch-footer"
 		);
 		new ButtonComponent(this.footerEl)
-			.setButtonText("新規ノートを作成")
+			.setButtonText(t("modal.fileSwitch.createNew"))
 			.setClass("mod-cta")
 			.onClick(() => {
 				const input = this.inputEl?.value ?? "";

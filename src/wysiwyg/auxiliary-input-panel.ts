@@ -1,3 +1,5 @@
+import { t } from "../shared/i18n";
+
 interface AuxiliaryInputPanelOptions {
 	parent: HTMLElement;
 	isVertical: boolean;
@@ -29,7 +31,7 @@ export class AuxiliaryInputPanel {
 		this.textareaEl = this.containerEl.createEl("textarea", {
 			cls: "tategaki-auxiliary-textarea",
 			attr: {
-				placeholder: "入力して Enter で挿入、Shift+Enter で改行...",
+				placeholder: t("aux.placeholder"),
 				rows: "3",
 			},
 		});
@@ -57,7 +59,7 @@ export class AuxiliaryInputPanel {
 
 		// 挿入ボタン
 		const insertBtn = this.buttonsEl.createEl("button", {
-			text: "挿入",
+			text: t("aux.insert"),
 			cls: "mod-cta",
 		});
 		insertBtn.addEventListener("click", () => this.handleInsert());

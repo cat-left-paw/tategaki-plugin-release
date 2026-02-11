@@ -49,6 +49,7 @@ import { PagedReadingMode } from "./reading-mode/paged-reading-mode";
 import { FileSwitchModal } from "../shared/ui/file-switch-modal";
 import { NewNoteModal } from "../shared/ui/new-note-modal";
 import { isPhoneLikeMobile } from "./shared/device-profile";
+import { t } from "../shared/i18n";
 
 export const TIPTAP_COMPAT_VIEW_TYPE = "tategaki-tiptap-compat-view";
 export const TIPTAP_COMPAT_VIEW_TYPE_LEGACY = "tategaki-tiptap-dev-view";
@@ -333,7 +334,7 @@ export class TipTapCompatView extends ItemView {
 		);
 		modal.open();
 		if (files.length === 0) {
-			new Notice("切り替え可能なファイルが見つかりません。", 2000);
+			new Notice(t("notice.switchableFilesNotFound"), 2000);
 		}
 	}
 
@@ -353,7 +354,7 @@ export class TipTapCompatView extends ItemView {
 	private async createNewNote(name: string, baseFolder: string): Promise<void> {
 		const trimmed = name.trim();
 		if (!trimmed) {
-			new Notice("ファイル名を入力してください。", 2000);
+			new Notice(t("notice.fileNameRequired"), 2000);
 			return;
 		}
 		const cleaned = trimmed.replace(/^[\\/]+/, "").replace(/^\.\//, "");
@@ -363,7 +364,7 @@ export class TipTapCompatView extends ItemView {
 		const filePath = normalizePath(joined);
 		const existing = this.app.vault.getAbstractFileByPath(filePath);
 		if (existing instanceof TFile) {
-			new Notice("既存ノートを開きます。", 2000);
+			new Notice(t("notice.openExistingNote"), 2000);
 			await this.switchToFile(existing);
 			return;
 		}
@@ -375,11 +376,11 @@ export class TipTapCompatView extends ItemView {
 					await this.app.vault.createFolder(folderPath);
 				} catch (error) {
 					console.error("[Tategaki TipTap] Failed to create folder", error);
-					new Notice("フォルダの作成に失敗しました。", 2500);
+					new Notice(t("notice.createFolderFailed"), 2500);
 					return;
 				}
 			} else if (!(folder instanceof TFolder)) {
-				new Notice("フォルダ名が不正です。", 2500);
+				new Notice(t("notice.invalidFolderName"), 2500);
 				return;
 			}
 		}
@@ -388,14 +389,14 @@ export class TipTapCompatView extends ItemView {
 			await this.switchToFile(file);
 		} catch (error) {
 			console.error("[Tategaki TipTap] Failed to create note", error);
-			new Notice("新規ノートの作成に失敗しました。", 2500);
+			new Notice(t("notice.createNoteFailed"), 2500);
 		}
 	}
 
 	private async switchToFile(file: TFile): Promise<void> {
 		if (!this.syncManager) return;
 		if (this.currentFile?.path === file.path) {
-			new Notice("既に表示中のファイルです。", 1500);
+			new Notice(t("notice.fileAlreadyDisplayed"), 1500);
 			return;
 		}
 		const ok = await this.checkUnsavedChanges();
@@ -530,7 +531,7 @@ export class TipTapCompatView extends ItemView {
 
 		// モード表示（互換）
 		const modeBadge = toolbarRight.createDiv();
-		modeBadge.textContent = "互換";
+		modeBadge.textContent = t("badge.mode.compat");
 		modeBadge.addClass("tategaki-tiptap-mode-badge");
 		this.modeBadgeEl = modeBadge;
 
@@ -599,6 +600,13 @@ export class TipTapCompatView extends ItemView {
 				onTogglePlainEdit: () => void this.togglePlainEditMode(),
 				getPlainEditEnabled: () =>
 					this.plainEditMode?.isPlainMode() ?? false,
+				getCustomEmphasisChars: () =>
+					this.plugin.settings.wysiwyg.customEmphasisChars ?? [],
+				setCustomEmphasisChars: (chars) => {
+					void this.updateCustomEmphasisChars(chars);
+				},
+				getContentFontFamily: () =>
+					this.plugin.settings.common.fontFamily ?? "",
 			}
 		);
 		this.registerEvent(
@@ -633,7 +641,7 @@ export class TipTapCompatView extends ItemView {
 			},
 		});
 
-			this.contextMenu = new TipTapCompatContextMenu(this.editor, {
+		this.contextMenu = new TipTapCompatContextMenu(this.editor, {
 			app: this.app,
 			onFindReplace: () => {
 				this.searchReplacePanel?.show(true);
@@ -646,23 +654,30 @@ export class TipTapCompatView extends ItemView {
 				this.plainEditMode?.applyInlineCommand(command) ?? false,
 			getPlainEditSelectionText: () =>
 				this.plainEditMode?.getSelectionText() ?? "",
-				getRubyEnabled: () =>
-					this.plugin.settings.wysiwyg.enableRuby !== false,
-			});
-			this.contextMenuHandler = (event: MouseEvent) => {
-				if (!this.contextMenu || !this.editor) return;
-				const hostWindow =
-					this.editorHostEl?.ownerDocument.defaultView ?? window;
-				if (isPhoneLikeMobile(hostWindow)) {
-					event.preventDefault();
-					event.stopPropagation();
-					return;
-				}
-				const isPlainEditing = this.plainEditMode?.isPlainMode() ?? false;
-				const keepOverlayFocus =
-					isPlainEditing &&
-					this.plainEditMode?.isOverlayTarget(event.target);
-				if (!isPlainEditing && !keepOverlayFocus) {
+			getRubyEnabled: () =>
+				this.plugin.settings.wysiwyg.enableRuby !== false,
+			getCustomEmphasisChars: () =>
+				this.plugin.settings.wysiwyg.customEmphasisChars ?? [],
+			setCustomEmphasisChars: (chars) => {
+				void this.updateCustomEmphasisChars(chars);
+			},
+			getContentFontFamily: () =>
+				this.plugin.settings.common.fontFamily ?? "",
+		});
+		this.contextMenuHandler = (event: MouseEvent) => {
+			if (!this.contextMenu || !this.editor) return;
+			const hostWindow =
+				this.editorHostEl?.ownerDocument.defaultView ?? window;
+			if (isPhoneLikeMobile(hostWindow)) {
+				event.preventDefault();
+				event.stopPropagation();
+				return;
+			}
+			const isPlainEditing = this.plainEditMode?.isPlainMode() ?? false;
+			const keepOverlayFocus =
+				isPlainEditing &&
+				this.plainEditMode?.isOverlayTarget(event.target);
+			if (!isPlainEditing && !keepOverlayFocus) {
 					this.editor.commands.focus();
 				}
 				this.contextMenu.show(event);
@@ -789,7 +804,7 @@ export class TipTapCompatView extends ItemView {
 			if (this.plugin.settings.wysiwyg.syncMode === "manual") {
 				const modal = new UnsavedChangesModal(
 					this.app,
-					"未保存の変更があります。タブを閉じる前に保存しますか？"
+					t("modal.unsavedChanges.closeTabPrompt")
 				);
 				const choice = await modal.waitForChoice();
 
@@ -1038,7 +1053,7 @@ export class TipTapCompatView extends ItemView {
 	private async togglePlainEditMode(): Promise<void> {
 		if (!this.plainEditMode) return;
 		if (this.isEditorReadOnly()) {
-			new Notice("読み取り専用ではソーステキスト編集は使用できません。", 2500);
+			new Notice(t("notice.readOnly.sourceEditUnavailable"), 2500);
 			return;
 		}
 		const isPlainMode = this.plainEditMode.isPlainMode();
@@ -1110,7 +1125,7 @@ export class TipTapCompatView extends ItemView {
 				"[Tategaki TipTap] Failed to toggle auxiliary panel",
 				error
 			);
-			new Notice("補助入力パネルの切り替えに失敗しました。", 2500);
+			new Notice(t("notice.auxiliary.toggleFailed"), 2500);
 			return false;
 		}
 	}
@@ -1134,7 +1149,7 @@ export class TipTapCompatView extends ItemView {
 
 	private async toggleSyncMode(): Promise<void> {
 		if (this.isReadOnlyProtected) {
-			new Notice("読み取り専用では同期モードは変更できません。", 2500);
+			new Notice(t("notice.readOnly.syncModeUnavailable"), 2500);
 			return;
 		}
 		const currentMode: SyncMode =
@@ -1163,8 +1178,8 @@ export class TipTapCompatView extends ItemView {
 			);
 			new Notice(
 				nextMode === "manual"
-					? "手動同期モードに切り替えました。"
-					: "自動同期モードに切り替えました。",
+					? t("notice.syncMode.switched.manual")
+					: t("notice.syncMode.switched.auto"),
 				2000
 			);
 		} catch (error) {
@@ -1172,13 +1187,13 @@ export class TipTapCompatView extends ItemView {
 				"[Tategaki TipTap] Failed to toggle sync mode",
 				error
 			);
-			new Notice("同期モードの切り替えに失敗しました。", 3000);
+			new Notice(t("notice.syncMode.toggleFailed"), 3000);
 		}
 	}
 
 	private async requestManualSync(): Promise<void> {
 		if (this.isReadOnlyProtected) {
-			new Notice("読み取り専用では保存できません。", 2500);
+			new Notice(t("notice.readOnly.saveUnavailable"), 2500);
 			return;
 		}
 		await this.syncManager?.triggerManualSync();
@@ -1197,15 +1212,57 @@ export class TipTapCompatView extends ItemView {
 			await this.updateSettings(this.plugin.settings);
 			new Notice(
 				next
-					? "ルビ表示をオンにしました。"
-					: "ルビ表示をオフにしました。",
+					? t("notice.ruby.enabled")
+					: t("notice.ruby.disabled"),
 				1800
 			);
 		} catch (error) {
 			console.error("[Tategaki TipTap] Failed to toggle ruby", error);
-			new Notice("ルビ表示の切り替えに失敗しました。", 2500);
+			new Notice(t("notice.ruby.toggleFailed"), 2500);
 		} finally {
 			this.formattingToolbar?.refreshRubyToggle();
+		}
+	}
+
+	private normalizeCustomEmphasisChars(chars: string[]): string[] {
+		if (!Array.isArray(chars)) return [];
+		const normalized: string[] = [];
+		const seen = new Set<string>();
+		for (const entry of chars) {
+			if (typeof entry !== "string") continue;
+			const trimmed = entry.trim();
+			if (!trimmed) continue;
+			const first = Array.from(trimmed)[0] ?? "";
+			if (!first || seen.has(first)) continue;
+			seen.add(first);
+			normalized.push(first);
+			if (normalized.length >= 20) break;
+		}
+		return normalized;
+	}
+
+	private async updateCustomEmphasisChars(chars: string[]): Promise<void> {
+		const normalized = this.normalizeCustomEmphasisChars(chars);
+		const current = this.plugin.settings.wysiwyg.customEmphasisChars ?? [];
+		if (
+			current.length === normalized.length &&
+			current.every((char, index) => char === normalized[index])
+		) {
+			return;
+		}
+		try {
+			await this.plugin.updateSettings({
+				wysiwyg: {
+					...this.plugin.settings.wysiwyg,
+					customEmphasisChars: normalized,
+				},
+			});
+		} catch (error) {
+			console.error(
+				"[Tategaki TipTap] Failed to save custom emphasis chars",
+				error,
+			);
+			new Notice(t("notice.customEmphasis.saveFailed"), 2500);
 		}
 	}
 
@@ -1267,7 +1324,7 @@ export class TipTapCompatView extends ItemView {
 
 	private async toggleAuxiliaryPanel(): Promise<void> {
 		if (this.isEditorReadOnly()) {
-			new Notice("読み取り専用では補助入力パネルは使用できません。", 2500);
+			new Notice(t("notice.readOnly.auxiliaryUnavailable"), 2500);
 			return;
 		}
 		const current =
@@ -1289,7 +1346,7 @@ export class TipTapCompatView extends ItemView {
 				"[Tategaki TipTap] Failed to toggle auxiliary panel",
 				error
 			);
-			new Notice("補助入力パネルの切り替えに失敗しました。", 2500);
+			new Notice(t("notice.auxiliary.toggleFailed"), 2500);
 		}
 	}
 
@@ -2118,10 +2175,10 @@ export class TipTapCompatView extends ItemView {
 		panel.empty();
 
 		const header = panel.createDiv("tategaki-tiptap-outline-header");
-		header.createSpan({ text: "アウトライン" });
+		header.createSpan({ text: t("outline.title") });
 		const closeBtn = header.createEl("button", {
 			cls: "clickable-icon contenteditable-toolbar-button",
-			attr: { "aria-label": "閉じる" },
+			attr: { "aria-label": t("common.close") },
 		});
 		setIcon(closeBtn, "x");
 		closeBtn.addEventListener("click", (e) => {
@@ -2149,7 +2206,7 @@ export class TipTapCompatView extends ItemView {
 
 		if (items.length === 0) {
 			const empty = list.createDiv("tategaki-tiptap-outline-empty");
-			empty.textContent = "見出しがありません";
+			empty.textContent = t("outline.empty");
 			return;
 		}
 
@@ -2272,7 +2329,7 @@ export class TipTapCompatView extends ItemView {
 	): MarkdownApplyDecision {
 		if (choice === "read-only") {
 			this.setReadOnlyProtection(true, "unsupported");
-			new Notice("未対応タグがあるため読み取り専用で開きました。", 3500);
+			new Notice(t("notice.unsupported.readOnlyOpened"), 3500);
 			return { action: "apply" };
 		}
 
@@ -2298,7 +2355,7 @@ export class TipTapCompatView extends ItemView {
 				"Tategaki TipTap: failed to write unsupported tag backup",
 				error
 			);
-			new Notice("未対応タグのバックアップ作成に失敗しました。", 3500);
+			new Notice(t("notice.unsupported.backupFailed"), 3500);
 		}
 	}
 
@@ -2939,7 +2996,7 @@ export class TipTapCompatView extends ItemView {
 
 		const file = this.getDisplayFile();
 		if (!file) {
-			new Notice("対象ファイルが見つかりません。", 2500);
+			new Notice(t("notice.targetFileNotFound"), 2500);
 			return;
 		}
 
@@ -2952,8 +3009,8 @@ export class TipTapCompatView extends ItemView {
 				this.formattingToolbar?.updateReadingModeButton();
 				new Notice(
 					opened
-						? "書籍モードビューを開きました。"
-						: "書籍モードビューを閉じました。",
+						? t("notice.bookMode.opened")
+						: t("notice.bookMode.closed"),
 					2000
 				);
 			});
@@ -3073,7 +3130,7 @@ export class TipTapCompatView extends ItemView {
 				title,
 				onRepaginationRequired: () => {
 					new Notice(
-						"レイアウト変更を検出したため、書籍モードを終了しました。",
+						t("notice.layoutChanged.readingClosed"),
 						2500
 					);
 					this.disableReadingMode();
@@ -4531,7 +4588,7 @@ export class TipTapCompatView extends ItemView {
 
 		const modal = new UnsavedChangesModal(
 			this.app,
-			"未保存の変更があります。タブを閉じる前に保存しますか？"
+			t("modal.unsavedChanges.closeTabPrompt")
 		);
 		const choice = await modal.waitForChoice();
 

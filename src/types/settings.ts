@@ -118,7 +118,9 @@ export interface WysiwygSettings {
 	syncMode: SyncMode;
 	syncCursor: boolean;
 	enableRuby: boolean;
+	customEmphasisChars?: string[]; // 傍点候補のユーザー登録文字
 	enableTcy: boolean; // 縦中横
+	enableAutoTcy: boolean; // 記号を増やさない自動縦中横（表示のみ）
 	enableAssistantInput: boolean; // 補助入力パネル
 	enableSyncBackup: boolean; // 互換モードの同期バックアップ
 	plainTextView?: boolean; // SoTビューの全文プレーン表示
@@ -273,7 +275,9 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		syncMode: "auto",
 		syncCursor: true,
 		enableRuby: true,
+		customEmphasisChars: [],
 		enableTcy: true,
+		enableAutoTcy: false,
 		enableAssistantInput: false,
 		enableSyncBackup: true,
 		plainTextView: false,
@@ -548,6 +552,10 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 				validated.wysiwyg.enableSyncBackup =
 					DEFAULT_V2_SETTINGS.wysiwyg.enableSyncBackup;
 			}
+			if (typeof (validated.wysiwyg as any).enableAutoTcy !== "boolean") {
+				validated.wysiwyg.enableAutoTcy =
+					DEFAULT_V2_SETTINGS.wysiwyg.enableAutoTcy;
+			}
 			if (typeof (validated.wysiwyg as any).plainTextView !== "boolean") {
 				validated.wysiwyg.plainTextView =
 					DEFAULT_V2_SETTINGS.wysiwyg.plainTextView;
@@ -611,6 +619,9 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 			validated.wysiwyg.sotPaddingBottom = Number.isFinite(sotPaddingBottom)
 				? Math.max(0, Math.min(200, sotPaddingBottom))
 				: DEFAULT_V2_SETTINGS.wysiwyg.sotPaddingBottom;
+			validated.wysiwyg.customEmphasisChars = normalizeCustomEmphasisChars(
+				validated.wysiwyg.customEmphasisChars
+			);
 		}
 		if (!settings.wysiwyg) {
 			validated.wysiwyg.imeOffsetHorizontalEm = normalizeImeOffset(
@@ -625,6 +636,10 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 				validated.wysiwyg.caretWidthPx = Number.isFinite(caretWidth)
 					? Math.max(CARET_WIDTH_MIN, Math.min(CARET_WIDTH_MAX, caretWidth))
 					: DEFAULT_V2_SETTINGS.wysiwyg.caretWidthPx;
+				validated.wysiwyg.customEmphasisChars =
+					normalizeCustomEmphasisChars(
+						validated.wysiwyg.customEmphasisChars
+					);
 			}
 
 		if (
@@ -714,6 +729,7 @@ const IME_OFFSET_MIN = -1;
 const IME_OFFSET_MAX = 1;
 const CARET_WIDTH_MIN = 1;
 const CARET_WIDTH_MAX = 8;
+const MAX_CUSTOM_EMPHASIS_COUNT = 20;
 
 function normalizeRubySize(value: unknown): number {
 	const num = Number(value);
@@ -743,4 +759,21 @@ function normalizeImeOffset(value: unknown, fallback: number): number {
 	if (num < IME_OFFSET_MIN) return IME_OFFSET_MIN;
 	if (num > IME_OFFSET_MAX) return IME_OFFSET_MAX;
 	return num;
+}
+
+function normalizeCustomEmphasisChars(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	const seen = new Set<string>();
+	const normalized: string[] = [];
+	for (const entry of value) {
+		if (typeof entry !== "string") continue;
+		const trimmed = entry.trim();
+		if (!trimmed) continue;
+		const firstChar = Array.from(trimmed)[0] ?? "";
+		if (!firstChar || seen.has(firstChar)) continue;
+		seen.add(firstChar);
+		normalized.push(firstChar);
+		if (normalized.length >= MAX_CUSTOM_EMPHASIS_COUNT) break;
+	}
+	return normalized;
 }

@@ -12,6 +12,222 @@ import { App, Modal, Setting, setIcon } from "obsidian";
 import TategakiV2Plugin from "../../core/plugin";
 import { debugWarn } from "../../shared/logger";
 import { showConfirmModal } from "../../shared/ui/confirm-modal";
+import { t } from "../../shared/i18n";
+
+const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
+	テーマ名を入力: "Enter theme name",
+	テーマ名: "Theme name",
+	"例: マイテーマ": "e.g. My Theme",
+	クリックして色を変更: "Click to change color",
+	互換モードでは反映されません: "Not applied in compatibility mode.",
+	"CE補助(IME)中は反映されません":
+		"Not applied while CE assist (IME) is enabled.",
+	互換モードでは利用できません: "Not available in compatibility mode.",
+	基本設定: "Basic",
+	書字方向: "Writing mode",
+	縦書きまたは横書きを選択: "Choose vertical or horizontal writing.",
+	縦書き: "Vertical",
+	横書き: "Horizontal",
+	選択をネイティブにする: "Use native selection",
+	"大きな範囲選択・端超えオートスクロール時のみネイティブ選択を補助的に使います（通常時はSoT選択を優先）":
+		"Use native selection only for large-range selections or edge auto-scroll (SoT selection is preferred normally).",
+	使用する: "Use",
+	使用しない: "Do not use",
+	SoT全文プレーン表示: "SoT full plain-text view",
+	"全文プレーン表示（SoT）": "SoT full plain-text view",
+	"Markdown装飾・ルビの表示を行わず、記号をそのまま表示します（ソーステキスト編集は無効）":
+		"Show raw Markdown symbols without rich formatting/ruby (source text edit is disabled).",
+	有効: "Enabled",
+	無効: "Disabled",
+	ページ枠の表示: "Show page frame",
+	"ページ枠を表示するか、全画面表示にするかを選択":
+		"Choose page frame view or full-screen view.",
+	表示中: "Visible",
+	非表示: "Hidden",
+	フォント: "Font",
+	"ゴシック体、明朝体、またはカスタムフォントを選択できます":
+		"Choose sans-serif, serif, or a custom font.",
+	ゴシック体: "Sans-serif",
+	明朝体: "Serif",
+	カスタム: "Custom",
+	"各システムの標準的なフォントが使用されます。":
+		"Uses standard fonts available on your system.",
+	カスタムフォント: "Custom fonts",
+	"フォント名を入力（例: 游明朝）":
+		"Enter font family name (e.g. Yu Mincho).",
+	追加: "Add",
+	削除: "Delete",
+	フォントサイズ: "Font size",
+	文字の大きさを調整: "Adjust text size.",
+	行間: "Line height",
+	行の間隔を調整: "Adjust line spacing.",
+	文字間: "Letter spacing",
+	"文字の間隔を調整（0 = 通常）": "Adjust letter spacing (0 = normal).",
+	ルビ: "Ruby",
+	ルビ表示: "Show ruby",
+	"オフにするとルビタグを生成せず、青空記法（｜本文《よみ》）のまま表示します":
+		"When off, ruby tags are not rendered and Aozora notation is shown as-is.",
+	ルビサイズ: "Ruby size",
+	"ルビ（ふりがな）の大きさを調整": "Adjust ruby (furigana) size.",
+	ルビ位置: "Ruby offset",
+	"左＝文字に近づける / 右＝文字から遠ざける（縦は加減算、横は逆符号で加減算）":
+		"Left = closer to text / Right = farther from text.",
+	縦中横: "TCY",
+	自動縦中横: "Auto TCY",
+	"英数字2〜4文字と !! / !? / ?? を、表示時のみ縦中横として扱います（本文には記号を追加しません）":
+		"Apply TCY only in display for 2-4 alphanumerics and !! / !? / ?? (no extra symbols are added to text).",
+	色設定: "Colors",
+	文字色: "Text color",
+	ページ色: "Page color",
+	背景色: "Background color",
+	見出し設定: "Heading",
+	見出しフォント: "Heading font",
+	"見出し専用のフォントを選択（本文のカスタムフォントも使用可能）":
+		"Choose a heading font (custom body fonts can also be used).",
+	本文と同じ: "Same as body",
+	見出し文字色: "Heading text color",
+	見出し文字色をリセット: "Reset heading color",
+	本文と同じ色に戻します: "Revert to body text color.",
+	リセット: "Reset",
+	余白設定: "Margins",
+	上余白: "Top padding",
+	"ページ上部の余白を調整（0〜200px）": "Adjust top padding (0-200px).",
+	下余白: "Bottom padding",
+	"ページ下部の余白を調整（0〜200px）": "Adjust bottom padding (0-200px).",
+	キャレット設定: "Caret",
+	キャレットの色: "Caret color",
+	"文字色 / ハイライト色 / カスタム色 から選択できます":
+		"Choose text color / highlight color / custom color.",
+	ハイライト色: "Highlight color",
+	カスタム色: "Custom color",
+	キャレットのカスタム色: "Custom caret color",
+	キャレットの幅: "Caret width",
+	"キャレットの太さを調整します（px）": "Adjust caret width (px).",
+	CE補助モードでネイティブキャレットを使用:
+		"Use native caret in CE assist mode",
+	"CE補助(IME)をオンにしたとき、OS標準のキャレットを使うか選べます":
+		"Choose whether to use OS-native caret while CE assist (IME) is on.",
+	IME表示の補正: "IME offsets",
+	"横書き: 上方向補正": "Horizontal: vertical offset",
+	"横書きIMEの表示位置を、上方向(+) / 下方向(-)に調整します（em単位）":
+		"Adjust horizontal IME position up (+) / down (-) in em.",
+	"縦書き: 右方向補正": "Vertical: horizontal offset",
+	"縦書きIMEの表示位置を、右方向(+) / 左方向(-)に調整します（em単位）":
+		"Adjust vertical IME position right (+) / left (-) in em.",
+	参照設定: "Reading",
+	フロントマター情報を表示: "Show frontmatter info",
+	"YAML自体ではなく、title/authorなどの内容を本文先頭に表示します":
+		"Show title/author info at the top instead of raw YAML.",
+	書籍モード: "Book mode",
+	ヘッダーの内容: "Header content",
+	書籍モードのヘッダーに表示する内容を選びます:
+		"Choose what to show in book-mode header.",
+	表示しない: "None",
+	タイトル: "Title",
+	ページ番号: "Page number",
+	ヘッダーの配置: "Header alignment",
+	"ヘッダーの表示位置（左/中央/右）を選びます":
+		"Choose header alignment (left/center/right).",
+	左: "Left",
+	中央: "Center",
+	右: "Right",
+	フッターの内容: "Footer content",
+	書籍モードのフッターに表示する内容を選びます:
+		"Choose what to show in book-mode footer.",
+	フッターの配置: "Footer alignment",
+	"フッターの表示位置（左/中央/右）を選びます":
+		"Choose footer alignment (left/center/right).",
+	ページ番号の形式: "Page number format",
+	"現在ページのみ / 現在ページと総ページ数 を選べます":
+		"Choose current page only or current/total pages.",
+	現在ページ: "Current page",
+	"現在ページ/総ページ数": "Current/total pages",
+	ページ遷移効果: "Page transition",
+	ページ移動時の視覚効果を選びます:
+		"Choose transition effect when changing pages.",
+	なし: "None",
+	フェード: "Fade",
+	スライド: "Slide",
+	ぼかし: "Blur",
+	"書籍モード本文エリアの上余白を調整（0〜200px）":
+		"Adjust top padding of book-mode content area (0-200px).",
+	"書籍モード本文エリアの下余白を調整（0〜200px）":
+		"Adjust bottom padding of book-mode content area (0-200px).",
+	テーマ: "Theme",
+	"同期バックアップ（互換モード）": "Sync backup (compatibility mode)",
+	同期バックアップを作成: "Create sync backups",
+	"互換モードの同期時にバックアップを作成します。OFFにするとバックアップは作成されません（事故時はObsidianの「Open version history」を利用してください）。":
+		"Create backups while syncing in compatibility mode. If OFF, backups are not created (use Obsidian's Open version history if needed).",
+	同期バックアップフォルダを開く: "Open sync backup folder",
+	"バックアップ保存先（.obsidian/tategaki-sync-backups）を開きます。":
+		"Open backup folder (.obsidian/tategaki-sync-backups).",
+	開く: "Open",
+	同期バックアップをゴミ箱へ移動: "Move sync backups to trash",
+	"同期の安全策として作成されたバックアップをゴミ箱へ移動します（復元できなくなるので注意）。":
+		"Move safety backups created during sync to trash (cannot be restored).",
+	移動: "Move",
+	"Obsidian ベーステーマ": "Obsidian base theme",
+	デフォルト: "Default",
+	"アッシュベリー（ライト）": "Ashberry (Light)",
+	"アッシュベリー（ダーク）": "Ashberry (Dark)",
+	ダスティネイビー: "Dusty Navy",
+	ダーク: "Dark",
+	紙風: "Paper",
+	再適用: "Reapply",
+	現在の設定をテーマとして保存: "Save current settings as theme",
+};
+
+function isEnglishUi(): boolean {
+	return t("common.cancel") === "Cancel";
+}
+
+function sp(text: string): string {
+	if (!isEnglishUi()) return text;
+	const direct = SETTINGS_PANEL_EN_TEXT[text];
+	if (direct) return direct;
+	const chooseMatch = text.match(/^(.+)を選択$/);
+	if (chooseMatch) {
+		return `Choose ${sp(chooseMatch[1])}`;
+	}
+	return text;
+}
+
+function localizeSettingsPanelDom(root: HTMLElement): void {
+	if (!isEnglishUi()) return;
+
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	let node: Node | null = walker.nextNode();
+	while (node) {
+		const raw = node.nodeValue ?? "";
+		const leading = raw.match(/^\s*/)?.[0] ?? "";
+		const trailing = raw.match(/\s*$/)?.[0] ?? "";
+		const core = raw.slice(leading.length, raw.length - trailing.length);
+		if (core) {
+			const translated = sp(core);
+			if (translated !== core) {
+				node.nodeValue = `${leading}${translated}${trailing}`;
+			}
+		}
+		node = walker.nextNode();
+	}
+
+	const elements = root.querySelectorAll<HTMLElement>("*");
+	elements.forEach((el) => {
+		const ariaLabel = el.getAttribute("aria-label");
+		if (ariaLabel) {
+			const next = sp(ariaLabel);
+			if (next !== ariaLabel) {
+				el.setAttribute("aria-label", next);
+			}
+		}
+		if (el instanceof HTMLInputElement && el.placeholder) {
+			el.placeholder = sp(el.placeholder);
+		}
+		if (el instanceof HTMLOptGroupElement && el.label) {
+			el.label = sp(el.label);
+		}
+	});
+}
 
 /**
  * テーマ名入力用のモーダル
@@ -29,11 +245,11 @@ class ThemeNameInputModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl("h2", { text: "テーマ名を入力" });
+		contentEl.createEl("h2", { text: sp("テーマ名を入力") });
 
-		new Setting(contentEl).setName("テーマ名").addText((text) => {
+		new Setting(contentEl).setName(sp("テーマ名")).addText((text) => {
 			this.inputEl = text.inputEl;
-			text.setPlaceholder("例: マイテーマ").onChange(() => {
+			text.setPlaceholder(sp("例: マイテーマ")).onChange(() => {
 				// リアルタイム検証は不要
 			});
 			text.inputEl.addEventListener("keydown", (e) => {
@@ -46,18 +262,19 @@ class ThemeNameInputModal extends Modal {
 
 		new Setting(contentEl)
 			.addButton((btn) =>
-				btn.setButtonText("キャンセル").onClick(() => {
+				btn.setButtonText(t("common.cancel")).onClick(() => {
 					this.close();
 				}),
 			)
 			.addButton((btn) =>
 				btn
-					.setButtonText("保存")
+					.setButtonText(t("common.save"))
 					.setCta()
 					.onClick(() => {
 						this.submit();
 					}),
 			);
+		localizeSettingsPanelDom(contentEl);
 
 		// フォーカスを当てる
 		setTimeout(() => {
@@ -230,8 +447,7 @@ function resolveColorForSwatch(
 	fallbackColor: string,
 ): string {
 	const fallbackHex = normalizeHexColor(fallbackColor);
-	const candidate =
-		typeof rawColor === "string" ? rawColor.trim() : "";
+	const candidate = typeof rawColor === "string" ? rawColor.trim() : "";
 	if (!candidate) {
 		return fallbackHex;
 	}
@@ -587,11 +803,11 @@ function openColorPicker(
 	buttonContainer.className = "tategaki-color-picker-buttons";
 
 	const cancelButton = document.createElement("button");
-	cancelButton.textContent = "キャンセル";
+	cancelButton.textContent = t("common.cancel");
 	cancelButton.className = "mod-cta";
 
 	const okButton = document.createElement("button");
-	okButton.textContent = "OK";
+	okButton.textContent = t("common.ok");
 	okButton.className = "mod-cta";
 
 	const closeModal = () => {
@@ -676,7 +892,7 @@ export class SettingsPanelModal extends Modal {
 		this.containerEl.addClass("tategaki-settings-modal-container");
 
 		// タイトル
-		contentEl.createEl("h2", { text: "表示設定" });
+		contentEl.createEl("h2", { text: t("modal.settingsPanel.title") });
 
 		// スクロール可能なコンテナ
 		const scrollContainer = contentEl.createDiv(
@@ -684,6 +900,7 @@ export class SettingsPanelModal extends Modal {
 		);
 
 		this.createSettingsUI(scrollContainer);
+		localizeSettingsPanelDom(contentEl);
 	}
 
 	/** 折りたたみ可能なセクションを作成 */
@@ -713,7 +930,7 @@ export class SettingsPanelModal extends Modal {
 
 		// タイトル
 		const titleEl = header.createSpan();
-		titleEl.textContent = title;
+		titleEl.textContent = sp(title);
 		titleEl.className = "tategaki-settings-section-title";
 
 		// コンテンツ領域
@@ -763,15 +980,15 @@ export class SettingsPanelModal extends Modal {
 			"sliders-horizontal",
 			"基本設定",
 			false,
-				(content) => {
+			(content) => {
 				// 書字方向
-					this.createSettingItem(
-						content,
-						"書字方向",
-						"縦書きまたは横書きを選択",
-						(itemEl) => {
-							const select = itemEl.createEl("select");
-							select.className = "tategaki-settings-select";
+				this.createSettingItem(
+					content,
+					"書字方向",
+					"縦書きまたは横書きを選択",
+					(itemEl) => {
+						const select = itemEl.createEl("select");
+						select.className = "tategaki-settings-select";
 
 						select.createEl("option", {
 							text: "縦書き",
@@ -806,21 +1023,20 @@ export class SettingsPanelModal extends Modal {
 							this.tempSettings.wysiwyg.useNativeSelection ===
 							true;
 
-							const refresh = (enabled: boolean) => {
-								this.updateToggleButton(
-									button,
-									enabled,
-									"使用する",
-									"使用しない",
-								);
-							};
+						const refresh = (enabled: boolean) => {
+							this.updateToggleButton(
+								button,
+								enabled,
+								"使用する",
+								"使用しない",
+							);
+						};
 
 						refresh(getCurrent());
 
 						button.addEventListener("click", () => {
 							const next = !getCurrent();
-							this.tempSettings.wysiwyg.useNativeSelection =
-								next;
+							this.tempSettings.wysiwyg.useNativeSelection = next;
 							refresh(next);
 							this.applySettings();
 						});
@@ -846,14 +1062,14 @@ export class SettingsPanelModal extends Modal {
 						const getCurrent = () =>
 							this.tempSettings.wysiwyg.plainTextView === true;
 
-							const refresh = (enabled: boolean) => {
-								this.updateToggleButton(
-									button,
-									enabled,
-									"有効",
-									"無効",
-								);
-							};
+						const refresh = (enabled: boolean) => {
+							this.updateToggleButton(
+								button,
+								enabled,
+								"有効",
+								"無効",
+							);
+						};
 
 						refresh(getCurrent());
 
@@ -872,12 +1088,12 @@ export class SettingsPanelModal extends Modal {
 					},
 				);
 
-					// ページ枠の表示
-					this.createSettingItem(
-						content,
-						"ページ枠の表示",
-						"ページ枠を表示するか、全画面表示にするかを選択",
-						(itemEl) => {
+				// ページ枠の表示
+				this.createSettingItem(
+					content,
+					"ページ枠の表示",
+					"ページ枠を表示するか、全画面表示にするかを選択",
+					(itemEl) => {
 						const button = itemEl.createEl("button", {
 							cls: "tategaki-toggle-button",
 						});
@@ -889,14 +1105,14 @@ export class SettingsPanelModal extends Modal {
 							return rawScale <= 1;
 						};
 
-							const refresh = (visible: boolean) => {
-								this.updateToggleButton(
-									button,
-									visible,
-									"表示中",
-									"非表示",
-								);
-							};
+						const refresh = (visible: boolean) => {
+							this.updateToggleButton(
+								button,
+								visible,
+								"表示中",
+								"非表示",
+							);
+						};
 
 						refresh(isFrameVisible());
 
@@ -913,12 +1129,12 @@ export class SettingsPanelModal extends Modal {
 			},
 		);
 
-	// ─── フォント ───
-	this.createCollapsibleSection(
-		container,
-		"type",
-		"フォント",
-		false,
+		// ─── フォント ───
+		this.createCollapsibleSection(
+			container,
+			"type",
+			"フォント",
+			false,
 			(content) => {
 				// フォント選択
 				this.createSettingItem(
@@ -930,12 +1146,12 @@ export class SettingsPanelModal extends Modal {
 							this.tempSettings.customFonts = [];
 						}
 
-							const wrapper = itemEl.createDiv(
-								"tategaki-font-setting-wrapper",
-							);
+						const wrapper = itemEl.createDiv(
+							"tategaki-font-setting-wrapper",
+						);
 
-							const select = wrapper.createEl("select");
-							select.className = "tategaki-settings-select";
+						const select = wrapper.createEl("select");
+						select.className = "tategaki-settings-select";
 
 						const sansSerifStack =
 							'-apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", "Noto Sans CJK JP", "Source Han Sans", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -952,37 +1168,39 @@ export class SettingsPanelModal extends Modal {
 						});
 
 						const customOptionGroup = select.createEl("optgroup");
-						customOptionGroup.label = "カスタム";
+						customOptionGroup.label = sp("カスタム");
 
-							const helper = wrapper.createDiv();
-							helper.className = "tategaki-font-setting-helper";
-							helper.textContent =
-								"各システムの標準的なフォントが使用されます。";
+						const helper = wrapper.createDiv();
+						helper.className = "tategaki-font-setting-helper";
+						helper.textContent = sp(
+							"各システムの標準的なフォントが使用されます。",
+						);
 
-							const customSection = wrapper.createDiv(
-								"tategaki-font-custom-section",
-							);
+						const customSection = wrapper.createDiv(
+							"tategaki-font-custom-section",
+						);
 
-							const customLabel = customSection.createEl("div");
-							customLabel.className = "tategaki-font-custom-label";
-							customLabel.textContent = "カスタムフォント";
+						const customLabel = customSection.createEl("div");
+						customLabel.className = "tategaki-font-custom-label";
+						customLabel.textContent = sp("カスタムフォント");
 
-							const inputRow = customSection.createDiv(
-								"tategaki-font-custom-input-row",
-							);
+						const inputRow = customSection.createDiv(
+							"tategaki-font-custom-input-row",
+						);
 
-							const customInput = inputRow.createEl("input");
-							customInput.type = "text";
-							customInput.placeholder = "フォント名を入力（例: 游明朝）";
-							customInput.className = "tategaki-font-custom-input";
+						const customInput = inputRow.createEl("input");
+						customInput.type = "text";
+						customInput.placeholder =
+							sp("フォント名を入力（例: 游明朝）");
+						customInput.className = "tategaki-font-custom-input";
 
-							const addButton = inputRow.createEl("button");
-							addButton.textContent = "追加";
-							addButton.className = "tategaki-font-custom-add-button";
+						const addButton = inputRow.createEl("button");
+						addButton.textContent = sp("追加");
+						addButton.className = "tategaki-font-custom-add-button";
 
-							const fontListContainer = customSection.createDiv(
-								"tategaki-font-list-container",
-							);
+						const fontListContainer = customSection.createDiv(
+							"tategaki-font-list-container",
+						);
 
 						let draggedIndex: number | null = null;
 
@@ -1010,31 +1228,33 @@ export class SettingsPanelModal extends Modal {
 											value: font,
 										});
 
-											const fontItem =
-												fontListContainer.createDiv();
-											fontItem.draggable = true;
-											fontItem.setAttribute(
-												"data-font-index",
-												index.toString(),
-											);
-											fontItem.className = "tategaki-custom-font-item";
+										const fontItem =
+											fontListContainer.createDiv();
+										fontItem.draggable = true;
+										fontItem.setAttribute(
+											"data-font-index",
+											index.toString(),
+										);
+										fontItem.className =
+											"tategaki-custom-font-item";
 
-											const dragHandle =
-												fontItem.createSpan();
-											dragHandle.textContent = "⋮⋮";
-											dragHandle.className =
-												"tategaki-custom-font-drag-handle";
+										const dragHandle =
+											fontItem.createSpan();
+										dragHandle.textContent = "⋮⋮";
+										dragHandle.className =
+											"tategaki-custom-font-drag-handle";
 
-											const fontName = fontItem.createSpan();
-											fontName.textContent = font;
-											fontName.className = "tategaki-custom-font-name";
-											fontName.style.fontFamily = font;
+										const fontName = fontItem.createSpan();
+										fontName.textContent = font;
+										fontName.className =
+											"tategaki-custom-font-name";
+										fontName.style.fontFamily = font;
 
-											const deleteButton =
-												fontItem.createEl("button");
-											deleteButton.textContent = "削除";
-											deleteButton.className =
-												"tategaki-custom-font-delete-button";
+										const deleteButton =
+											fontItem.createEl("button");
+										deleteButton.textContent = sp("削除");
+										deleteButton.className =
+											"tategaki-custom-font-delete-button";
 										deleteButton.addEventListener(
 											"click",
 											() => {
@@ -1063,27 +1283,35 @@ export class SettingsPanelModal extends Modal {
 											},
 										);
 
-											fontItem.addEventListener(
-												"dragstart",
-												(e) => {
-													draggedIndex = index;
-													fontItem.addClass("is-dragging");
-													if (e.dataTransfer) {
-														e.dataTransfer.effectAllowed =
-															"move";
-													}
-												},
+										fontItem.addEventListener(
+											"dragstart",
+											(e) => {
+												draggedIndex = index;
+												fontItem.addClass(
+													"is-dragging",
+												);
+												if (e.dataTransfer) {
+													e.dataTransfer.effectAllowed =
+														"move";
+												}
+											},
 										);
 
-											fontItem.addEventListener(
-												"dragend",
-												() => {
-													fontItem.removeClass("is-dragging");
-													fontItem.removeClass("drop-top");
-													fontItem.removeClass("drop-bottom");
-													draggedIndex = null;
-												},
-											);
+										fontItem.addEventListener(
+											"dragend",
+											() => {
+												fontItem.removeClass(
+													"is-dragging",
+												);
+												fontItem.removeClass(
+													"drop-top",
+												);
+												fontItem.removeClass(
+													"drop-bottom",
+												);
+												draggedIndex = null;
+											},
+										);
 
 										fontItem.addEventListener(
 											"dragover",
@@ -1095,35 +1323,43 @@ export class SettingsPanelModal extends Modal {
 												) {
 													return;
 												}
-													if (e.dataTransfer) {
-														e.dataTransfer.dropEffect =
-															"move";
-													}
-													fontItem.toggleClass(
-														"drop-top",
-														draggedIndex < index,
-													);
-													fontItem.toggleClass(
-														"drop-bottom",
-														draggedIndex > index,
-													);
-												},
-											);
+												if (e.dataTransfer) {
+													e.dataTransfer.dropEffect =
+														"move";
+												}
+												fontItem.toggleClass(
+													"drop-top",
+													draggedIndex < index,
+												);
+												fontItem.toggleClass(
+													"drop-bottom",
+													draggedIndex > index,
+												);
+											},
+										);
 
-											fontItem.addEventListener(
-												"dragleave",
-												() => {
-													fontItem.removeClass("drop-top");
-													fontItem.removeClass("drop-bottom");
-												},
-											);
+										fontItem.addEventListener(
+											"dragleave",
+											() => {
+												fontItem.removeClass(
+													"drop-top",
+												);
+												fontItem.removeClass(
+													"drop-bottom",
+												);
+											},
+										);
 
-											fontItem.addEventListener(
-												"drop",
-												(e) => {
-													e.preventDefault();
-													fontItem.removeClass("drop-top");
-													fontItem.removeClass("drop-bottom");
+										fontItem.addEventListener(
+											"drop",
+											(e) => {
+												e.preventDefault();
+												fontItem.removeClass(
+													"drop-top",
+												);
+												fontItem.removeClass(
+													"drop-bottom",
+												);
 
 												if (
 													draggedIndex === null ||
@@ -1221,25 +1457,27 @@ export class SettingsPanelModal extends Modal {
 				);
 
 				// フォントサイズ
-					this.createSettingItem(
-						content,
-						"フォントサイズ",
-						"文字の大きさを調整",
-						(itemEl) => {
-							const wrapper = itemEl.createDiv("tategaki-slider-control");
+				this.createSettingItem(
+					content,
+					"フォントサイズ",
+					"文字の大きさを調整",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv(
+							"tategaki-slider-control",
+						);
 
-							const slider = wrapper.createEl("input");
-							slider.type = "range";
-							slider.min = "12";
-							slider.max = "32";
-							slider.step = "1";
-							slider.value =
-								this.tempSettings.common.fontSize.toString();
-							slider.className = "tategaki-slider-input";
+						const slider = wrapper.createEl("input");
+						slider.type = "range";
+						slider.min = "12";
+						slider.max = "32";
+						slider.step = "1";
+						slider.value =
+							this.tempSettings.common.fontSize.toString();
+						slider.className = "tategaki-slider-input";
 
-							const valueSpan = wrapper.createEl("span");
-							valueSpan.textContent = `${this.tempSettings.common.fontSize}px`;
-							valueSpan.className = "tategaki-slider-value";
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent = `${this.tempSettings.common.fontSize}px`;
+						valueSpan.className = "tategaki-slider-value";
 
 						slider.addEventListener("input", () => {
 							const value = parseInt(slider.value);
@@ -1255,12 +1493,14 @@ export class SettingsPanelModal extends Modal {
 				);
 
 				// 行間
-					this.createSettingItem(
-						content,
-						"行間",
-						"行の間隔を調整",
-						(itemEl) => {
-							const wrapper = itemEl.createDiv("tategaki-slider-control");
+				this.createSettingItem(
+					content,
+					"行間",
+					"行の間隔を調整",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv(
+							"tategaki-slider-control",
+						);
 
 						lineHeightSlider = wrapper.createEl("input");
 						lineHeightSlider.type = "range";
@@ -1270,12 +1510,12 @@ export class SettingsPanelModal extends Modal {
 						lineHeightSlider.value =
 							this.tempSettings.common.lineHeight.toFixed(1);
 
-							lineHeightSlider.className = "tategaki-slider-input";
+						lineHeightSlider.className = "tategaki-slider-input";
 
 						lineHeightValueSpan = wrapper.createEl("span");
 						lineHeightValueSpan.textContent =
 							this.tempSettings.common.lineHeight.toFixed(1);
-							lineHeightValueSpan.className = "tategaki-slider-value";
+						lineHeightValueSpan.className = "tategaki-slider-value";
 
 						lineHeightSlider.addEventListener("input", () => {
 							const value = parseFloat(lineHeightSlider.value);
@@ -1291,26 +1531,28 @@ export class SettingsPanelModal extends Modal {
 				);
 
 				// 文字間
-					this.createSettingItem(
-						content,
-						"文字間",
-						"文字の間隔を調整（0 = 通常）",
-						(itemEl) => {
-							const wrapper = itemEl.createDiv("tategaki-slider-control");
+				this.createSettingItem(
+					content,
+					"文字間",
+					"文字の間隔を調整（0 = 通常）",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv(
+							"tategaki-slider-control",
+						);
 
 						const slider = wrapper.createEl("input");
 						slider.type = "range";
-							slider.min = "-0.1";
-							slider.max = "0.5";
-							slider.step = "0.01";
-							slider.value =
-								this.tempSettings.common.letterSpacing.toString();
-							slider.className = "tategaki-slider-input";
+						slider.min = "-0.1";
+						slider.max = "0.5";
+						slider.step = "0.01";
+						slider.value =
+							this.tempSettings.common.letterSpacing.toString();
+						slider.className = "tategaki-slider-input";
 
-							const valueSpan = wrapper.createEl("span");
-							valueSpan.textContent =
-								this.tempSettings.common.letterSpacing.toFixed(2);
-							valueSpan.className = "tategaki-slider-value";
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent =
+							this.tempSettings.common.letterSpacing.toFixed(2);
+						valueSpan.className = "tategaki-slider-value";
 
 						slider.addEventListener("input", () => {
 							const value = parseFloat(slider.value);
@@ -1328,10 +1570,10 @@ export class SettingsPanelModal extends Modal {
 		);
 
 		// ─── ルビ ───
-		this.createCollapsibleSection(
-			container,
-			"gem",
-			"ルビ",
+			this.createCollapsibleSection(
+				container,
+				"gem",
+				"ルビ",
 			false,
 			(content) => {
 				// ルビ表示
@@ -1344,14 +1586,14 @@ export class SettingsPanelModal extends Modal {
 							cls: "tategaki-toggle-button",
 						});
 
-							const refresh = (enabled: boolean) => {
-								this.updateToggleButton(
-									button,
-									enabled,
-									"表示中",
-									"非表示",
-								);
-							};
+						const refresh = (enabled: boolean) => {
+							this.updateToggleButton(
+								button,
+								enabled,
+								"表示中",
+								"非表示",
+							);
+						};
 
 						const getCurrent = () =>
 							this.tempSettings.wysiwyg.enableRuby !== false;
@@ -1368,12 +1610,14 @@ export class SettingsPanelModal extends Modal {
 				);
 
 				// ルビサイズ
-					this.createSettingItem(
-						content,
-						"ルビサイズ",
-						"ルビ（ふりがな）の大きさを調整",
-						(itemEl) => {
-							const wrapper = itemEl.createDiv("tategaki-slider-control");
+				this.createSettingItem(
+					content,
+					"ルビサイズ",
+					"ルビ（ふりがな）の大きさを調整",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv(
+							"tategaki-slider-control",
+						);
 
 						rubySizeSlider = wrapper.createEl("input");
 						rubySizeSlider.type = "range";
@@ -1383,12 +1627,12 @@ export class SettingsPanelModal extends Modal {
 						rubySizeSlider.value =
 							this.tempSettings.common.rubySize.toFixed(2);
 
-							rubySizeSlider.className = "tategaki-slider-input";
+						rubySizeSlider.className = "tategaki-slider-input";
 
 						rubySizeValueSpan = wrapper.createEl("span");
 						rubySizeValueSpan.textContent =
 							this.tempSettings.common.rubySize.toFixed(2);
-							rubySizeValueSpan.className = "tategaki-slider-value";
+						rubySizeValueSpan.className = "tategaki-slider-value";
 
 						rubySizeSlider.addEventListener("input", () => {
 							const value = parseFloat(rubySizeSlider.value);
@@ -1404,35 +1648,35 @@ export class SettingsPanelModal extends Modal {
 				);
 
 				// ルビ位置
-					this.createSettingItem(
-						content,
-						"ルビ位置",
-						"左＝文字に近づける / 右＝文字から遠ざける（縦は加減算、横は逆符号で加減算）",
-						(itemEl) => {
-							const wrapper = itemEl.createDiv(
-								"tategaki-slider-control is-wrap",
-							);
+				this.createSettingItem(
+					content,
+					"ルビ位置",
+					"左＝文字に近づける / 右＝文字から遠ざける（縦は加減算、横は逆符号で加減算）",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv(
+							"tategaki-slider-control is-wrap",
+						);
 
 						const slider = wrapper.createEl("input");
 						slider.type = "range";
 						slider.min = "-1.5";
 						slider.max = "1.5";
 						slider.step = "0.1";
-							const initialValue = Math.min(
-								1.5,
-								Math.max(
-									-1.5,
-									this.tempSettings.common.rubyVerticalGap ?? 0,
-								),
-							);
-							slider.value = initialValue.toString();
-							slider.className = "tategaki-slider-input is-wide";
-							rubyGapSlider = slider;
+						const initialValue = Math.min(
+							1.5,
+							Math.max(
+								-1.5,
+								this.tempSettings.common.rubyVerticalGap ?? 0,
+							),
+						);
+						slider.value = initialValue.toString();
+						slider.className = "tategaki-slider-input is-wide";
+						rubyGapSlider = slider;
 
-							const valueSpan = wrapper.createEl("span");
-							valueSpan.textContent = initialValue.toFixed(1);
-							valueSpan.className = "tategaki-slider-value is-wide";
-							rubyGapValueSpan = valueSpan;
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent = initialValue.toFixed(1);
+						valueSpan.className = "tategaki-slider-value is-wide";
+						rubyGapValueSpan = valueSpan;
 
 						const applyValue = (raw: number) => {
 							const clamped = Math.min(1.5, Math.max(-1.5, raw));
@@ -1463,51 +1707,92 @@ export class SettingsPanelModal extends Modal {
 							this.applySettings();
 						});
 					},
-				);
-			},
-		);
+					);
+				},
+			);
 
-		// ─── 色設定 ───
-		this.createCollapsibleSection(
+			// ─── 縦中横 ───
+			this.createCollapsibleSection(
+				container,
+				"square-arrow-right",
+				"縦中横",
+				false,
+				(content) => {
+					this.createSettingItem(
+						content,
+						"自動縦中横",
+						"英数字2〜4文字と !! / !? / ?? を、表示時のみ縦中横として扱います（本文には記号を追加しません）",
+						(itemEl) => {
+							const button = itemEl.createEl("button", {
+								cls: "tategaki-toggle-button",
+							});
+
+							const refresh = (enabled: boolean) => {
+								this.updateToggleButton(
+									button,
+									enabled,
+									"有効",
+									"無効",
+								);
+							};
+
+							const getCurrent = () =>
+								this.tempSettings.wysiwyg.enableAutoTcy === true;
+
+							refresh(getCurrent());
+
+							button.addEventListener("click", () => {
+								const next = !getCurrent();
+								this.tempSettings.wysiwyg.enableAutoTcy = next;
+								refresh(next);
+								this.applySettings();
+							});
+						},
+					);
+				},
+			);
+
+			// ─── 色設定 ───
+			this.createCollapsibleSection(
 			container,
 			"palette",
 			"色設定",
 			false,
 			(content) => {
 				// 文字色
-					this.createColorSettingItem(
-						content,
-						"文字色",
-						this.tempSettings.common.textColor,
-						DEFAULT_V2_SETTINGS.common.textColor,
-						(color) => {
-							this.tempSettings.common.textColor = color;
-							this.applySettings();
-						},
+				this.createColorSettingItem(
+					content,
+					"文字色",
+					this.tempSettings.common.textColor,
+					DEFAULT_V2_SETTINGS.common.textColor,
+					(color) => {
+						this.tempSettings.common.textColor = color;
+						this.applySettings();
+					},
 				);
 
 				// ページ色
-					this.createColorSettingItem(
-						content,
-						"ページ色",
-						this.tempSettings.common.backgroundColor,
-						DEFAULT_V2_SETTINGS.common.backgroundColor,
-						(color) => {
-							this.tempSettings.common.backgroundColor = color;
-							this.applySettings();
-						},
+				this.createColorSettingItem(
+					content,
+					"ページ色",
+					this.tempSettings.common.backgroundColor,
+					DEFAULT_V2_SETTINGS.common.backgroundColor,
+					(color) => {
+						this.tempSettings.common.backgroundColor = color;
+						this.applySettings();
+					},
 				);
 
 				// 背景色
-					this.createColorSettingItem(
-						content,
-						"背景色",
-						this.tempSettings.common.pageBackgroundColor,
-						DEFAULT_V2_SETTINGS.common.pageBackgroundColor,
-						(color) => {
-							this.tempSettings.common.pageBackgroundColor = color;
-							this.applySettings();
-						},
+				this.createColorSettingItem(
+					content,
+					"背景色",
+					this.tempSettings.common.pageBackgroundColor,
+					DEFAULT_V2_SETTINGS.common.pageBackgroundColor,
+					(color) => {
+						this.tempSettings.common.pageBackgroundColor = color;
+						this.applySettings();
+					},
 				);
 			},
 		);
@@ -1520,13 +1805,13 @@ export class SettingsPanelModal extends Modal {
 			false,
 			(content) => {
 				// 見出しフォント
-					this.createSettingItem(
-						content,
-						"見出しフォント",
-						"見出し専用のフォントを選択（本文のカスタムフォントも使用可能）",
-						(itemEl) => {
-							const select = itemEl.createEl("select");
-							select.className = "tategaki-settings-select is-wide";
+				this.createSettingItem(
+					content,
+					"見出しフォント",
+					"見出し専用のフォントを選択（本文のカスタムフォントも使用可能）",
+					(itemEl) => {
+						const select = itemEl.createEl("select");
+						select.className = "tategaki-settings-select is-wide";
 
 						const sansSerifStack =
 							'-apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", "Noto Sans CJK JP", "Source Han Sans", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -1547,7 +1832,7 @@ export class SettingsPanelModal extends Modal {
 						});
 
 						const customOptionGroup = select.createEl("optgroup");
-						customOptionGroup.label = "カスタム";
+						customOptionGroup.label = sp("カスタム");
 
 						const updateCustomOptions = () => {
 							while (customOptionGroup.firstChild) {
@@ -1614,17 +1899,17 @@ export class SettingsPanelModal extends Modal {
 				);
 
 				// 見出し文字色
-					this.createColorSettingItem(
-						content,
-						"見出し文字色",
-						this.tempSettings.common.headingTextColor ||
-							this.tempSettings.common.textColor,
-						this.tempSettings.common.textColor ||
-							DEFAULT_V2_SETTINGS.common.textColor,
-						(color) => {
-							this.tempSettings.common.headingTextColor = color;
-							this.applySettings();
-						},
+				this.createColorSettingItem(
+					content,
+					"見出し文字色",
+					this.tempSettings.common.headingTextColor ||
+						this.tempSettings.common.textColor,
+					this.tempSettings.common.textColor ||
+						DEFAULT_V2_SETTINGS.common.textColor,
+					(color) => {
+						this.tempSettings.common.headingTextColor = color;
+						this.applySettings();
+					},
 				);
 
 				// 見出し文字色リセットボタン
@@ -1632,14 +1917,14 @@ export class SettingsPanelModal extends Modal {
 					content,
 					"見出し文字色をリセット",
 					"本文と同じ色に戻します",
-						(itemEl) => {
-							const button = itemEl.createEl("button");
-							button.textContent = "リセット";
-							button.className = "tategaki-settings-action-button";
-							button.addEventListener("click", () => {
-								this.tempSettings.common.headingTextColor = "";
-								this.applySettings();
-								this.onOpen();
+					(itemEl) => {
+						const button = itemEl.createEl("button");
+						button.textContent = sp("リセット");
+						button.className = "tategaki-settings-action-button";
+						button.addEventListener("click", () => {
+							this.tempSettings.common.headingTextColor = "";
+							this.applySettings();
+							this.onOpen();
 						});
 					},
 				);
@@ -1655,25 +1940,27 @@ export class SettingsPanelModal extends Modal {
 			(content) => {
 				// 上余白
 				this.createSettingItem(
-						content,
-						"上余白",
-						"ページ上部の余白を調整（0〜200px）",
-						(itemEl) => {
-							const wrapper = itemEl.createDiv("tategaki-slider-control");
+					content,
+					"上余白",
+					"ページ上部の余白を調整（0〜200px）",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv(
+							"tategaki-slider-control",
+						);
 
 						const slider = wrapper.createEl("input");
 						slider.type = "range";
 						slider.min = "0";
 						slider.max = "200";
-							slider.step = "2";
-							slider.value = (
-								this.tempSettings.wysiwyg.sotPaddingTop ?? 32
-							).toString();
-							slider.className = "tategaki-slider-input";
+						slider.step = "2";
+						slider.value = (
+							this.tempSettings.wysiwyg.sotPaddingTop ?? 32
+						).toString();
+						slider.className = "tategaki-slider-input";
 
-							const valueSpan = wrapper.createEl("span");
-							valueSpan.textContent = `${this.tempSettings.wysiwyg.sotPaddingTop ?? 32}px`;
-							valueSpan.className = "tategaki-slider-value is-wide";
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent = `${this.tempSettings.wysiwyg.sotPaddingTop ?? 32}px`;
+						valueSpan.className = "tategaki-slider-value is-wide";
 
 						slider.addEventListener("input", () => {
 							const value = parseInt(slider.value);
@@ -1690,25 +1977,27 @@ export class SettingsPanelModal extends Modal {
 
 				// 下余白
 				this.createSettingItem(
-						content,
-						"下余白",
-						"ページ下部の余白を調整（0〜200px）",
-						(itemEl) => {
-							const wrapper = itemEl.createDiv("tategaki-slider-control");
+					content,
+					"下余白",
+					"ページ下部の余白を調整（0〜200px）",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv(
+							"tategaki-slider-control",
+						);
 
 						const slider = wrapper.createEl("input");
 						slider.type = "range";
 						slider.min = "0";
 						slider.max = "200";
-							slider.step = "2";
-							slider.value = (
-								this.tempSettings.wysiwyg.sotPaddingBottom ?? 16
-							).toString();
-							slider.className = "tategaki-slider-input";
+						slider.step = "2";
+						slider.value = (
+							this.tempSettings.wysiwyg.sotPaddingBottom ?? 16
+						).toString();
+						slider.className = "tategaki-slider-input";
 
-							const valueSpan = wrapper.createEl("span");
-							valueSpan.textContent = `${this.tempSettings.wysiwyg.sotPaddingBottom ?? 16}px`;
-							valueSpan.className = "tategaki-slider-value is-wide";
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent = `${this.tempSettings.wysiwyg.sotPaddingBottom ?? 16}px`;
+						valueSpan.className = "tategaki-slider-value is-wide";
 
 						slider.addEventListener("input", () => {
 							const value = parseInt(slider.value);
@@ -1734,12 +2023,12 @@ export class SettingsPanelModal extends Modal {
 			(content) => {
 				// キャレット色
 				this.createSettingItem(
-						content,
-						"キャレットの色",
-						"文字色 / ハイライト色 / カスタム色 から選択できます",
-						(itemEl) => {
-							const select = itemEl.createEl("select");
-							select.className = "tategaki-settings-select is-medium";
+					content,
+					"キャレットの色",
+					"文字色 / ハイライト色 / カスタム色 から選択できます",
+					(itemEl) => {
+						const select = itemEl.createEl("select");
+						select.className = "tategaki-settings-select is-medium";
 
 						select.createEl("option", {
 							text: "文字色",
@@ -1768,42 +2057,44 @@ export class SettingsPanelModal extends Modal {
 				);
 
 				// キャレットのカスタム色
-					this.createColorSettingItem(
-						content,
-						"キャレットのカスタム色",
-						this.tempSettings.wysiwyg.caretCustomColor ||
-							DEFAULT_V2_SETTINGS.wysiwyg.caretCustomColor ||
-							"#1e90ff",
-						DEFAULT_V2_SETTINGS.wysiwyg.caretCustomColor || "#1e90ff",
-						(color) => {
-							this.tempSettings.wysiwyg.caretCustomColor = color;
-							this.applySettings();
-						},
+				this.createColorSettingItem(
+					content,
+					"キャレットのカスタム色",
+					this.tempSettings.wysiwyg.caretCustomColor ||
+						DEFAULT_V2_SETTINGS.wysiwyg.caretCustomColor ||
+						"#1e90ff",
+					DEFAULT_V2_SETTINGS.wysiwyg.caretCustomColor || "#1e90ff",
+					(color) => {
+						this.tempSettings.wysiwyg.caretCustomColor = color;
+						this.applySettings();
+					},
 				);
 
 				// キャレット幅
 				this.createSettingItem(
-						content,
-						"キャレットの幅",
-						"キャレットの太さを調整します（px）",
-						(itemEl) => {
-							const wrapper = itemEl.createDiv("tategaki-slider-control");
+					content,
+					"キャレットの幅",
+					"キャレットの太さを調整します（px）",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv(
+							"tategaki-slider-control",
+						);
 
 						const slider = wrapper.createEl("input");
 						slider.type = "range";
 						slider.min = "1";
 						slider.max = "8";
 						slider.step = "0.5";
-							const initialValue =
-								this.tempSettings.wysiwyg.caretWidthPx ??
-								DEFAULT_V2_SETTINGS.wysiwyg.caretWidthPx ??
-								3;
-							slider.value = initialValue.toString();
-							slider.className = "tategaki-slider-input is-medium";
+						const initialValue =
+							this.tempSettings.wysiwyg.caretWidthPx ??
+							DEFAULT_V2_SETTINGS.wysiwyg.caretWidthPx ??
+							3;
+						slider.value = initialValue.toString();
+						slider.className = "tategaki-slider-input is-medium";
 
-							const valueSpan = wrapper.createEl("span");
-							valueSpan.textContent = `${initialValue}px`;
-							valueSpan.className = "tategaki-slider-value is-wide";
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent = `${initialValue}px`;
+						valueSpan.className = "tategaki-slider-value is-wide";
 
 						slider.addEventListener("input", () => {
 							const value = parseFloat(slider.value);
@@ -1825,11 +2116,11 @@ export class SettingsPanelModal extends Modal {
 				);
 
 				// CE補助モード: ネイティブキャレット
-					this.createSettingItem(
-						content,
-						"CE補助モードでネイティブキャレットを使用",
-						"CE補助(IME)をオンにしたとき、OS標準のキャレットを使うか選べます",
-						(itemEl) => {
+				this.createSettingItem(
+					content,
+					"CE補助モードでネイティブキャレットを使用",
+					"CE補助(IME)をオンにしたとき、OS標準のキャレットを使うか選べます",
+					(itemEl) => {
 						const button = itemEl.createEl("button", {
 							cls: "tategaki-toggle-button",
 						});
@@ -1838,14 +2129,14 @@ export class SettingsPanelModal extends Modal {
 							this.tempSettings.wysiwyg.ceUseNativeCaret !==
 							false;
 
-							const refresh = (enabled: boolean) => {
-								this.updateToggleButton(
-									button,
-									enabled,
-									"使用する",
-									"使用しない",
-								);
-							};
+						const refresh = (enabled: boolean) => {
+							this.updateToggleButton(
+								button,
+								enabled,
+								"使用する",
+								"使用しない",
+							);
+						};
 
 						refresh(getCurrent());
 
@@ -1875,27 +2166,29 @@ export class SettingsPanelModal extends Modal {
 			(content) => {
 				// 横書きIME: 上方向補正
 				this.createSettingItem(
-						content,
-						"横書き: 上方向補正",
-						"横書きIMEの表示位置を、上方向(+) / 下方向(-)に調整します（em単位）",
-						(itemEl) => {
-							const wrapper = itemEl.createDiv("tategaki-slider-control");
+					content,
+					"横書き: 上方向補正",
+					"横書きIMEの表示位置を、上方向(+) / 下方向(-)に調整します（em単位）",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv(
+							"tategaki-slider-control",
+						);
 
 						const slider = wrapper.createEl("input");
 						slider.type = "range";
 						slider.min = "-1";
 						slider.max = "1";
 						slider.step = "0.01";
-							const initialValue =
-								this.tempSettings.wysiwyg.imeOffsetHorizontalEm ??
-								DEFAULT_V2_SETTINGS.wysiwyg.imeOffsetHorizontalEm ??
-								0;
-							slider.value = initialValue.toFixed(2);
-							slider.className = "tategaki-slider-input is-medium";
+						const initialValue =
+							this.tempSettings.wysiwyg.imeOffsetHorizontalEm ??
+							DEFAULT_V2_SETTINGS.wysiwyg.imeOffsetHorizontalEm ??
+							0;
+						slider.value = initialValue.toFixed(2);
+						slider.className = "tategaki-slider-input is-medium";
 
-							const valueSpan = wrapper.createEl("span");
-							valueSpan.textContent = initialValue.toFixed(2);
-							valueSpan.className = "tategaki-slider-value is-wide";
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent = initialValue.toFixed(2);
+						valueSpan.className = "tategaki-slider-value is-wide";
 
 						slider.addEventListener("input", () => {
 							const value = parseFloat(slider.value);
@@ -1911,33 +2204,37 @@ export class SettingsPanelModal extends Modal {
 					},
 					{
 						disabled: imeDisabled,
-						disabledReason: imeDisabled ? imeDisabledReason : undefined,
+						disabledReason: imeDisabled
+							? imeDisabledReason
+							: undefined,
 					},
 				);
 
 				// 縦書きIME: 右方向補正
 				this.createSettingItem(
-						content,
-						"縦書き: 右方向補正",
-						"縦書きIMEの表示位置を、右方向(+) / 左方向(-)に調整します（em単位）",
-						(itemEl) => {
-							const wrapper = itemEl.createDiv("tategaki-slider-control");
+					content,
+					"縦書き: 右方向補正",
+					"縦書きIMEの表示位置を、右方向(+) / 左方向(-)に調整します（em単位）",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv(
+							"tategaki-slider-control",
+						);
 
 						const slider = wrapper.createEl("input");
 						slider.type = "range";
 						slider.min = "-1";
 						slider.max = "1";
 						slider.step = "0.01";
-							const initialValue =
-								this.tempSettings.wysiwyg.imeOffsetVerticalEm ??
-								DEFAULT_V2_SETTINGS.wysiwyg.imeOffsetVerticalEm ??
-								0;
-							slider.value = initialValue.toFixed(2);
-							slider.className = "tategaki-slider-input is-medium";
+						const initialValue =
+							this.tempSettings.wysiwyg.imeOffsetVerticalEm ??
+							DEFAULT_V2_SETTINGS.wysiwyg.imeOffsetVerticalEm ??
+							0;
+						slider.value = initialValue.toFixed(2);
+						slider.className = "tategaki-slider-input is-medium";
 
-							const valueSpan = wrapper.createEl("span");
-							valueSpan.textContent = initialValue.toFixed(2);
-							valueSpan.className = "tategaki-slider-value is-wide";
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent = initialValue.toFixed(2);
+						valueSpan.className = "tategaki-slider-value is-wide";
 
 						slider.addEventListener("input", () => {
 							const value = parseFloat(slider.value);
@@ -1953,7 +2250,9 @@ export class SettingsPanelModal extends Modal {
 					},
 					{
 						disabled: imeDisabled,
-						disabledReason: imeDisabled ? imeDisabledReason : undefined,
+						disabledReason: imeDisabled
+							? imeDisabledReason
+							: undefined,
 					},
 				);
 			},
@@ -1997,18 +2296,18 @@ export class SettingsPanelModal extends Modal {
 							this.applySettings();
 						};
 
-							const refreshButton = () => {
-								const visible = !(
-									this.tempSettings.preview.hideFrontmatter ??
-									true
-								);
-								this.updateToggleButton(
-									button,
-									visible,
-									"表示中",
-									"非表示",
-								);
-							};
+						const refreshButton = () => {
+							const visible = !(
+								this.tempSettings.preview.hideFrontmatter ??
+								true
+							);
+							this.updateToggleButton(
+								button,
+								visible,
+								"表示中",
+								"非表示",
+							);
+						};
 
 						setVisibility(
 							!(
@@ -2040,12 +2339,12 @@ export class SettingsPanelModal extends Modal {
 			(content) => {
 				// ヘッダーの内容
 				this.createSettingItem(
-						content,
-						"ヘッダーの内容",
-						"書籍モードのヘッダーに表示する内容を選びます",
-						(itemEl) => {
-							const select = itemEl.createEl("select");
-							select.className = "tategaki-settings-select is-medium";
+					content,
+					"ヘッダーの内容",
+					"書籍モードのヘッダーに表示する内容を選びます",
+					(itemEl) => {
+						const select = itemEl.createEl("select");
+						select.className = "tategaki-settings-select is-medium";
 
 						select.createEl("option", {
 							text: "表示しない",
@@ -2073,12 +2372,12 @@ export class SettingsPanelModal extends Modal {
 
 				// ヘッダーの配置
 				this.createSettingItem(
-						content,
-						"ヘッダーの配置",
-						"ヘッダーの表示位置（左/中央/右）を選びます",
-						(itemEl) => {
-							const select = itemEl.createEl("select");
-							select.className = "tategaki-settings-select is-medium";
+					content,
+					"ヘッダーの配置",
+					"ヘッダーの表示位置（左/中央/右）を選びます",
+					(itemEl) => {
+						const select = itemEl.createEl("select");
+						select.className = "tategaki-settings-select is-medium";
 
 						select.createEl("option", {
 							text: "左",
@@ -2106,12 +2405,12 @@ export class SettingsPanelModal extends Modal {
 
 				// フッターの内容
 				this.createSettingItem(
-						content,
-						"フッターの内容",
-						"書籍モードのフッターに表示する内容を選びます",
-						(itemEl) => {
-							const select = itemEl.createEl("select");
-							select.className = "tategaki-settings-select is-medium";
+					content,
+					"フッターの内容",
+					"書籍モードのフッターに表示する内容を選びます",
+					(itemEl) => {
+						const select = itemEl.createEl("select");
+						select.className = "tategaki-settings-select is-medium";
 
 						select.createEl("option", {
 							text: "表示しない",
@@ -2140,12 +2439,12 @@ export class SettingsPanelModal extends Modal {
 
 				// フッターの配置
 				this.createSettingItem(
-						content,
-						"フッターの配置",
-						"フッターの表示位置（左/中央/右）を選びます",
-						(itemEl) => {
-							const select = itemEl.createEl("select");
-							select.className = "tategaki-settings-select is-medium";
+					content,
+					"フッターの配置",
+					"フッターの表示位置（左/中央/右）を選びます",
+					(itemEl) => {
+						const select = itemEl.createEl("select");
+						select.className = "tategaki-settings-select is-medium";
 
 						select.createEl("option", {
 							text: "左",
@@ -2173,12 +2472,12 @@ export class SettingsPanelModal extends Modal {
 
 				// ページ番号の形式
 				this.createSettingItem(
-						content,
-						"ページ番号の形式",
-						"現在ページのみ / 現在ページと総ページ数 を選べます",
-						(itemEl) => {
-							const select = itemEl.createEl("select");
-							select.className = "tategaki-settings-select is-wide";
+					content,
+					"ページ番号の形式",
+					"現在ページのみ / 現在ページと総ページ数 を選べます",
+					(itemEl) => {
+						const select = itemEl.createEl("select");
+						select.className = "tategaki-settings-select is-wide";
 
 						select.createEl("option", {
 							text: "現在ページ",
@@ -2203,12 +2502,12 @@ export class SettingsPanelModal extends Modal {
 
 				// ページ遷移効果
 				this.createSettingItem(
-						content,
-						"ページ遷移効果",
-						"ページ移動時の視覚効果を選びます",
-						(itemEl) => {
-							const select = itemEl.createEl("select");
-							select.className = "tategaki-settings-select is-medium";
+					content,
+					"ページ遷移効果",
+					"ページ移動時の視覚効果を選びます",
+					(itemEl) => {
+						const select = itemEl.createEl("select");
+						select.className = "tategaki-settings-select is-medium";
 
 						select.createEl("option", {
 							text: "なし",
@@ -2241,27 +2540,29 @@ export class SettingsPanelModal extends Modal {
 
 				// 上余白
 				this.createSettingItem(
-						content,
-						"上余白",
-						"書籍モード本文エリアの上余白を調整（0〜200px）",
-						(itemEl) => {
-							const wrapper = itemEl.createDiv("tategaki-slider-control");
+					content,
+					"上余白",
+					"書籍モード本文エリアの上余白を調整（0〜200px）",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv(
+							"tategaki-slider-control",
+						);
 
 						const slider = wrapper.createEl("input");
 						slider.type = "range";
 						slider.min = "0";
 						slider.max = "200";
 						slider.step = "2";
-							slider.value = (
-								this.tempSettings.preview.bookPaddingTop ??
-								DEFAULT_V2_SETTINGS.preview.bookPaddingTop ??
-								44
-							).toString();
-							slider.className = "tategaki-slider-input";
+						slider.value = (
+							this.tempSettings.preview.bookPaddingTop ??
+							DEFAULT_V2_SETTINGS.preview.bookPaddingTop ??
+							44
+						).toString();
+						slider.className = "tategaki-slider-input";
 
-							const valueSpan = wrapper.createEl("span");
-							valueSpan.textContent = `${this.tempSettings.preview.bookPaddingTop ?? DEFAULT_V2_SETTINGS.preview.bookPaddingTop ?? 44}px`;
-							valueSpan.className = "tategaki-slider-value is-wide";
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent = `${this.tempSettings.preview.bookPaddingTop ?? DEFAULT_V2_SETTINGS.preview.bookPaddingTop ?? 44}px`;
+						valueSpan.className = "tategaki-slider-value is-wide";
 
 						slider.addEventListener("input", () => {
 							const value = parseInt(slider.value, 10);
@@ -2278,27 +2579,29 @@ export class SettingsPanelModal extends Modal {
 
 				// 下余白
 				this.createSettingItem(
-						content,
-						"下余白",
-						"書籍モード本文エリアの下余白を調整（0〜200px）",
-						(itemEl) => {
-							const wrapper = itemEl.createDiv("tategaki-slider-control");
+					content,
+					"下余白",
+					"書籍モード本文エリアの下余白を調整（0〜200px）",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv(
+							"tategaki-slider-control",
+						);
 
 						const slider = wrapper.createEl("input");
 						slider.type = "range";
 						slider.min = "0";
 						slider.max = "200";
 						slider.step = "2";
-							slider.value = (
-								this.tempSettings.preview.bookPaddingBottom ??
-								DEFAULT_V2_SETTINGS.preview.bookPaddingBottom ??
-								32
-							).toString();
-							slider.className = "tategaki-slider-input";
+						slider.value = (
+							this.tempSettings.preview.bookPaddingBottom ??
+							DEFAULT_V2_SETTINGS.preview.bookPaddingBottom ??
+							32
+						).toString();
+						slider.className = "tategaki-slider-input";
 
-							const valueSpan = wrapper.createEl("span");
-							valueSpan.textContent = `${this.tempSettings.preview.bookPaddingBottom ?? DEFAULT_V2_SETTINGS.preview.bookPaddingBottom ?? 32}px`;
-							valueSpan.className = "tategaki-slider-value is-wide";
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent = `${this.tempSettings.preview.bookPaddingBottom ?? DEFAULT_V2_SETTINGS.preview.bookPaddingBottom ?? 32}px`;
+						valueSpan.className = "tategaki-slider-value is-wide";
 
 						slider.addEventListener("input", () => {
 							const value = parseInt(slider.value, 10);
@@ -2342,14 +2645,14 @@ export class SettingsPanelModal extends Modal {
 							const button = itemEl.createEl("button", {
 								cls: "tategaki-toggle-button",
 							});
-								const refresh = (enabled: boolean) => {
-									this.updateToggleButton(
-										button,
-										enabled,
-										"有効",
-										"無効",
-									);
-								};
+							const refresh = (enabled: boolean) => {
+								this.updateToggleButton(
+									button,
+									enabled,
+									"有効",
+									"無効",
+								);
+							};
 							const current = () =>
 								!!this.tempSettings.wysiwyg.enableSyncBackup;
 							refresh(current());
@@ -2366,31 +2669,31 @@ export class SettingsPanelModal extends Modal {
 						content,
 						"同期バックアップフォルダを開く",
 						"バックアップ保存先（.obsidian/tategaki-sync-backups）を開きます。",
-							(itemEl) => {
-								const button = itemEl.createEl("button");
-								button.textContent = "開く";
-								button.className = "tategaki-settings-action-button";
-								button.addEventListener("click", () => {
-									void this.plugin.openSyncBackupFolder();
-								});
-							},
+						(itemEl) => {
+							const button = itemEl.createEl("button");
+							button.textContent = t("common.open");
+							button.className =
+								"tategaki-settings-action-button";
+							button.addEventListener("click", () => {
+								void this.plugin.openSyncBackupFolder();
+							});
+						},
 					);
 
 					this.createSettingItem(
 						content,
 						"同期バックアップをゴミ箱へ移動",
 						"同期の安全策として作成されたバックアップをゴミ箱へ移動します（復元できなくなるので注意）。",
-							(itemEl) => {
-								const button = itemEl.createEl("button");
-								button.textContent = "移動";
-								button.className =
-									"tategaki-settings-action-button tategaki-settings-action-button-danger";
-								button.addEventListener("click", () => {
-									void this.plugin.moveSyncBackupsToTrash();
-								});
-							},
+						(itemEl) => {
+							const button = itemEl.createEl("button");
+							button.textContent = sp("移動");
+							button.className =
+								"tategaki-settings-action-button tategaki-settings-action-button-danger";
+							button.addEventListener("click", () => {
+								void this.plugin.moveSyncBackupsToTrash();
+							});
+						},
 					);
-
 				},
 			);
 		}
@@ -2402,7 +2705,7 @@ export class SettingsPanelModal extends Modal {
 		onText: string,
 		offText: string,
 	): void {
-		button.textContent = enabled ? onText : offText;
+		button.textContent = enabled ? sp(onText) : sp(offText);
 		button.setAttr("aria-pressed", enabled ? "true" : "false");
 		button.toggleClass("is-active", enabled);
 	}
@@ -2414,7 +2717,9 @@ export class SettingsPanelModal extends Modal {
 		controlBuilder: (itemEl: HTMLElement) => void | Promise<void>,
 		options?: { disabled?: boolean; disabledReason?: string },
 	): void {
-		const settingItem = container.createDiv("setting-item tategaki-settings-item");
+		const settingItem = container.createDiv(
+			"setting-item tategaki-settings-item",
+		);
 
 		const disabled = options?.disabled === true;
 		if (disabled) {
@@ -2426,17 +2731,17 @@ export class SettingsPanelModal extends Modal {
 		);
 
 		infoContainer.createDiv({
-			text: name,
+			text: sp(name),
 			cls: "tategaki-settings-item-name",
 		});
 
 		infoContainer.createDiv({
-			text: desc,
+			text: sp(desc),
 			cls: "tategaki-settings-item-desc",
 		});
 		if (options?.disabledReason) {
 			infoContainer.createDiv({
-				text: options.disabledReason,
+				text: sp(options.disabledReason),
 				cls: "tategaki-settings-item-disabled-reason",
 			});
 		}
@@ -2453,9 +2758,7 @@ export class SettingsPanelModal extends Modal {
 						this.disableControls(controlContainer);
 					}
 				})
-				.catch((err) =>
-					console.error("Error building control:", err),
-				);
+				.catch((err) => console.error("Error building control:", err));
 		} else if (disabled) {
 			this.disableControls(controlContainer);
 		}
@@ -2464,7 +2767,10 @@ export class SettingsPanelModal extends Modal {
 	private disableControls(container: HTMLElement): void {
 		container.addClass("tategaki-settings-control-disabled");
 		const controls = container.querySelectorAll<
-			HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement
+			| HTMLInputElement
+			| HTMLSelectElement
+			| HTMLTextAreaElement
+			| HTMLButtonElement
 		>("input, select, textarea, button");
 		controls.forEach((el) => {
 			el.disabled = true;
@@ -2481,7 +2787,7 @@ export class SettingsPanelModal extends Modal {
 		this.createSettingItem(
 			container,
 			name,
-			"クリックして色を変更",
+			sp("クリックして色を変更"),
 			(itemEl) => {
 				let currentColor = resolveColorForSwatch(
 					initialColor,
@@ -2498,18 +2804,21 @@ export class SettingsPanelModal extends Modal {
 				);
 
 				colorButton.addEventListener("click", () => {
+					const displayName = sp(name);
 					openColorPicker(
-						`${name}を選択`,
+						isEnglishUi()
+							? `Choose ${displayName}`
+							: `${displayName}を選択`,
 						currentColor,
-							(newColor) => {
-								currentColor = resolveColorForSwatch(
-									newColor,
-									fallbackColor,
-								);
-								swatch.style.setProperty(
-									"--tategaki-color-swatch",
-									currentColor,
-								);
+						(newColor) => {
+							currentColor = resolveColorForSwatch(
+								newColor,
+								fallbackColor,
+							);
+							swatch.style.setProperty(
+								"--tategaki-color-swatch",
+								currentColor,
+							);
 							onChange(newColor);
 						},
 					);
@@ -2531,7 +2840,7 @@ export class SettingsPanelModal extends Modal {
 
 		// Obsidianベースオプションを追加
 		select.createEl("option", {
-			text: "Obsidian ベーステーマ",
+			text: sp("Obsidian ベーステーマ"),
 			value: "obsidian-base",
 		});
 
@@ -2548,12 +2857,12 @@ export class SettingsPanelModal extends Modal {
 
 		// テーマ適用ボタン（同じテーマでも再適用可能）
 		const applyButton = selectContainer.createEl("button");
-		applyButton.textContent = "再適用";
+		applyButton.textContent = sp("再適用");
 		applyButton.className = "tategaki-theme-selector-button";
 
 		// テーマ削除ボタン
 		const deleteButton = selectContainer.createEl("button");
-		deleteButton.textContent = "削除";
+		deleteButton.textContent = t("common.delete");
 		deleteButton.className =
 			"tategaki-theme-selector-button tategaki-theme-selector-button-warning mod-warning";
 		// Obsidianベースとプリセットテーマは削除不可
@@ -2573,82 +2882,83 @@ export class SettingsPanelModal extends Modal {
 		};
 
 		// 適用ボタンクリック時
-			applyButton.addEventListener("click", () => {
-				void applyTheme(select.value);
-			});
+		applyButton.addEventListener("click", () => {
+			void applyTheme(select.value);
+		});
 
-			select.addEventListener("change", () => {
-				const selectedThemeId = select.value;
+		select.addEventListener("change", () => {
+			const selectedThemeId = select.value;
 
 			// 削除ボタンの有効/無効を切り替え
 			deleteButton.disabled = isPresetTheme(selectedThemeId);
 
-				// テーマを適用
-				void applyTheme(selectedThemeId);
-			});
+			// テーマを適用
+			void applyTheme(selectedThemeId);
+		});
 
-			// テーマ削除処理
-			deleteButton.addEventListener("click", () => {
-				void (async () => {
-					const selectedThemeId = select.value;
-					if (isPresetTheme(selectedThemeId)) {
-						return;
-					}
+		// テーマ削除処理
+		deleteButton.addEventListener("click", () => {
+			void (async () => {
+				const selectedThemeId = select.value;
+				if (isPresetTheme(selectedThemeId)) {
+					return;
+				}
 
-					const theme = themes.find((t) => t.id === selectedThemeId);
-					if (!theme) return;
+				const theme = themes.find((t) => t.id === selectedThemeId);
+				if (!theme) return;
 
-					const confirmDelete = await showConfirmModal(this.app, {
-						title: "テーマの削除",
-						message: `テーマ「${theme.name}」を削除しますか？`,
-						confirmText: "削除",
-						cancelText: "キャンセル",
-						confirmIsWarning: true,
-					});
-					if (confirmDelete) {
-						await this.plugin.deleteTheme(selectedThemeId);
-						// tempSettingsを更新
-						this.tempSettings = JSON.parse(
-							JSON.stringify(this.plugin.settings),
-						);
-						this.onOpen();
-					}
-				})();
-			});
+				const confirmDelete = await showConfirmModal(this.app, {
+					title: t("settings.theme.deleteTitle"),
+					message: t("settings.theme.deleteMessage", {
+						themeName: theme.name,
+					}),
+					confirmText: t("common.delete"),
+					cancelText: t("common.cancel"),
+					confirmIsWarning: true,
+				});
+				if (confirmDelete) {
+					await this.plugin.deleteTheme(selectedThemeId);
+					// tempSettingsを更新
+					this.tempSettings = JSON.parse(
+						JSON.stringify(this.plugin.settings),
+					);
+					this.onOpen();
+				}
+			})();
+		});
 
 		// テーマ保存ボタン
 		const saveButton = themeContainer.createEl("button");
-		saveButton.textContent = "現在の設定をテーマとして保存";
+		saveButton.textContent = sp("現在の設定をテーマとして保存");
 		saveButton.className = "mod-cta tategaki-theme-selector-save-button";
 
-			saveButton.addEventListener("click", () => {
-				try {
-					// Obsidianの組み込みモーダルを使用
-					const modal = new ThemeNameInputModal(
-						this.app,
-						(themeName) => {
-							void (async () => {
-								try {
-									// 現在の一時設定をプラグインに反映
-									await this.plugin.updateSettings(this.tempSettings);
+		saveButton.addEventListener("click", () => {
+			try {
+				// Obsidianの組み込みモーダルを使用
+				const modal = new ThemeNameInputModal(this.app, (themeName) => {
+					void (async () => {
+						try {
+							// 現在の一時設定をプラグインに反映
+							await this.plugin.updateSettings(this.tempSettings);
 
-									// テーマとして保存
-									await this.plugin.createThemeFromCurrentSettings(themeName);
+							// テーマとして保存
+							await this.plugin.createThemeFromCurrentSettings(
+								themeName,
+							);
 
-									// tempSettingsを更新
-									this.tempSettings = JSON.parse(
-										JSON.stringify(this.plugin.settings),
-									);
-									this.onOpen();
-								} catch (error) {
-									console.error(
-										"Tategaki: Failed to save theme:",
-										error,
-									);
-								}
-							})();
-						},
-					);
+							// tempSettingsを更新
+							this.tempSettings = JSON.parse(
+								JSON.stringify(this.plugin.settings),
+							);
+							this.onOpen();
+						} catch (error) {
+							console.error(
+								"Tategaki: Failed to save theme:",
+								error,
+							);
+						}
+					})();
+				});
 				modal.open();
 			} catch (error) {
 				console.error(
@@ -2712,7 +3022,7 @@ export class SettingsPanelModal extends Modal {
 		// プラグインのメソッドを使用してテーマを作成
 		await this.plugin.createThemeFromCurrentSettings(
 			themeName,
-			"ユーザー作成テーマ",
+			isEnglishUi() ? "User theme" : "ユーザー作成テーマ",
 		);
 
 		// tempSettingsを更新

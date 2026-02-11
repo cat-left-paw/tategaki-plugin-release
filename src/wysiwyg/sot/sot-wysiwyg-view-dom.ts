@@ -1,3 +1,5 @@
+import { t } from "../../shared/i18n";
+
 export type SoTViewDomRefs = {
 	toolbarLeft: HTMLElement;
 	content: HTMLElement;
@@ -43,7 +45,7 @@ export function buildSoTViewDom(
 	const loadingMessage = loadingOverlayEl.createDiv(
 		"tategaki-sot-loading-message",
 	);
-	loadingMessage.textContent = "読み込み中…";
+	loadingMessage.textContent = t("common.loading");
 
 	const derivedRootEl = contentWrapperEl.createDiv("tategaki-sot-derived-root");
 	derivedRootEl.tabIndex = 0;

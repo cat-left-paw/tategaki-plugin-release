@@ -1,4 +1,5 @@
 import { App, Modal } from "obsidian";
+import { t } from "../i18n";
 // 起動モーダル用の拡張型（書籍モードを含む）
 export type ViewModeSelectionType = "edit" | "reading" | "compat";
 
@@ -26,7 +27,7 @@ export class ViewModeSelectionModal extends Modal {
 			openOnRightSide?: boolean;
 			placement?: ViewOpenPlacementType;
 			showCompat?: boolean;
-		} = {}
+		} = {},
 	) {
 		super(app);
 		// placementが指定されていればそれを使用、なければbooleanから計算
@@ -64,32 +65,34 @@ export class ViewModeSelectionModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass("tategaki-view-mode-selection-modal");
-		this.titleEl.setText("Tategakiエディタを開く");
+		this.titleEl.setText(t("modal.viewMode.title"));
 
 		this.contentEl.createEl("p", {
-			text: "表示モードを選択してください。",
+			text: t("modal.viewMode.prompt"),
 		});
 
-		const optionsEl = this.contentEl.createDiv("tategaki-view-mode-options");
+		const optionsEl = this.contentEl.createDiv(
+			"tategaki-view-mode-options",
+		);
 
 		this.createModeButton(
 			optionsEl,
 			"edit",
-			"執筆・参照モード",
-			"SoTビューで編集・参照を行います。"
+			t("modal.viewMode.edit.title"),
+			t("modal.viewMode.edit.desc"),
 		);
 		this.createModeButton(
 			optionsEl,
 			"reading",
-			"書籍モード",
-			"縦書き読書モードで、ページめくりスタイルで閲覧します。"
+			t("modal.viewMode.reading.title"),
+			t("modal.viewMode.reading.desc"),
 		);
 		if (this.showCompat) {
 			this.createModeButton(
 				optionsEl,
 				"compat",
-				"互換モード（旧TipTap）",
-				"旧TipTapベースの互換ビューで編集します。"
+				t("modal.viewMode.compat.title"),
+				t("modal.viewMode.compat.desc"),
 			);
 		}
 
@@ -115,7 +118,7 @@ export class ViewModeSelectionModal extends Modal {
 				setPlacement("right");
 			}
 		});
-		rightSideLabel.appendText("右側に開く");
+		rightSideLabel.appendText(t("modal.viewMode.placement.right"));
 
 		const tabLabel = actions.createEl("label", {
 			cls: "tategaki-view-mode-placement-label",
@@ -130,7 +133,7 @@ export class ViewModeSelectionModal extends Modal {
 				setPlacement("tab");
 			}
 		});
-		tabLabel.appendText("隣のタブに開く");
+		tabLabel.appendText(t("modal.viewMode.placement.tab"));
 
 		const windowLabel = actions.createEl("label", {
 			cls: "tategaki-view-mode-placement-label",
@@ -145,19 +148,19 @@ export class ViewModeSelectionModal extends Modal {
 				setPlacement("window");
 			}
 		});
-		windowLabel.appendText("新規ウィンドウで開く");
+		windowLabel.appendText(t("modal.viewMode.placement.window"));
 
 		const footer = this.contentEl.createDiv("tategaki-view-mode-footer");
 
 		footer
-			.createEl("button", { text: "キャンセル" })
+			.createEl("button", { text: t("common.cancel") })
 			.addEventListener("click", () => {
 				this.cancelled = true;
 				this.close();
 			});
 
 		const openButton = footer.createEl("button", {
-			text: "開く",
+			text: t("common.open"),
 			cls: "mod-cta",
 		});
 		openButton.disabled = this.result.mode == null;
@@ -193,7 +196,7 @@ export class ViewModeSelectionModal extends Modal {
 		parent: HTMLElement,
 		mode: ViewModeSelectionType,
 		title: string,
-		description: string
+		description: string,
 	): void {
 		const wrapper = parent.createDiv("tategaki-view-mode-card");
 

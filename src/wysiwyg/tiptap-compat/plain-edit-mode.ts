@@ -18,6 +18,11 @@ import {
 	serializeInlineToMarkdown,
 } from "./markdown-adapter";
 import { createAozoraRubyRegExp } from "../../shared/aozora-ruby";
+import {
+	buildAozoraTcyText,
+	isValidAozoraTcyBody,
+	stripAozoraTcySyntax,
+} from "../../shared/aozora-tcy";
 import { debugWarn } from "../../shared/logger";
 
 export interface PlainEditModeOptions {
@@ -33,8 +38,10 @@ export interface PlainEditModeOptions {
 export type PlainEditCommand =
 	| { type: "bold" | "italic" | "strike" | "underline" | "highlight" }
 	| { type: "clear" }
+	| { type: "clearTcy" }
 	| { type: "link"; url: string; text?: string }
-	| { type: "ruby"; ruby: string; text?: string; isDot?: boolean };
+	| { type: "ruby"; ruby: string; text?: string; isDot?: boolean }
+	| { type: "tcy"; text?: string };
 
 interface PlainEditPluginState {
 	pos: number | null;
@@ -157,11 +164,17 @@ export class PlainEditMode {
 			case "clear":
 				this.clearSelectionFormatting();
 				return true;
+			case "clearTcy":
+				this.clearSelectionTcy();
+				return true;
 			case "link":
 				this.insertLink(command.text ?? "", command.url);
 				return true;
 			case "ruby":
 				this.insertRuby(command.text ?? "", command.ruby, command.isDot);
+				return true;
+			case "tcy":
+				this.insertTcy(command.text ?? "");
 				return true;
 		}
 		return false;
@@ -630,14 +643,37 @@ export class PlainEditMode {
 		}
 		let rubyText = "";
 		if (isDot) {
+			const emphasisChar = ruby.trim() || "・";
 			rubyText = Array.from(base)
-				.map((char) => `｜${char}《・》`)
+				.map((char) => `｜${char}《${emphasisChar}》`)
 				.join("");
 		} else {
 			rubyText = `｜${base}《${ruby}》`;
 		}
 		const nextStart = selection.start + rubyText.length;
 		this.replaceSelection(rubyText, nextStart, nextStart);
+	}
+
+	private insertTcy(text: string): void {
+		if (!this.overlayEl) return;
+		const selection = this.getSelectionRange();
+		const base = text || selection.text;
+		if (!isValidAozoraTcyBody(base)) {
+			return;
+		}
+		const tcyText = buildAozoraTcyText(base);
+		const nextStart = selection.start + tcyText.length;
+		this.replaceSelection(tcyText, nextStart, nextStart);
+	}
+
+	private clearSelectionTcy(): void {
+		if (!this.overlayEl) return;
+		const selection = this.getSelectionRange();
+		if (selection.start === selection.end) return;
+		const stripped = stripAozoraTcySyntax(selection.text);
+		const nextStart = selection.start;
+		const nextEnd = nextStart + stripped.length;
+		this.replaceSelection(stripped, nextStart, nextEnd);
 	}
 
 	private replaceSelection(
@@ -691,6 +727,7 @@ export class PlainEditMode {
 		result = result.replace(/\*([^*\n]+)\*/g, "$1");
 		result = result.replace(/~~([^~\n]+)~~/g, "$1");
 		result = result.replace(/<u>([\s\S]*?)<\/u>/gi, "$1");
+		result = stripAozoraTcySyntax(result);
 		const rubyRegex = createAozoraRubyRegExp();
 		result = result.replace(rubyRegex, (_match, ...args) => {
 			const groups = args[args.length - 1] as

@@ -1,7 +1,7 @@
 {
 	"id": "tategaki",
 	"name": "Tategaki",
-	"version": "1.2.3",
+	"version": "1.2.4",
 	"minAppVersion": "0.15.0",
 	"description": "Edit and read Markdown in vertical writing mode.",
 	"author": "cat-left-paw",

@@ -11,6 +11,7 @@ import {
 	writeSyncBackupPair,
 } from "../../shared/sync-backup";
 import { debugWarn } from "../../shared/logger";
+import { t } from "../../shared/i18n";
 
 export type SyncMode = "auto" | "manual";
 
@@ -157,12 +158,12 @@ export class ContentEditableSyncManager {
 	 */
 	async triggerManualSync(): Promise<void> {
 		if (!this.currentFile) {
-			new Notice("同期するファイルが開かれていません。", 2000);
+			new Notice(t("notice.sync.noFileOpen"), 2000);
 			return;
 		}
 
 		await this.persistChanges({ force: true });
-		new Notice("ファイルを保存しました。", 2000);
+		new Notice(t("notice.sync.fileSaved"), 2000);
 	}
 
 	/**
@@ -306,10 +307,10 @@ export class ContentEditableSyncManager {
 			diskMarkdownBefore = await this.app.vault.read(this.currentFile);
 		} catch (error) {
 			console.error("Failed to read file before save:", error);
-			new Notice("保存前の読み取りに失敗しました。", 3000);
+			new Notice(t("notice.sync.readBeforeSaveFailed"), 3000);
 			this.updateState({
 				lastSyncResult: "error",
-				lastSyncMessage: "保存前の読み取りに失敗しました。",
+				lastSyncMessage: t("notice.sync.readBeforeSaveFailed"),
 			});
 			return;
 		}
@@ -327,7 +328,7 @@ export class ContentEditableSyncManager {
 			} catch (error) {
 				console.error("Failed to write sync backup:", error);
 				new Notice(
-					"バックアップの作成に失敗しました（保存は続行します）。",
+					t("notice.sync.backupCreateFailedContinue"),
 					3500
 				);
 			}
@@ -348,7 +349,7 @@ export class ContentEditableSyncManager {
 			} catch (error) {
 				console.error("Failed to read file after save:", error);
 				new Notice(
-					"保存後の読み戻し検証に失敗しました（バックアップ済み）。",
+					t("notice.sync.readBackFailedBackedUp"),
 					4000
 				);
 				this.lastSavedMarkdown = markdown;
@@ -358,7 +359,7 @@ export class ContentEditableSyncManager {
 					dirty: false,
 					lastSavedAt: Date.now(),
 					lastSyncResult: "error",
-					lastSyncMessage: "保存後の読み戻し検証に失敗しました。",
+					lastSyncMessage: t("notice.sync.readBackFailed"),
 				});
 				return;
 			}
@@ -368,20 +369,20 @@ export class ContentEditableSyncManager {
 					file: this.currentFile.path,
 				});
 				new Notice(
-					"同期に失敗した可能性があります（読み戻し不一致）。バックアップ済みです。",
+					t("notice.sync.mismatchBackedUp"),
 					5000
 				);
 
 				try {
 					await this.app.vault.modify(this.currentFile, diskMarkdownBefore);
 					new Notice(
-						"安全のため同期前の内容へロールバックしました。",
+						t("notice.sync.rollbackDone"),
 						4500
 					);
 				} catch (rollbackError) {
 					console.error("Rollback failed:", rollbackError);
 					new Notice(
-						"ロールバックに失敗しました。バックアップから復元してください。",
+						t("notice.sync.rollbackFailedRestore"),
 						6000
 					);
 				}
@@ -392,7 +393,7 @@ export class ContentEditableSyncManager {
 					saving: false,
 					dirty: true,
 					lastSyncResult: "error",
-					lastSyncMessage: "読み戻し不一致のためロールバックしました。",
+					lastSyncMessage: t("notice.sync.rollbackDueToMismatch"),
 				});
 				return;
 			}
@@ -408,11 +409,11 @@ export class ContentEditableSyncManager {
 			});
 		} catch (error) {
 			console.error("Failed to save file:", error);
-			new Notice("ファイルの保存に失敗しました。", 3000);
+			new Notice(t("notice.sync.saveFailed"), 3000);
 			this.updateState({
 				saving: false,
 				lastSyncResult: "error",
-				lastSyncMessage: "ファイルの保存に失敗しました。",
+				lastSyncMessage: t("notice.sync.saveFailed"),
 			});
 		} finally {
 			this.isSaving = false;
@@ -450,7 +451,7 @@ export class ContentEditableSyncManager {
 			});
 		} catch (error) {
 			console.error("Failed to load file:", error);
-			new Notice("ファイルの読み込みに失敗しました。", 2000);
+			new Notice(t("notice.sync.loadFailed"), 2000);
 		}
 	}
 }

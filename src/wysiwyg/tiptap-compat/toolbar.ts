@@ -10,9 +10,18 @@ import {
 	RubyInputModal,
 	RubyInputResult,
 } from "../../shared/ui/ruby-input-modal";
+import {
+	clearRubyNodesInSelection,
+	clearTcyNodesInSelection,
+} from "./clear-formatting-utils";
 import { WritingMode } from "../../types/settings";
 import type { SyncState } from "../contenteditable/sync-manager";
 import type { PlainEditCommand } from "./plain-edit-mode";
+import { t } from "../../shared/i18n";
+import {
+	createAozoraTcyRegExp,
+	isValidAozoraTcyBody,
+} from "../../shared/aozora-tcy";
 
 export interface TipTapToolbarOptions {
 	app: App;
@@ -34,6 +43,9 @@ export interface TipTapToolbarOptions {
 	getRubyEnabled?: () => boolean;
 	onTogglePlainEdit?: () => void;
 	getPlainEditEnabled?: () => boolean;
+	getCustomEmphasisChars?: () => string[];
+	setCustomEmphasisChars?: (chars: string[]) => void;
+	getContentFontFamily?: () => string;
 }
 
 export class TipTapCompatToolbar {
@@ -58,7 +70,7 @@ export class TipTapCompatToolbar {
 		container: HTMLElement,
 		editor: Editor,
 		app: App,
-		options: TipTapToolbarOptions = { app }
+		options: TipTapToolbarOptions = { app },
 	) {
 		this.container = container;
 		this.editor = editor;
@@ -90,12 +102,12 @@ export class TipTapCompatToolbar {
 		if (this.options.onToggleWritingMode && this.options.getWritingMode) {
 			this.writingModeButton = this.createButton(
 				"arrow-down-up",
-				"書字方向切り替え",
+				t("toolbar.writingMode.toggle"),
 				() => {
 					this.options.onToggleWritingMode?.();
 					this.updateWritingModeButton();
 					this.updateHorizontalRuleIcon();
-				}
+				},
 			);
 			this.updateWritingModeButton();
 			this.createSeparator();
@@ -105,47 +117,47 @@ export class TipTapCompatToolbar {
 		if (this.options.onOpenFileSwitcher) {
 			this.fileSwitchButton = this.createButton(
 				"folder-open",
-				"ファイル切替",
-				() => this.options.onOpenFileSwitcher?.()
+				t("toolbar.fileSwitch"),
+				() => this.options.onOpenFileSwitcher?.(),
 			);
 			this.createSeparator();
 		}
 
 		// 元に戻す/やり直す
-		this.createButton("undo", "元に戻す", () => this.safeUndo());
-		this.createButton("redo", "やり直す", () => this.safeRedo());
+		this.createButton("undo", t("toolbar.undo"), () => this.safeUndo());
+		this.createButton("redo", t("toolbar.redo"), () => this.safeRedo());
 
 		this.createSeparator();
 
 		// 基本書式
-		this.createButton("bold", "太字", () =>
+		this.createButton("bold", t("toolbar.bold"), () =>
 			this.runInlineCommand({ type: "bold" }, () =>
-				this.editor.chain().focus().toggleBold().run()
-			)
+				this.editor.chain().focus().toggleBold().run(),
+			),
 		);
-		this.createButton("italic", "イタリック", () =>
+		this.createButton("italic", t("toolbar.italic"), () =>
 			this.runInlineCommand({ type: "italic" }, () =>
-				this.editor.chain().focus().toggleItalic().run()
-			)
+				this.editor.chain().focus().toggleItalic().run(),
+			),
 		);
-		this.createButton("strikethrough", "取り消し線", () =>
+		this.createButton("strikethrough", t("toolbar.strikethrough"), () =>
 			this.runInlineCommand({ type: "strike" }, () =>
-				this.editor.chain().focus().toggleStrike().run()
-			)
+				this.editor.chain().focus().toggleStrike().run(),
+			),
 		);
-		this.createButton("underline", "下線", () =>
+		this.createButton("underline", t("toolbar.underline"), () =>
 			this.runInlineCommand({ type: "underline" }, () =>
-				this.editor.chain().focus().toggleUnderline().run()
-			)
+				this.editor.chain().focus().toggleUnderline().run(),
+			),
 		);
-		this.createButton("highlighter", "ハイライト", () =>
+		this.createButton("highlighter", t("toolbar.highlight"), () =>
 			this.runInlineCommand({ type: "highlight" }, () =>
 				this.editor
 					.chain()
 					.focus()
 					.toggleMark("obsidianHighlight")
-					.run()
-			)
+					.run(),
+			),
 		);
 
 		this.createSeparator();
@@ -156,25 +168,32 @@ export class TipTapCompatToolbar {
 		this.createSeparator();
 
 		// リスト・引用
-		this.createButton("list", "箇条書きリスト", () =>
-			this.editor.chain().focus().toggleBulletList().run()
+		this.createButton("list", t("toolbar.bulletList"), () =>
+			this.editor.chain().focus().toggleBulletList().run(),
 		);
-		this.createButton("list-ordered", "番号付きリスト", () =>
-			this.editor.chain().focus().toggleOrderedList().run()
+		this.createButton("list-ordered", t("toolbar.orderedList"), () =>
+			this.editor.chain().focus().toggleOrderedList().run(),
 		);
-		this.createButton("quote", "引用", () =>
-			this.toggleBlockquoteWithTrailingParagraph()
+		this.createButton("quote", t("toolbar.blockquote"), () =>
+			this.toggleBlockquoteWithTrailingParagraph(),
 		);
 		// コードブロック
-		this.createButton("code-2", "コードブロック", () =>
-			this.editor.chain().focus().toggleCodeBlock().run()
+		this.createButton("code-2", t("toolbar.codeBlock"), () =>
+			this.editor.chain().focus().toggleCodeBlock().run(),
 		);
 
 		this.createSeparator();
 
 		// 高度な挿入機能
-		this.createButton("link", "リンク挿入", () => this.insertLink());
-		this.createButton("gem", "ルビ挿入", () => this.insertRuby());
+		this.createButton("link", t("toolbar.linkInsert"), () =>
+			this.insertLink(),
+		);
+		this.createButton("gem", t("toolbar.rubyInsert"), () =>
+			this.insertRuby(),
+		);
+		this.createButton("square-arrow-right", t("toolbar.tcyInsert"), () =>
+			this.toggleTcy(),
+		);
 
 		// 区切り線ボタン（書字方向に応じてアイコンを動的に変更）
 		const writingMode = this.options.getWritingMode?.() || "horizontal-tb";
@@ -182,25 +201,29 @@ export class TipTapCompatToolbar {
 			writingMode === "vertical-rl"
 				? "separator-vertical"
 				: "separator-horizontal";
-		this.horizontalRuleButton = this.createButton(hrIcon, "区切り線", () =>
-			this.editor.chain().focus().setHorizontalRule().run()
+		this.horizontalRuleButton = this.createButton(
+			hrIcon,
+			t("toolbar.horizontalRule"),
+			() => this.editor.chain().focus().setHorizontalRule().run(),
 		);
 
 		this.createSeparator();
 
 		// 書式クリア
-		this.createButton("eraser", "書式クリア", () => this.clearFormatting());
+		this.createButton("eraser", t("toolbar.clearFormatting"), () =>
+			this.clearFormatting(),
+		);
 
 		// ルビ表示切替ボタン
 		if (this.options.onToggleRuby) {
 			this.createSeparator();
 			this.rubyToggleButton = this.createButton(
 				"eye",
-				"ルビ表示のオン/オフ",
+				t("toolbar.ruby.toggle"),
 				() => {
 					this.options.onToggleRuby?.();
 					this.updateRubyButton();
-				}
+				},
 			);
 			this.updateRubyButton();
 		}
@@ -208,7 +231,7 @@ export class TipTapCompatToolbar {
 		// 設定ボタン
 		if (this.options.onSettings) {
 			this.createSeparator();
-			this.createButton("settings", "表示設定", () => {
+			this.createButton("settings", t("common.displaySettings"), () => {
 				this.options.onSettings?.();
 			});
 		}
@@ -216,7 +239,7 @@ export class TipTapCompatToolbar {
 		// 検索・置換ボタン
 		if (this.options.onFindReplace) {
 			this.createSeparator();
-			this.createButton("search", "検索・置換", () => {
+			this.createButton("search", t("toolbar.findReplace"), () => {
 				this.options.onFindReplace?.(true);
 			});
 		}
@@ -224,7 +247,7 @@ export class TipTapCompatToolbar {
 		// アウトラインボタン
 		if (this.options.onToggleOutline) {
 			this.createSeparator();
-			this.createButton("list-tree", "アウトライン", () => {
+			this.createButton("list-tree", t("toolbar.outline"), () => {
 				this.options.onToggleOutline?.();
 			});
 		}
@@ -234,11 +257,11 @@ export class TipTapCompatToolbar {
 			this.createSeparator();
 			this.readingModeButton = this.createButton(
 				"book",
-				"書籍モード（ページネーション）",
+				t("toolbar.readingMode.pagination"),
 				() => {
 					this.options.onToggleReadingMode?.();
 					this.updateReadingModeButton();
-				}
+				},
 			);
 			this.updateReadingModeButton();
 		}
@@ -248,8 +271,8 @@ export class TipTapCompatToolbar {
 			this.createSeparator();
 			this.auxiliaryToggleButton = this.createButton(
 				"keyboard",
-				"補助入力パネル",
-				() => this.options.onToggleAuxiliary?.()
+				t("toolbar.auxiliary.toggle"),
+				() => this.options.onToggleAuxiliary?.(),
 			);
 			this.updateAuxiliaryButton();
 		}
@@ -259,8 +282,8 @@ export class TipTapCompatToolbar {
 			this.createSeparator();
 			this.plainEditToggleButton = this.createButton(
 				"file-text",
-				"ソーステキスト編集",
-				() => this.options.onTogglePlainEdit?.()
+				t("toolbar.source.toggle"),
+				() => this.options.onTogglePlainEdit?.(),
 			);
 			this.updatePlainEditButton();
 		}
@@ -268,7 +291,7 @@ export class TipTapCompatToolbar {
 		// ステータス表示エリア
 		this.createSeparator();
 		this.statusElement = this.container.createDiv(
-			"contenteditable-toolbar-status"
+			"contenteditable-toolbar-status",
 		);
 
 		this.updateButtonStates();
@@ -277,7 +300,7 @@ export class TipTapCompatToolbar {
 	private createButton(
 		icon: string,
 		title: string,
-		action: () => void
+		action: () => void,
 	): HTMLButtonElement {
 		const button = this.container.createEl("button", {
 			cls: "clickable-icon contenteditable-toolbar-button",
@@ -302,7 +325,7 @@ export class TipTapCompatToolbar {
 		const headingButton = this.container.createEl("button", {
 			cls: "clickable-icon contenteditable-toolbar-button",
 			attr: {
-				"aria-label": "見出し",
+				"aria-label": t("toolbar.heading"),
 			},
 		}) as HTMLButtonElement;
 		setIcon(headingButton, "heading");
@@ -336,12 +359,14 @@ export class TipTapCompatToolbar {
 			for (let level = 1; level <= 6; level++) {
 				const currentLevel = level as 1 | 2 | 3 | 4 | 5 | 6;
 				menu.addItem((item) => {
-					item.setTitle(` 見出し${currentLevel}`)
+					item.setTitle(
+						t("toolbar.heading.level", { level: currentLevel }),
+					)
 						.setIcon(headingIcons[currentLevel])
 						.onClick(() => {
 							toggleHeadingForCurrentLine(
 								this.editor,
-								currentLevel
+								currentLevel,
 							);
 							this.updateButtonStates();
 						});
@@ -354,7 +379,7 @@ export class TipTapCompatToolbar {
 
 			// 見出し解除のメニュー項目を追加
 			menu.addItem((item) => {
-				item.setTitle("見出し解除")
+				item.setTitle(t("toolbar.heading.clear"))
 					.setIcon("text")
 					.onClick(() => {
 						// 見出しを段落に戻す
@@ -402,7 +427,7 @@ export class TipTapCompatToolbar {
 						url: result.url,
 						text: displayText,
 					});
-				}
+				},
 			).open();
 			return;
 		}
@@ -432,7 +457,7 @@ export class TipTapCompatToolbar {
 					.run();
 
 				this.updateButtonStates();
-			}
+			},
 		).open();
 	}
 
@@ -456,7 +481,14 @@ export class TipTapCompatToolbar {
 						ruby: result.ruby ?? "",
 						isDot: result.isDot,
 					});
-				}
+				},
+				{
+					customEmphasisChars:
+						this.options.getCustomEmphasisChars?.() ?? [],
+					onCustomEmphasisCharsChange: (chars) =>
+						this.options.setCustomEmphasisChars?.(chars),
+					contentFontFamily: this.options.getContentFontFamily?.() ?? "",
+				},
 			).open();
 			return;
 		}
@@ -464,7 +496,7 @@ export class TipTapCompatToolbar {
 		const originalSelectedText = this.editor.state.doc.textBetween(
 			from,
 			to,
-			""
+			"",
 		);
 
 		// テキストが選択されていない場合は何もしない
@@ -512,31 +544,55 @@ export class TipTapCompatToolbar {
 				? rubyNodeText
 				: originalSelectedText;
 
-		new RubyInputModal(this.app, displayText, (result: RubyInputResult) => {
-			if (result.cancelled) {
-				return;
-			}
+		new RubyInputModal(
+			this.app,
+			displayText,
+			(result: RubyInputResult) => {
+				if (result.cancelled) {
+					return;
+				}
+				const emphasisChar = (result.ruby ?? "").trim() || "・";
 
-			const rubyEnabled = this.options.getRubyEnabled?.() ?? true;
+				const rubyEnabled = this.options.getRubyEnabled?.() ?? true;
 
-			// 空のルビの場合（ルビ除去）
-			if (!result.ruby || result.ruby.trim() === "") {
-				// aozoraRubyノードが選択されている場合のみ、ノードを削除してテキストのみ残す
-				if (hasRubyNode) {
-					// ルビノードを削除してテキストのみ残す（元の選択範囲のテキストで置き換え）
+				// 空のルビの場合（ルビ除去）
+				if (!result.ruby || result.ruby.trim() === "") {
+					// aozoraRubyノードが選択されている場合のみ、ノードを削除してテキストのみ残す
+					if (hasRubyNode) {
+						// ルビノードを削除してテキストのみ残す（元の選択範囲のテキストで置き換え）
+						this.editor
+							.chain()
+							.focus()
+							.deleteRange({ from: rangeFrom, to: rangeTo })
+							.insertContent(originalSelectedText)
+							.run();
+					}
+					// ルビノードがない場合は何もしない
+					return;
+				}
+
+				// ルビOFFの場合は、青空形式を「テキストとして」挿入する（CE/Previewと同等）
+				if (!rubyEnabled) {
 					this.editor
 						.chain()
 						.focus()
 						.deleteRange({ from: rangeFrom, to: rangeTo })
-						.insertContent(originalSelectedText)
 						.run();
-				}
-				// ルビノードがない場合は何もしない
-				return;
-			}
 
-			// ルビOFFの場合は、青空形式を「テキストとして」挿入する（CE/Previewと同等）
-			if (!rubyEnabled) {
+					if (result.isDot) {
+						const rubyText = Array.from(displayText)
+							.map((char) => `｜${char}《${emphasisChar}》`)
+							.join("");
+						this.editor.chain().focus().insertContent(rubyText).run();
+					} else {
+						const rubyText = `｜${displayText}《${result.ruby}》`;
+						this.editor.chain().focus().insertContent(rubyText).run();
+					}
+					this.updateButtonStates();
+					return;
+				}
+
+				// 拡張された選択範囲を削除してから、擬似ルビノードを挿入
 				this.editor
 					.chain()
 					.focus()
@@ -544,69 +600,56 @@ export class TipTapCompatToolbar {
 					.run();
 
 				if (result.isDot) {
-					const rubyText = Array.from(displayText)
-						.map((char) => `｜${char}《・》`)
-						.join("");
-					this.editor.chain().focus().insertContent(rubyText).run();
+					Array.from(displayText).forEach((char) => {
+						this.editor
+							.chain()
+							.focus()
+							.insertContent({
+								type: "aozoraRuby",
+								attrs: {
+									ruby: emphasisChar,
+									hasDelimiter: true,
+								},
+								content: [
+									{
+										type: "text",
+										text: char,
+									},
+								],
+							})
+							.run();
+					});
 				} else {
-					const rubyText = `｜${displayText}《${result.ruby}》`;
-					this.editor.chain().focus().insertContent(rubyText).run();
-				}
-				this.updateButtonStates();
-				return;
-			}
-
-			// 拡張された選択範囲を削除してから、擬似ルビノードを挿入
-			this.editor
-				.chain()
-				.focus()
-				.deleteRange({ from: rangeFrom, to: rangeTo })
-				.run();
-
-			if (result.isDot) {
-				// 傍点の場合、各文字に対して傍点を付ける
-				Array.from(displayText).forEach((char) => {
+					// 通常のルビの場合、aozoraRubyノードとして挿入
 					this.editor
 						.chain()
 						.focus()
 						.insertContent({
 							type: "aozoraRuby",
 							attrs: {
-								ruby: "・",
+								ruby: result.ruby,
 								hasDelimiter: true,
 							},
 							content: [
 								{
 									type: "text",
-									text: char,
+									text: displayText,
 								},
 							],
 						})
 						.run();
-				});
-			} else {
-				// 通常のルビの場合、aozoraRubyノードとして挿入
-				this.editor
-					.chain()
-					.focus()
-					.insertContent({
-						type: "aozoraRuby",
-						attrs: {
-							ruby: result.ruby,
-							hasDelimiter: true,
-						},
-						content: [
-							{
-								type: "text",
-								text: displayText,
-							},
-						],
-					})
-					.run();
-			}
+				}
 
-			this.updateButtonStates();
-		}).open();
+				this.updateButtonStates();
+			},
+			{
+				customEmphasisChars:
+					this.options.getCustomEmphasisChars?.() ?? [],
+				onCustomEmphasisCharsChange: (chars) =>
+					this.options.setCustomEmphasisChars?.(chars),
+				contentFontFamily: this.options.getContentFontFamily?.() ?? "",
+			},
+		).open();
 	}
 
 	private clearFormatting(): void {
@@ -616,13 +659,120 @@ export class TipTapCompatToolbar {
 		}
 		// すべてのマークを削除
 		this.editor.chain().focus().unsetAllMarks().run();
+		clearRubyNodesInSelection(this.editor);
+		clearTcyNodesInSelection(this.editor);
 
+		this.updateButtonStates();
+	}
+
+	private clearTcy(): void {
+		if (this.runInlineCommand({ type: "clearTcy" }, () => {})) {
+			this.updateButtonStates();
+			return;
+		}
+		clearTcyNodesInSelection(this.editor);
+		this.updateButtonStates();
+	}
+
+	private toggleTcy(): void {
+		if (this.isTcyActive()) {
+			this.clearTcy();
+			return;
+		}
+		this.insertTcy();
+	}
+
+	private isTcyActive(): boolean {
+		if (this.options.getPlainEditEnabled?.()) {
+			const selectedText =
+				this.options.getPlainEditSelectionText?.() ?? "";
+			if (!selectedText) return false;
+			const regex = createAozoraTcyRegExp();
+			for (const match of selectedText.matchAll(regex)) {
+				const body = match.groups?.body ?? "";
+				if (isValidAozoraTcyBody(body)) {
+					return true;
+				}
+			}
+			return false;
+		}
+		return this.editor.isActive("aozoraTcy");
+	}
+
+	private insertTcy(): void {
+		if (this.options.getPlainEditEnabled?.()) {
+			const selectedText =
+				this.options.getPlainEditSelectionText?.() ?? "";
+			if (!isValidAozoraTcyBody(selectedText)) {
+				return;
+			}
+			this.options.onPlainEditCommand?.({
+				type: "tcy",
+				text: selectedText,
+			});
+			return;
+		}
+
+		const { from, to } = this.editor.state.selection;
+		const originalSelectedText = this.editor.state.doc.textBetween(
+			from,
+			to,
+			"",
+		);
+		if (!originalSelectedText || originalSelectedText.includes("\n")) {
+			return;
+		}
+
+		let rangeFrom = from;
+		let rangeTo = to;
+		let hasTcyNode = false;
+		let tcyNodeText = "";
+		const $from = this.editor.state.doc.resolve(from);
+		const $to = this.editor.state.doc.resolve(to);
+
+		for (let depth = $from.depth; depth > 0; depth--) {
+			const node = $from.node(depth);
+			if (node.type.name === "aozoraTcy") {
+				const nodePos = $from.before(depth);
+				rangeFrom = Math.min(rangeFrom, nodePos);
+				rangeTo = Math.max(rangeTo, nodePos + node.nodeSize);
+				tcyNodeText = node.textContent;
+				hasTcyNode = true;
+				break;
+			}
+		}
+		for (let depth = $to.depth; depth > 0; depth--) {
+			const node = $to.node(depth);
+			if (node.type.name === "aozoraTcy") {
+				const nodePos = $to.before(depth);
+				rangeFrom = Math.min(rangeFrom, nodePos);
+				rangeTo = Math.max(rangeTo, nodePos + node.nodeSize);
+				tcyNodeText = node.textContent;
+				hasTcyNode = true;
+				break;
+			}
+		}
+
+		const displayText = hasTcyNode ? tcyNodeText : originalSelectedText;
+		if (!isValidAozoraTcyBody(displayText)) {
+			return;
+		}
+
+		this.editor
+			.chain()
+			.focus()
+			.deleteRange({ from: rangeFrom, to: rangeTo })
+			.insertContent({
+				type: "aozoraTcy",
+				content: [{ type: "text", text: displayText }],
+			})
+			.run();
 		this.updateButtonStates();
 	}
 
 	private runInlineCommand(
 		command: PlainEditCommand,
-		fallback: () => void
+		fallback: () => void,
 	): boolean {
 		if (this.options.getPlainEditEnabled?.()) {
 			const handled = this.options.onPlainEditCommand?.(command) ?? false;
@@ -657,12 +807,21 @@ export class TipTapCompatToolbar {
 		this.updateButtonState("underline", this.editor.isActive("underline"));
 		this.updateButtonState(
 			"highlighter",
-			this.editor.isActive("obsidianHighlight")
+			this.editor.isActive("obsidianHighlight"),
 		);
+		const tcyActive = this.isTcyActive();
+		this.updateButtonState("square-arrow-right", tcyActive);
+		const tcyButton = this.buttons.get("square-arrow-right");
+		if (tcyButton) {
+			tcyButton.setAttribute(
+				"aria-label",
+				tcyActive ? t("toolbar.tcyClear") : t("toolbar.tcyInsert"),
+			);
+		}
 		this.updateButtonState("list", this.editor.isActive("bulletList"));
 		this.updateButtonState(
 			"list-ordered",
-			this.editor.isActive("orderedList")
+			this.editor.isActive("orderedList"),
 		);
 		this.updateButtonState("quote", this.editor.isActive("blockquote"));
 		this.updateButtonState("code-2", this.editor.isActive("codeBlock"));
@@ -715,20 +874,20 @@ export class TipTapCompatToolbar {
 	 * Undo/Redo により、過去のノード属性（writingMode）が復元されて
 	 * ホストの書字方向と不整合になるケースがあるため、実行後に再同期する。
 	 */
-		private reapplyCurrentWritingMode(): void {
-			const mode = this.options.getWritingMode?.() ?? "vertical-rl";
-			try {
-				this.editor.commands.setWritingMode(mode);
-			} catch (_) {
-				// noop: 書字方向の再適用失敗は無視
-			}
+	private reapplyCurrentWritingMode(): void {
+		const mode = this.options.getWritingMode?.() ?? "vertical-rl";
+		try {
+			this.editor.commands.setWritingMode(mode);
+		} catch (_) {
+			// noop: 書字方向の再適用失敗は無視
 		}
+	}
 
 	updateSyncStatus(
 		state: Pick<
 			SyncState,
 			"dirty" | "saving" | "mode" | "lastSyncResult" | "lastSyncMessage"
-		>
+		>,
 	): void {
 		if (!this.statusElement) return;
 
@@ -747,8 +906,8 @@ export class TipTapCompatToolbar {
 				cls: "clickable-icon contenteditable-toolbar-button contenteditable-toolbar-mode-button",
 				attr: {
 					"aria-label": isManual
-						? "手動同期モード（クリックで自動同期に切替）"
-						: "自動同期モード（クリックで手動同期に切替）",
+						? t("toolbar.syncMode.manualToAuto")
+						: t("toolbar.syncMode.autoToManual"),
 				},
 			});
 
@@ -774,23 +933,23 @@ export class TipTapCompatToolbar {
 		});
 
 		let statusIcon = "check-circle";
-		let statusTitle = "保存済み";
+		let statusTitle = t("toolbar.status.saved");
 		statusButton.addClass("is-success");
 
 		if (state.saving) {
 			statusIcon = "loader";
-			statusTitle = "保存中...";
+			statusTitle = t("toolbar.status.saving");
 			statusButton.removeClass("is-success");
 			statusButton.addClass("is-accent");
 			statusButton.addClass("is-loading");
 		} else if (state.lastSyncResult === "error") {
 			statusIcon = "x-circle";
-			statusTitle = state.lastSyncMessage || "同期エラー";
+			statusTitle = state.lastSyncMessage || t("toolbar.status.syncError");
 			statusButton.removeClass("is-success");
 			statusButton.addClass("is-error");
 		} else if (state.dirty) {
 			statusIcon = "circle-dot";
-			statusTitle = "未保存";
+			statusTitle = t("toolbar.status.unsaved");
 			statusButton.removeClass("is-success");
 			statusButton.addClass("is-warning");
 		}
@@ -800,12 +959,18 @@ export class TipTapCompatToolbar {
 		statusButton.disabled = true;
 
 		// 手動保存ボタン（手動モードの場合のみ）
-		if (!this.isReadOnly && state.mode === "manual" && this.options.onManualSync) {
+		if (
+			!this.isReadOnly &&
+			state.mode === "manual" &&
+			this.options.onManualSync
+		) {
 			const modKey = Platform.isMacOS ? "⌘" : "Ctrl";
 			const saveButton = this.statusElement.createEl("button", {
 				cls: "clickable-icon contenteditable-toolbar-button contenteditable-toolbar-save-button",
 				attr: {
-					"aria-label": `保存 (${modKey}+Shift+S)`,
+					"aria-label": t("toolbar.sync.saveShortcut", {
+						shortcut: `${modKey}+Shift+S`,
+					}),
 				},
 			});
 			setIcon(saveButton, "save");
@@ -832,7 +997,7 @@ export class TipTapCompatToolbar {
 
 	private setButtonActive(
 		button: HTMLButtonElement,
-		isActive: boolean
+		isActive: boolean,
 	): void {
 		if (isActive) {
 			button.addClass("is-active");
@@ -872,7 +1037,9 @@ export class TipTapCompatToolbar {
 
 		this.writingModeButton.setAttribute(
 			"aria-label",
-			isVertical ? "横書きに切り替え" : "縦書きに切り替え"
+			isVertical
+				? t("toolbar.writingMode.toHorizontal")
+				: t("toolbar.writingMode.toVertical"),
 		);
 	}
 
@@ -891,8 +1058,8 @@ export class TipTapCompatToolbar {
 		this.auxiliaryToggleButton.setAttribute(
 			"aria-label",
 			enabled
-				? "補助入力パネルをオフにする"
-				: "補助入力パネルをオンにする"
+				? t("toolbar.auxiliary.disable")
+				: t("toolbar.auxiliary.enable"),
 		);
 	}
 
@@ -909,7 +1076,7 @@ export class TipTapCompatToolbar {
 		this.setButtonActive(this.plainEditToggleButton, enabled);
 		this.plainEditToggleButton.setAttribute(
 			"aria-label",
-			enabled ? "装飾表示に戻す" : "ソーステキスト編集モード"
+			enabled ? t("toolbar.source.disable") : t("toolbar.source.enable"),
 		);
 	}
 
@@ -921,7 +1088,7 @@ export class TipTapCompatToolbar {
 		setIcon(this.rubyToggleButton, icon);
 		this.rubyToggleButton.setAttribute(
 			"aria-label",
-			enabled ? "ルビ表示をオフにする" : "ルビ表示をオンにする"
+			enabled ? t("toolbar.ruby.disable") : t("toolbar.ruby.enable"),
 		);
 		this.setButtonActive(this.rubyToggleButton, enabled);
 	}
@@ -954,7 +1121,7 @@ export class TipTapCompatToolbar {
 		// 現在の選択範囲を含む blockquote を特定
 		const range = $from.blockRange(
 			$to,
-			(node) => node.type.name === "blockquote"
+			(node) => node.type.name === "blockquote",
 		);
 		if (!range) return;
 
@@ -975,7 +1142,7 @@ export class TipTapCompatToolbar {
 			existingNextNode.content.size === 0
 		) {
 			const tr = state.tr.setSelection(
-				TextSelection.near(state.doc.resolve(insertPos + 1))
+				TextSelection.near(state.doc.resolve(insertPos + 1)),
 			);
 			this.editor.view.dispatch(tr);
 			return;
@@ -1003,7 +1170,7 @@ export class TipTapCompatToolbar {
 
 	setReadOnly(
 		readOnly: boolean,
-		options: { hideEditingButtons?: boolean } = {}
+		options: { hideEditingButtons?: boolean } = {},
 	): void {
 		this.isReadOnly = readOnly;
 		this.hideEditingButtonsWhenReadOnly =
@@ -1041,7 +1208,10 @@ export class TipTapCompatToolbar {
 		this.updateSeparatorVisibility();
 		this.updateReadingModeButton();
 		if (this.statusElement) {
-			this.statusElement.classList.toggle("is-read-only", this.isReadOnly);
+			this.statusElement.classList.toggle(
+				"is-read-only",
+				this.isReadOnly,
+			);
 		}
 	}
 
@@ -1049,7 +1219,8 @@ export class TipTapCompatToolbar {
 		const children = Array.from(this.container.children) as HTMLElement[];
 		const isSeparator = (el: HTMLElement) =>
 			el.classList.contains("contenteditable-toolbar-separator");
-		const isVisible = (el: HTMLElement) => !el.classList.contains("is-hidden");
+		const isVisible = (el: HTMLElement) =>
+			!el.classList.contains("is-hidden");
 
 		const findPrevControl = (startIndex: number) => {
 			for (let i = startIndex - 1; i >= 0; i--) {

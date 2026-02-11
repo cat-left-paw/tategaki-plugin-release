@@ -1,13 +1,19 @@
 import { App, Modal } from "obsidian";
+import { t } from "../../shared/i18n";
 
 /**
  * 未保存の変更を確認するモーダル
  */
 export class UnsavedChangesModal extends Modal {
 	private result: "save" | "discard" | "cancel" | null = null;
-	private resolvePromise: ((value: "save" | "discard" | "cancel") => void) | null = null;
+	private resolvePromise:
+		| ((value: "save" | "discard" | "cancel") => void)
+		| null = null;
 
-	constructor(app: App, private message: string = "未保存の変更があります。") {
+	constructor(
+		app: App,
+		private message: string = t("modal.unsavedChanges.defaultMessage"),
+	) {
 		super(app);
 	}
 
@@ -15,7 +21,7 @@ export class UnsavedChangesModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl("h2", { text: "未保存の変更" });
+		contentEl.createEl("h2", { text: t("modal.unsavedChanges.title") });
 		contentEl.createEl("p", { text: this.message });
 
 		const buttonContainer = contentEl.createDiv({
@@ -24,7 +30,7 @@ export class UnsavedChangesModal extends Modal {
 
 		// 保存ボタン
 		const saveButton = buttonContainer.createEl("button", {
-			text: "保存",
+			text: t("common.save"),
 			cls: "mod-cta",
 		});
 		saveButton.addEventListener("click", () => {
@@ -34,7 +40,7 @@ export class UnsavedChangesModal extends Modal {
 
 		// 破棄ボタン
 		const discardButton = buttonContainer.createEl("button", {
-			text: "破棄",
+			text: t("common.discard"),
 			cls: "mod-warning",
 		});
 		discardButton.addEventListener("click", () => {
@@ -44,7 +50,7 @@ export class UnsavedChangesModal extends Modal {
 
 		// キャンセルボタン
 		const cancelButton = buttonContainer.createEl("button", {
-			text: "キャンセル",
+			text: t("common.cancel"),
 		});
 		cancelButton.addEventListener("click", () => {
 			this.result = "cancel";

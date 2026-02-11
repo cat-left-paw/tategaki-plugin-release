@@ -1,5 +1,6 @@
 import { App, Notice, TFile } from "obsidian";
 import { TategakiV2Settings, SyncMode } from "../../types/settings";
+import { t } from "../../shared/i18n";
 import {
 	ConflictResolutionModal,
 	type ConflictData,
@@ -155,14 +156,14 @@ export class BlockContentSyncManager {
 
 	async triggerManualSync(): Promise<void> {
 		if (!this.currentFile) {
-			new Notice("同期するファイルが開かれていません。", 2000);
+			new Notice(t("notice.sync.noFileOpen"), 2000);
 			return;
 		}
 
 		this.isManualSyncInProgress = true;
 		try {
 			await this.persistChanges({ force: true });
-			new Notice("ファイルを保存しました。", 2000);
+			new Notice(t("notice.sync.fileSaved"), 2000);
 		} finally {
 			this.isManualSyncInProgress = false;
 		}
@@ -359,10 +360,10 @@ export class BlockContentSyncManager {
 			diskMarkdownBefore = await this.app.vault.read(this.currentFile);
 		} catch (error) {
 			console.error("Tategaki BlockSync: failed to read file before save", error);
-			new Notice("保存前の読み取りに失敗しました。", 3000);
+			new Notice(t("notice.sync.readBeforeSaveFailed"), 3000);
 			this.updateState({
 				lastSyncResult: "error",
-				lastSyncMessage: "保存前の読み取りに失敗しました。",
+				lastSyncMessage: t("notice.sync.readBeforeSaveFailed"),
 			});
 			return;
 		}
@@ -410,7 +411,7 @@ export class BlockContentSyncManager {
 					} catch (error) {
 						console.error("Tategaki BlockSync: failed to write sync backup", error);
 						new Notice(
-							"バックアップの作成に失敗しました（保存は続行します）。",
+							t("notice.sync.backupCreateFailedContinue"),
 							3500
 						);
 					}
@@ -425,7 +426,7 @@ export class BlockContentSyncManager {
 			} catch (error) {
 				console.error("Tategaki BlockSync: failed to read back file after save", error);
 				new Notice(
-					"保存後の読み戻し検証に失敗しました（バックアップ済み）。",
+					t("notice.sync.readBackFailedBackedUp"),
 					4000
 				);
 				this.lastSavedMarkdown = markdown;
@@ -436,7 +437,7 @@ export class BlockContentSyncManager {
 					dirty: false,
 					lastSavedAt: Date.now(),
 					lastSyncResult: "error",
-					lastSyncMessage: "保存後の読み戻し検証に失敗しました。",
+					lastSyncMessage: t("notice.sync.readBackFailed"),
 				});
 				return;
 			}
@@ -446,20 +447,20 @@ export class BlockContentSyncManager {
 					file: this.currentFile.path,
 				});
 				new Notice(
-					"同期に失敗した可能性があります（読み戻し不一致）。バックアップ済みです。",
+					t("notice.sync.mismatchBackedUp"),
 					5000
 				);
 
 				try {
 					await this.app.vault.modify(this.currentFile, diskMarkdownBefore);
 					new Notice(
-						"安全のため同期前の内容へロールバックしました。",
+						t("notice.sync.rollbackDone"),
 						4500
 					);
 				} catch (rollbackError) {
 					console.error("Tategaki BlockSync: rollback failed", rollbackError);
 					new Notice(
-						"ロールバックに失敗しました。バックアップから復元してください。",
+						t("notice.sync.rollbackFailedRestore"),
 						6000
 					);
 				}
@@ -471,7 +472,7 @@ export class BlockContentSyncManager {
 					saving: false,
 					dirty: true,
 					lastSyncResult: "error",
-					lastSyncMessage: "読み戻し不一致のためロールバックしました。",
+					lastSyncMessage: t("notice.sync.rollbackDueToMismatch"),
 				});
 				return;
 			}
@@ -488,11 +489,11 @@ export class BlockContentSyncManager {
 			});
 		} catch (error) {
 			console.error("Tategaki BlockSync: failed to save file", error);
-			new Notice("ファイルの保存に失敗しました。", 3000);
+			new Notice(t("notice.sync.saveFailed"), 3000);
 			this.updateState({
 				saving: false,
 				lastSyncResult: "error",
-				lastSyncMessage: "ファイルの保存に失敗しました。",
+				lastSyncMessage: t("notice.sync.saveFailed"),
 			});
 		} finally {
 			this.isSaving = false;
@@ -534,7 +535,7 @@ export class BlockContentSyncManager {
 			return true;
 		} catch (error) {
 			console.error("Tategaki BlockSync: failed to load file", error);
-			new Notice("ファイルの読み込みに失敗しました。", 2000);
+			new Notice(t("notice.sync.loadFailed"), 2000);
 			return false;
 		}
 	}
@@ -602,7 +603,7 @@ export class BlockContentSyncManager {
 				(result: ConflictResolutionResult | null) => {
 					void (async () => {
 						if (!result || result.action === "cancel") {
-							new Notice("競合解決がキャンセルされました。", 3000);
+							new Notice(t("notice.sync.conflictCancelled"), 3000);
 							resolve();
 							return;
 						}
@@ -614,7 +615,7 @@ export class BlockContentSyncManager {
 										force: true,
 										skipConflictCheck: true,
 									});
-									new Notice("現在の内容で上書き保存しました。", 3000);
+									new Notice(t("notice.sync.conflictOverwriteSaved"), 3000);
 									break;
 
 								case "accept-external":
@@ -627,7 +628,7 @@ export class BlockContentSyncManager {
 										saving: false,
 										lastSavedAt: Date.now(),
 									});
-									new Notice("外部変更を取り込みました。", 3000);
+									new Notice(t("notice.sync.conflictAcceptedExternal"), 3000);
 									break;
 
 								case "keep-both":
@@ -639,7 +640,7 @@ export class BlockContentSyncManager {
 							}
 						} catch (error) {
 							console.error("Tategaki BlockSync: conflict resolution failed", error);
-							new Notice("競合解決処理でエラーが発生しました。", 4000);
+							new Notice(t("notice.sync.conflictResolutionFailed"), 4000);
 						}
 
 						resolve();
@@ -662,9 +663,10 @@ export class BlockContentSyncManager {
 
 		let counter = 0;
 		let targetPath: string;
+		const conflictCopyLabel = t("notice.sync.conflictCopyLabel");
 		do {
 			const suffix = counter === 0 ? "" : `-${counter}`;
-			const fileName = `${baseName} (競合コピー ${timestamp}${suffix}).${extension}`;
+			const fileName = `${baseName} (${conflictCopyLabel} ${timestamp}${suffix}).${extension}`;
 			targetPath = directoryPath ? `${directoryPath}/${fileName}` : fileName;
 			counter += 1;
 		} while (this.app.vault.getAbstractFileByPath(targetPath));
@@ -682,7 +684,7 @@ export class BlockContentSyncManager {
 		});
 
 		const copyName = this.extractFileName(targetPath);
-		new Notice(`現在の内容を「${copyName}」として保存し、外部変更を反映しました。`, 4000);
+		new Notice(t("notice.sync.keepBothApplied", { copyName }), 4000);
 	}
 
 	private formatTimestamp(date: Date): string {
@@ -747,7 +749,7 @@ export class BlockContentSyncManager {
 								error
 							);
 							new Notice(
-								"ファイル切り替え処理でエラーが発生しました。",
+								t("notice.sync.fileSwitchActionFailed"),
 								3000
 							);
 							resolve(false);
@@ -762,12 +764,12 @@ export class BlockContentSyncManager {
 		switch (action) {
 			case "save-and-switch":
 				await this.persistChanges({ force: true });
-				new Notice("変更を保存してファイルを切り替えました。", 2000);
+				new Notice(t("notice.sync.switchedAfterSave"), 2000);
 				break;
 			case "discard-and-switch":
 				this.dirty = false;
 				this.updateState({ dirty: false });
-				new Notice("変更を破棄してファイルを切り替えました。", 2000);
+				new Notice(t("notice.sync.switchedAfterDiscard"), 2000);
 				break;
 		}
 	}

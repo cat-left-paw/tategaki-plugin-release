@@ -23,6 +23,7 @@ import {
 		restoreIndentation,
 	} from "./wysiwyg/tiptap-compat/markdown-adapter";
 	import { AozoraRubyNode } from "./wysiwyg/tiptap-compat/extensions/aozora-ruby";
+	import { AozoraTcyNode } from "./wysiwyg/tiptap-compat/extensions/aozora-tcy";
 import {
 	calculatePagedPageCount,
 	calculatePagedScrollTop,
@@ -30,6 +31,7 @@ import {
 import { debugWarn } from "./shared/logger";
 import { compareSemver } from "./shared/version";
 import { computeLineRanges } from "./wysiwyg/sot/line-ranges";
+import { collectAutoTcyRanges } from "./shared/aozora-tcy";
 
 /**
  * テスト結果の型
@@ -63,7 +65,9 @@ export class TategakiTestSuite {
 			await this.testTipTapCompatStrictLineNormalization();
 			await this.testTipTapCompatHeadingIndentationPreserved();
 			await this.testTipTapCompatRubyDisabledFlattensRuby();
-			await this.testTipTapCompatBlockquoteSerializationAddsBlankLine();
+		await this.testTipTapCompatTcyRoundTrip();
+		await this.testAutoTcyRangeDetection();
+		await this.testTipTapCompatBlockquoteSerializationAddsBlankLine();
 			await this.testTipTapCompatRubyCaretNavigation();
 			await this.testPagedReadingModePaginationMath();
 			await this.testSoTLineRanges();
@@ -665,7 +669,73 @@ export class TategakiTestSuite {
 			}
 		}
 
-		private async testTipTapCompatHeadingIndentationPreserved(): Promise<void> {
+		private async testTipTapCompatTcyRoundTrip(): Promise<void> {
+			const testName = "TipTap開発版の縦中横（｟..｠）往復";
+			const startTime = performance.now();
+
+			const host = document.createElement("div");
+			host.style.cssText = `
+				position: absolute;
+				left: -9999px;
+				top: -9999px;
+				width: 400px;
+				height: 200px;
+			`;
+
+			try {
+				const markdown = "時刻は｟12｠です";
+				const normalized = normalizeMarkdownForTipTap(
+					protectIndentation(markdown)
+				);
+				if (!normalized.includes('data-tategaki-tcy="1"')) {
+					throw new Error("｟..｠ がTCY spanに変換されていません");
+				}
+
+				document.body.appendChild(host);
+				const editor = new Editor({
+					element: host,
+					extensions: [Document, Paragraph, Text, AozoraTcyNode],
+					content:
+						'<p>時刻は<span class="tategaki-md-tcy" data-tategaki-tcy="1">12</span>です</p>',
+				});
+
+				try {
+					const adapter = createTipTapMarkdownAdapter(editor);
+					const roundTrip = adapter.getMarkdown();
+					if (!roundTrip.includes("｟12｠")) {
+						throw new Error(`TCYがMarkdownへ戻っていません: ${JSON.stringify(roundTrip)}`);
+					}
+				} finally {
+					editor.destroy();
+				}
+
+				const duration = performance.now() - startTime;
+				this.results.push({
+					name: testName,
+					success: true,
+					message: "TCYはTipTap内で保持され、Markdownへ｟..｠で復元されます",
+					duration,
+				});
+			} catch (error) {
+				const duration = performance.now() - startTime;
+				this.results.push({
+					name: testName,
+					success: false,
+					message: `TipTapTCY往復テスト失敗: ${error.message}`,
+					duration,
+				});
+			} finally {
+				try {
+					if (host.parentElement) {
+						host.parentElement.removeChild(host);
+					}
+				} catch (_error) {
+					// noop
+				}
+			}
+		}
+
+	private async testTipTapCompatHeadingIndentationPreserved(): Promise<void> {
 			const testName = "TipTap開発版の見出し字下げ（全角空白保持）";
 			const startTime = performance.now();
 
@@ -836,6 +906,46 @@ export class TategakiTestSuite {
 			} catch (_error) {
 				// クリーンアップ失敗は無視
 			}
+		}
+	}
+
+	private async testAutoTcyRangeDetection(): Promise<void> {
+		const testName = "自動TCY抽出（英数字2-4文字 + !!/!?/??）";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const sample = "A 12 !! !? ?? ABCD HELLO ｟34｠ B9";
+			const ranges = collectAutoTcyRanges(sample);
+			const bodies = ranges.map((range) => range.text);
+
+			assert(bodies.includes("12"), "12 が抽出されていません");
+			assert(bodies.includes("!!"), "!! が抽出されていません");
+			assert(bodies.includes("!?"), "!? が抽出されていません");
+			assert(bodies.includes("??"), "?? が抽出されていません");
+			assert(bodies.includes("ABCD"), "ABCD が抽出されていません");
+			assert(bodies.includes("B9"), "B9 が抽出されていません");
+			assert(!bodies.includes("HELLO"), "5文字英字は抽出対象外です");
+			assert(!bodies.includes("34"), "明示TCY内の本文は抽出対象外です");
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "自動TCYの抽出条件が期待通りです",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `自動TCY抽出テスト失敗: ${error.message}`,
+				duration,
+			});
 		}
 	}
 

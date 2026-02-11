@@ -1,4 +1,5 @@
 import { App, ButtonComponent, Modal, Notice, TextComponent } from "obsidian";
+import { t } from "../i18n";
 
 type NewNoteModalOptions = {
 	defaultFolder?: string | null;
@@ -26,15 +27,17 @@ export class NewNoteModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		this.titleEl.setText("新規ノートを作成");
+		this.titleEl.setText(t("modal.newNote.title"));
 
 		const desc = contentEl.createDiv("tategaki-new-note-desc");
-		desc.setText("ファイル名を入力してください（.md は省略可）");
+		desc.setText(t("modal.newNote.desc"));
 
 		if (this.defaultFolder !== null) {
 			const folderInfo = contentEl.createDiv("tategaki-new-note-folder-info");
 			folderInfo.setText(
-				`作成先: ${this.defaultFolder || "/"}`
+				t("modal.newNote.destination", {
+					folder: this.defaultFolder || "/",
+				}),
 			);
 		}
 
@@ -43,7 +46,7 @@ export class NewNoteModal extends Modal {
 		);
 		this.input = new TextComponent(inputContainer);
 		this.input.inputEl.addClass("tategaki-new-note-input");
-		this.input.setPlaceholder("新規ノート名");
+		this.input.setPlaceholder(t("modal.newNote.placeholder"));
 		if (this.initialValue) {
 			this.input.setValue(this.initialValue);
 		}
@@ -51,11 +54,11 @@ export class NewNoteModal extends Modal {
 		const buttonContainer = contentEl.createDiv("tategaki-new-note-buttons");
 
 		new ButtonComponent(buttonContainer)
-			.setButtonText("キャンセル")
+			.setButtonText(t("common.cancel"))
 			.onClick(() => this.close());
 
 		new ButtonComponent(buttonContainer)
-			.setButtonText("作成")
+			.setButtonText(t("modal.newNote.create"))
 			.setClass("mod-cta")
 			.onClick(() => this.submit());
 
@@ -74,7 +77,7 @@ export class NewNoteModal extends Modal {
 	private submit(): void {
 		const value = this.input?.getValue().trim() ?? "";
 		if (!value) {
-			new Notice("ファイル名を入力してください。", 2000);
+			new Notice(t("notice.fileNameRequired"), 2000);
 			return;
 		}
 		this.close();

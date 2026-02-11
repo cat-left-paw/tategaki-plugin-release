@@ -3,6 +3,8 @@
  * Provides formatting operations using Range/DOM APIs
  */
 
+import { t } from "../../shared/i18n";
+
 export interface FormattingState {
     bold: boolean;
     italic: boolean;
@@ -190,7 +192,7 @@ export class FormattingManager {
         if (range.collapsed) {
             const link = document.createElement('a');
             link.href = url;
-            link.textContent = 'リンクテキスト';
+            link.textContent = t("link.defaultText");
 
             range.insertNode(link);
 

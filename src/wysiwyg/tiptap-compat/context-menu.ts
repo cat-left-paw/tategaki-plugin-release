@@ -9,8 +9,17 @@ import {
 	LinkInputModal,
 	LinkInputResult,
 } from "../../shared/ui/link-input-modal";
+import {
+	clearRubyNodesInSelection,
+	clearTcyNodesInSelection,
+} from "./clear-formatting-utils";
 import type { PlainEditCommand } from "./plain-edit-mode";
 import { debugWarn } from "../../shared/logger";
+import { t } from "../../shared/i18n";
+import {
+	createAozoraTcyRegExp,
+	isValidAozoraTcyBody,
+} from "../../shared/aozora-tcy";
 
 export interface ContextMenuAction {
 	name: string;
@@ -31,6 +40,9 @@ export interface TipTapCompatContextMenuOptions {
 	isReadOnly?: () => boolean;
 	onPlainEditCommand?: (command: PlainEditCommand) => boolean;
 	getPlainEditSelectionText?: () => string;
+	getCustomEmphasisChars?: () => string[];
+	setCustomEmphasisChars?: (chars: string[]) => void;
+	getContentFontFamily?: () => string;
 }
 
 export class TipTapCompatContextMenu {
@@ -108,7 +120,7 @@ export class TipTapCompatContextMenu {
 			if (!text) return;
 			const copied = await this.writeTextToClipboard(text);
 			if (!copied) {
-				new Notice("コピーに失敗しました。", 2500);
+				new Notice(t("context.notice.copyFailed"), 2500);
 			}
 		})();
 	}
@@ -119,7 +131,7 @@ export class TipTapCompatContextMenu {
 			if (!text) return;
 			const copied = await this.writeTextToClipboard(text);
 			if (!copied) {
-				new Notice("切り取りに失敗しました。", 2500);
+				new Notice(t("context.notice.cutFailed"), 2500);
 				return;
 			}
 			if (this.replaceActiveInputSelection("")) {
@@ -133,7 +145,7 @@ export class TipTapCompatContextMenu {
 		void (async () => {
 			try {
 				if (!navigator.clipboard?.readText) {
-					new Notice("貼り付けに失敗しました。ブラウザの権限設定を確認してください。", 3000);
+					new Notice(t("context.notice.pasteFailed"), 3000);
 					return;
 				}
 				const text = await navigator.clipboard.readText();
@@ -144,7 +156,7 @@ export class TipTapCompatContextMenu {
 				editor.chain().focus().insertContent(text).run();
 			} catch (error) {
 				debugWarn("Tategaki TipTap: paste failed", error);
-				new Notice("貼り付けに失敗しました。ブラウザの権限設定を確認してください。", 3000);
+				new Notice(t("context.notice.pasteFailed"), 3000);
 			}
 		})();
 	}
@@ -173,27 +185,27 @@ export class TipTapCompatContextMenu {
 			return [
 				{
 					name: "cut",
-					title: "切り取り",
+					title: t("common.cut"),
 					icon: "scissors",
 					action: (editor) => this.cutSelection(editor),
 					isDisabled: (editor) => this.getSelectedText(editor).length === 0,
 				},
 				{
 					name: "copy",
-					title: "コピー",
+					title: t("common.copy"),
 					icon: "copy",
 					action: (editor) => this.copySelection(editor),
 					isDisabled: (editor) => this.getSelectedText(editor).length === 0,
 				},
 				{
 					name: "paste",
-					title: "貼り付け",
+					title: t("common.paste"),
 					icon: "clipboard-paste",
 					action: (editor) => this.pasteFromClipboard(editor),
 				},
 			{
 				name: "selectAll",
-				title: "すべて選択",
+				title: t("common.selectAll"),
 				icon: "select-all",
 				action: (editor) => {
 					editor.chain().focus().selectAll().run();
@@ -208,7 +220,7 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "undo",
-				title: "元に戻す",
+				title: t("toolbar.undo"),
 				icon: "undo",
 				action: (editor) => {
 					const applied = editor.chain().focus().undo().run();
@@ -220,7 +232,7 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "redo",
-				title: "やり直し",
+				title: t("toolbar.redo"),
 				icon: "redo",
 				action: (editor) => {
 					const applied = editor.chain().focus().redo().run();
@@ -239,7 +251,7 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "bold",
-				title: "太字",
+				title: t("toolbar.bold"),
 				icon: "bold",
 				action: (editor) =>
 					this.runInlineCommand(
@@ -254,7 +266,7 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "italic",
-				title: "斜体",
+				title: t("toolbar.italic"),
 				icon: "italic",
 				action: (editor) =>
 					this.runInlineCommand(
@@ -269,7 +281,7 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "strike",
-				title: "取り消し線",
+				title: t("toolbar.strikethrough"),
 				icon: "strikethrough",
 				action: (editor) =>
 					this.runInlineCommand(
@@ -284,7 +296,7 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "underline",
-				title: "下線",
+				title: t("toolbar.underline"),
 				icon: "underline",
 				action: (editor) =>
 					this.runInlineCommand(
@@ -299,7 +311,7 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "highlight",
-				title: "ハイライト",
+				title: t("toolbar.highlight"),
 				icon: "highlighter",
 				action: (editor) =>
 					this.runInlineCommand(
@@ -319,7 +331,7 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "link",
-				title: "リンク挿入",
+				title: t("toolbar.linkInsert"),
 				icon: "link",
 				action: (editor) => {
 					this.insertLink(editor);
@@ -331,7 +343,7 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "ruby",
-				title: "ルビ挿入",
+				title: t("toolbar.rubyInsert"),
 				icon: "gem",
 				action: (editor) => {
 					this.insertRuby(editor);
@@ -342,13 +354,30 @@ export class TipTapCompatContextMenu {
 						: editor.state.selection.empty,
 			},
 			{
+				name: "tcyToggle",
+				title: t("toolbar.tcyInsert"),
+				icon: "square-arrow-right",
+				action: (editor) => {
+					this.toggleTcy(editor);
+				},
+				isActive: (editor) => this.isTcyActive(editor),
+				isDisabled: (editor) =>
+					this.isPlainEditActive()
+						? !this.hasPlainEditSelection()
+						: editor.state.selection.empty,
+			},
+			{
 				name: "clear",
-				title: "書式クリア",
+				title: t("toolbar.clearFormatting"),
 				icon: "eraser",
 				action: (editor) =>
 					this.runInlineCommand(
 						{ type: "clear" },
-						() => editor.chain().focus().unsetAllMarks().run()
+						() => {
+							editor.chain().focus().unsetAllMarks().run();
+							clearRubyNodesInSelection(editor);
+							clearTcyNodesInSelection(editor);
+						},
 					),
 				isDisabled: (editor) =>
 					this.isPlainEditActive()
@@ -364,42 +393,42 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "heading1",
-				title: "見出し1",
+				title: t("toolbar.heading.level", { level: 1 }),
 				icon: "heading-1",
 				action: (editor) => toggleHeadingForCurrentLine(editor, 1),
 				isActive: (editor) => editor.isActive("heading", { level: 1 }),
 			},
 			{
 				name: "heading2",
-				title: "見出し2",
+				title: t("toolbar.heading.level", { level: 2 }),
 				icon: "heading-2",
 				action: (editor) => toggleHeadingForCurrentLine(editor, 2),
 				isActive: (editor) => editor.isActive("heading", { level: 2 }),
 			},
 			{
 				name: "heading3",
-				title: "見出し3",
+				title: t("toolbar.heading.level", { level: 3 }),
 				icon: "heading-3",
 				action: (editor) => toggleHeadingForCurrentLine(editor, 3),
 				isActive: (editor) => editor.isActive("heading", { level: 3 }),
 			},
 			{
 				name: "heading4",
-				title: "見出し4",
+				title: t("toolbar.heading.level", { level: 4 }),
 				icon: "heading-4",
 				action: (editor) => toggleHeadingForCurrentLine(editor, 4),
 				isActive: (editor) => editor.isActive("heading", { level: 4 }),
 			},
 			{
 				name: "heading5",
-				title: "見出し5",
+				title: t("toolbar.heading.level", { level: 5 }),
 				icon: "heading-5",
 				action: (editor) => toggleHeadingForCurrentLine(editor, 5),
 				isActive: (editor) => editor.isActive("heading", { level: 5 }),
 			},
 			{
 				name: "heading6",
-				title: "見出し6",
+				title: t("toolbar.heading.level", { level: 6 }),
 				icon: "heading-6",
 				action: (editor) => toggleHeadingForCurrentLine(editor, 6),
 				isActive: (editor) => editor.isActive("heading", { level: 6 }),
@@ -413,7 +442,7 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "blockquote",
-				title: "引用",
+				title: t("toolbar.blockquote"),
 				icon: "quote",
 				action: (editor) => editor.chain().focus().toggleBlockquote().run(),
 				isActive: (editor) => editor.isActive("blockquote"),
@@ -427,7 +456,7 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "plainEdit",
-				title: "ソーステキスト編集",
+				title: t("toolbar.source.toggle"),
 				icon: "file-text",
 				action: () => {
 					if (this.options.onTogglePlainEdit) {
@@ -438,13 +467,16 @@ export class TipTapCompatContextMenu {
 			},
 			{
 				name: "findReplace",
-				title: "検索・置換",
+				title: t("toolbar.findReplace"),
 				icon: "search",
 				action: () => {
 					if (this.options.onFindReplace) {
 						this.options.onFindReplace(true);
 					} else {
-						new Notice("検索・置換は未実装です。", 2500);
+						new Notice(
+							t("context.notice.findReplaceNotImplemented"),
+							2500,
+						);
 					}
 				},
 			},
@@ -544,7 +576,14 @@ export class TipTapCompatContextMenu {
 						ruby: result.ruby ?? "",
 						isDot: result.isDot,
 					});
-				}
+				},
+				{
+					customEmphasisChars:
+						this.options.getCustomEmphasisChars?.() ?? [],
+					onCustomEmphasisCharsChange: (chars) =>
+						this.options.setCustomEmphasisChars?.(chars),
+					contentFontFamily: this.options.getContentFontFamily?.() ?? "",
+				},
 			).open();
 			return;
 		}
@@ -598,6 +637,7 @@ export class TipTapCompatContextMenu {
 				if (result.cancelled) {
 					return;
 				}
+				const emphasisChar = (result.ruby ?? "").trim() || "・";
 
 				const rubyEnabled = this.options.getRubyEnabled?.() ?? true;
 
@@ -622,7 +662,7 @@ export class TipTapCompatContextMenu {
 
 					if (result.isDot) {
 						const rubyText = Array.from(displayText)
-							.map((char) => `｜${char}《・》`)
+							.map((char) => `｜${char}《${emphasisChar}》`)
 							.join("");
 						editor.chain().focus().insertContent(rubyText).run();
 					} else {
@@ -646,7 +686,7 @@ export class TipTapCompatContextMenu {
 							.insertContent({
 								type: "aozoraRuby",
 								attrs: {
-									ruby: "・",
+									ruby: emphasisChar,
 									hasDelimiter: true,
 								},
 								content: [
@@ -677,8 +717,112 @@ export class TipTapCompatContextMenu {
 						})
 						.run();
 				}
-			}
+			},
+			{
+				customEmphasisChars:
+					this.options.getCustomEmphasisChars?.() ?? [],
+				onCustomEmphasisCharsChange: (chars) =>
+					this.options.setCustomEmphasisChars?.(chars),
+				contentFontFamily: this.options.getContentFontFamily?.() ?? "",
+			},
 		).open();
+	}
+
+	private insertTcy(editor: Editor): void {
+		if (this.isPlainEditActive()) {
+			const selectedText =
+				this.options.getPlainEditSelectionText?.() ?? "";
+			if (!isValidAozoraTcyBody(selectedText)) {
+				return;
+			}
+			this.options.onPlainEditCommand?.({
+				type: "tcy",
+				text: selectedText,
+			});
+			return;
+		}
+
+		const { from, to } = editor.state.selection;
+		const originalSelectedText = editor.state.doc.textBetween(from, to, "");
+		if (!originalSelectedText || originalSelectedText.includes("\n")) {
+			return;
+		}
+
+		let rangeFrom = from;
+		let rangeTo = to;
+		let hasTcyNode = false;
+		let tcyNodeText = "";
+		const $from = editor.state.doc.resolve(from);
+		const $to = editor.state.doc.resolve(to);
+
+		for (let depth = $from.depth; depth > 0; depth--) {
+			const node = $from.node(depth);
+			if (node.type.name === "aozoraTcy") {
+				const nodePos = $from.before(depth);
+				rangeFrom = Math.min(rangeFrom, nodePos);
+				rangeTo = Math.max(rangeTo, nodePos + node.nodeSize);
+				tcyNodeText = node.textContent;
+				hasTcyNode = true;
+				break;
+			}
+		}
+		for (let depth = $to.depth; depth > 0; depth--) {
+			const node = $to.node(depth);
+			if (node.type.name === "aozoraTcy") {
+				const nodePos = $to.before(depth);
+				rangeFrom = Math.min(rangeFrom, nodePos);
+				rangeTo = Math.max(rangeTo, nodePos + node.nodeSize);
+				tcyNodeText = node.textContent;
+				hasTcyNode = true;
+				break;
+			}
+		}
+
+		const displayText = hasTcyNode ? tcyNodeText : originalSelectedText;
+		if (!isValidAozoraTcyBody(displayText)) {
+			return;
+		}
+
+		editor
+			.chain()
+			.focus()
+			.deleteRange({ from: rangeFrom, to: rangeTo })
+			.insertContent({
+				type: "aozoraTcy",
+				content: [{ type: "text", text: displayText }],
+			})
+			.run();
+	}
+
+	private clearTcy(editor: Editor): void {
+		this.runInlineCommand({ type: "clearTcy" }, () => {
+			clearTcyNodesInSelection(editor);
+		});
+	}
+
+	private toggleTcy(editor: Editor): void {
+		if (this.isTcyActive(editor)) {
+			this.clearTcy(editor);
+			return;
+		}
+		this.insertTcy(editor);
+	}
+
+	private isTcyActive(editor: Editor): boolean {
+		if (this.isPlainEditActive()) {
+			const selectedText =
+				this.options.getPlainEditSelectionText?.() ?? "";
+			if (!selectedText) return false;
+			const regex = createAozoraTcyRegExp();
+			for (const match of selectedText.matchAll(regex)) {
+				const body = match.groups?.body ?? "";
+				if (isValidAozoraTcyBody(body)) {
+					return true;
+				}
+			}
+			return false;
+		}
+		return editor.isActive("aozoraTcy");
 	}
 
 	show(event: MouseEvent): void {
@@ -699,6 +843,7 @@ export class TipTapCompatContextMenu {
 			"highlight",
 			"link",
 			"ruby",
+			"tcyToggle",
 			"clear",
 			"heading1",
 			"heading2",
@@ -732,7 +877,13 @@ export class TipTapCompatContextMenu {
 			const isActive = action.isActive ? action.isActive(this.editor) : false;
 
 			menu.addItem((item) => {
-				item.setTitle(action.title)
+				const title =
+					action.name === "tcyToggle"
+						? isActive
+							? t("toolbar.tcyClear")
+							: t("toolbar.tcyInsert")
+						: action.title;
+				item.setTitle(title)
 					.setIcon(action.icon)
 					.setDisabled(isDisabled)
 					.setChecked(isActive || false)

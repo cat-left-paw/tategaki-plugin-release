@@ -21,6 +21,7 @@ import {
 } from "../shared/ui/view-mode-selection-modal";
 import { ViewAlreadyOpenModal } from "../shared/ui/view-already-open-modal";
 import { debugWarn } from "../shared/logger";
+import { t } from "../shared/i18n";
 
 type ReadingReturnMode = TategakiViewMode | "sot";
 
@@ -191,7 +192,7 @@ export class ModeManager {
 				}
 			} else if (this.nextViewMode === "compat") {
 				if (!this.settings.enableLegacyTiptap) {
-					new Notice("互換モードが無効です。設定で有効化してください。", 2500);
+					new Notice(t("notice.compatMode.disabled"), 2500);
 					return;
 				}
 				await this.openTipTapView();

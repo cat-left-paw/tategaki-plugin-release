@@ -1,5 +1,6 @@
 import { Notice } from "obsidian";
 import type { MarkdownView, TFile } from "obsidian";
+import { t } from "../../shared/i18n";
 
 export type SoTFileHost = any;
 
@@ -46,7 +47,7 @@ export async function createNewNote(
 export async function toggleReadingMode(host: SoTFileHost): Promise<void> {
 	const file = host.currentFile as TFile | null;
 	if (!file) {
-		new Notice("対象ファイルが見つかりません。", 2500);
+		new Notice(t("notice.targetFileNotFound"), 2500);
 		return;
 	}
 	const opened = await host.plugin.modeManager.toggleReadingView(file, {
@@ -55,8 +56,8 @@ export async function toggleReadingMode(host: SoTFileHost): Promise<void> {
 	});
 	new Notice(
 		opened
-			? "書籍モードビューを開きました。"
-			: "書籍モードビューを閉じました。",
+			? t("notice.bookMode.opened")
+			: t("notice.bookMode.closed"),
 		2000,
 	);
 }
@@ -69,12 +70,12 @@ export async function activateMarkdownLeafForCommand(
 	host: SoTFileHost
 ): Promise<MarkdownView | null> {
 	if (!host.currentFile) {
-		new Notice("対象のファイルが見つかりません。", 2500);
+		new Notice(t("notice.targetFileNotFoundAlt"), 2500);
 		return null;
 	}
 	const markdownView = await host.ensureMarkdownViewForFile(host.currentFile);
 	if (!markdownView || !host.pairedMarkdownLeaf) {
-		new Notice("Markdown ビューが見つからないため実行できません。", 2500);
+		new Notice(t("notice.markdownViewMissingExecute"), 2500);
 		return null;
 	}
 	host.app.workspace.setActiveLeaf(host.pairedMarkdownLeaf, {

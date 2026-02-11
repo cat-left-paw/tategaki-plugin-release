@@ -1,3 +1,5 @@
+import { t } from "../../shared/i18n";
+
 type OutlineItem = {
 	line: number;
 	level: number;
@@ -23,18 +25,18 @@ export class SoTOutlinePanel {
 		this.rootEl = parent.createDiv("tategaki-sot-outline-panel");
 		this.rootEl.style.display = "none";
 		this.rootEl.setAttribute("role", "dialog");
-		this.rootEl.setAttribute("aria-label", "アウトライン");
+		this.rootEl.setAttribute("aria-label", t("outline.title"));
 		this.rootEl.addEventListener("pointerdown", (event) => {
 			event.stopPropagation();
 		});
 
 		const header = this.rootEl.createDiv("tategaki-sot-outline-header");
 		const title = header.createDiv("tategaki-sot-outline-title");
-		title.textContent = "アウトライン";
+		title.textContent = t("outline.title");
 		this.closeButton = header.createEl("button", {
 			cls: "tategaki-sot-outline-close",
 			text: "×",
-			attr: { type: "button", "aria-label": "閉じる" },
+			attr: { type: "button", "aria-label": t("common.close") },
 		});
 		this.closeButton.addEventListener("click", () => this.close());
 
@@ -69,7 +71,7 @@ export class SoTOutlinePanel {
 		this.listEl.replaceChildren();
 		if (items.length === 0) {
 			const empty = this.listEl.createDiv("tategaki-sot-outline-empty");
-			empty.textContent = "見出しがありません";
+			empty.textContent = t("outline.empty");
 			return;
 		}
 		for (const item of items) {

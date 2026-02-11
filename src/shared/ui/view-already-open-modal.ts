@@ -1,4 +1,5 @@
 import { App, Modal } from "obsidian";
+import { t } from "../i18n";
 
 export class ViewAlreadyOpenModal extends Modal {
 	constructor(app: App) {
@@ -6,16 +7,18 @@ export class ViewAlreadyOpenModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.titleEl.setText("縦書きビューは既に開かれています");
+		this.titleEl.setText(t("modal.viewAlreadyOpen.title"));
 
 		this.contentEl.createEl("p", {
-			text: "既に縦書きビュー（執筆モード、参照モード、または書籍モード）が開かれています。新しいビューを開くには、既存のビューを閉じてください。",
+			text: t("modal.viewAlreadyOpen.desc"),
 		});
 
-		const footer = this.contentEl.createDiv("tategaki-view-already-open-footer");
+		const footer = this.contentEl.createDiv(
+			"tategaki-view-already-open-footer",
+		);
 
 		footer
-			.createEl("button", { text: "OK", cls: "mod-cta" })
+			.createEl("button", { text: t("common.ok"), cls: "mod-cta" })
 			.addEventListener("click", () => this.close());
 	}
 

@@ -20,6 +20,17 @@ type OverlayFocusCallbacks = {
 	onBlur?: () => void;
 };
 
+type OverlayTextStyle = {
+	fontFamily: string;
+	fontSize: string;
+	lineHeight: string;
+	fontWeight: string;
+	fontStyle: string;
+	letterSpacing: string;
+	color: string;
+	textDecorationLine: string;
+};
+
 export class OverlayImeTextarea {
 	private readonly parentEl: HTMLElement;
 	private readonly textarea: HTMLTextAreaElement;
@@ -32,6 +43,7 @@ export class OverlayImeTextarea {
 	private maxWidth = 500;
 	private baseLineSize = 32; // 1行/1列分のサイズ
 	private textIndentPx = 0;
+	private lastTextStyleKey = "";
 	private readonly caretVisibleClass = "tategaki-show-native-caret";
 	private flushTimer: number | null = null;
 	private readonly flushDelayMs = 250;
@@ -350,6 +362,42 @@ export class OverlayImeTextarea {
 		if (this.textIndentPx === next) return;
 		this.textIndentPx = next;
 		this.textarea.style.textIndent = `${next}px`;
+	}
+
+	setTextStyle(style: OverlayTextStyle): void {
+		const key = [
+			style.fontFamily,
+			style.fontSize,
+			style.lineHeight,
+			style.fontWeight,
+			style.fontStyle,
+			style.letterSpacing,
+			style.color,
+			style.textDecorationLine,
+		].join("|");
+		if (this.lastTextStyleKey === key) return;
+		this.lastTextStyleKey = key;
+		this.textarea.style.setProperty("font-family", style.fontFamily, "important");
+		this.textarea.style.setProperty("font-size", style.fontSize, "important");
+		this.textarea.style.setProperty("line-height", style.lineHeight, "important");
+		this.textarea.style.setProperty("font-weight", style.fontWeight, "important");
+		this.textarea.style.setProperty("font-style", style.fontStyle, "important");
+		this.textarea.style.setProperty(
+			"letter-spacing",
+			style.letterSpacing,
+			"important",
+		);
+		this.textarea.style.setProperty("color", style.color, "important");
+		this.textarea.style.setProperty(
+			"-webkit-text-fill-color",
+			style.color,
+			"important",
+		);
+		this.textarea.style.setProperty(
+			"text-decoration-line",
+			style.textDecorationLine,
+			"important",
+		);
 	}
 
 	/**

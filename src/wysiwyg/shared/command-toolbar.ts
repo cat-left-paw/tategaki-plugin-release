@@ -1,5 +1,6 @@
 import { Menu, Platform, setIcon } from "obsidian";
 import type { CommandUiAdapter } from "./command-adapter";
+import { t } from "../../shared/i18n";
 
 type ButtonState = {
 	id: string;
@@ -116,7 +117,7 @@ export class CommandToolbar {
 		isActive?: () => boolean,
 		isDisabled?: () => boolean,
 		getIcon?: () => string,
-		getTitle?: () => string
+		getTitle?: () => string,
 	): HTMLButtonElement {
 		const button = this.container.createEl("button", {
 			cls: "clickable-icon contenteditable-toolbar-button",
@@ -143,9 +144,12 @@ export class CommandToolbar {
 			event.preventDefault();
 			if (button.disabled) return;
 			const result = onClick?.();
-			if (result && typeof (result as Promise<void>).then === "function") {
+			if (
+				result &&
+				typeof (result as Promise<void>).then === "function"
+			) {
 				void (result as Promise<void>).finally(() =>
-					this.updateButtonStates()
+					this.updateButtonStates(),
 				);
 			} else {
 				this.updateButtonStates();
@@ -168,12 +172,12 @@ export class CommandToolbar {
 				: "arrow-left-right";
 		const getTitle = (): string =>
 			this.adapter.getWritingMode?.() === "vertical-rl"
-				? "横書きに切り替え"
-				: "縦書きに切り替え";
+				? t("toolbar.writingMode.toHorizontal")
+				: t("toolbar.writingMode.toVertical");
 		this.writingModeButton = this.createButton(
 			"writingMode",
 			getIcon(),
-			"書字方向切り替え",
+			t("toolbar.writingMode.toggle"),
 			this.adapter.toggleWritingMode
 				? () => {
 						this.adapter.toggleWritingMode?.();
@@ -182,7 +186,7 @@ export class CommandToolbar {
 			undefined,
 			() => !this.adapter.toggleWritingMode,
 			getIcon,
-			getTitle
+			getTitle,
 		);
 	}
 
@@ -190,10 +194,10 @@ export class CommandToolbar {
 		this.createButton(
 			"fileSwitch",
 			"folder-open",
-			"ファイル切替",
+			t("toolbar.fileSwitch"),
 			this.adapter.openFileSwitcher,
 			undefined,
-			() => !this.adapter.openFileSwitcher
+			() => !this.adapter.openFileSwitcher,
 		);
 	}
 
@@ -202,7 +206,9 @@ export class CommandToolbar {
 			this.adapter.isReadingMode?.() ?? false;
 		const getIcon = (): string => (getEnabled() ? "book-open" : "book");
 		const getTitle = (): string =>
-			getEnabled() ? "書籍モードを終了" : "書籍モードへ移動";
+			getEnabled()
+				? t("toolbar.readingMode.exit")
+				: t("toolbar.readingMode.enter");
 		this.readingModeButton = this.createButton(
 			"readingMode",
 			getIcon(),
@@ -211,7 +217,7 @@ export class CommandToolbar {
 			getEnabled,
 			() => !this.adapter.toggleReadingMode,
 			getIcon,
-			getTitle
+			getTitle,
 		);
 	}
 
@@ -219,22 +225,18 @@ export class CommandToolbar {
 		this.createButton(
 			"undo",
 			"undo",
-			"元に戻す",
+			t("toolbar.undo"),
 			this.adapter.undo,
 			undefined,
-			() =>
-				!this.adapter.undo ||
-				(this.adapter.canUndo?.() === false)
+			() => !this.adapter.undo || this.adapter.canUndo?.() === false,
 		);
 		this.createButton(
 			"redo",
 			"redo",
-			"やり直す",
+			t("toolbar.redo"),
 			this.adapter.redo,
 			undefined,
-			() =>
-				!this.adapter.redo ||
-				(this.adapter.canRedo?.() === false)
+			() => !this.adapter.redo || this.adapter.canRedo?.() === false,
 		);
 	}
 
@@ -242,70 +244,70 @@ export class CommandToolbar {
 		this.createButton(
 			"bold",
 			"bold",
-			"太字",
+			t("toolbar.bold"),
 			this.adapter.toggleBold,
 			this.adapter.isBoldActive,
 			() =>
 				!this.adapter.toggleBold ||
 				!(this.adapter.hasSelection?.() ?? false) ||
-				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true),
 		);
 		this.createButton(
 			"italic",
 			"italic",
-			"斜体",
+			t("toolbar.italic"),
 			this.adapter.toggleItalic,
 			this.adapter.isItalicActive,
 			() =>
 				!this.adapter.toggleItalic ||
 				!(this.adapter.hasSelection?.() ?? false) ||
-				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true),
 		);
 		this.createButton(
 			"strikethrough",
 			"strikethrough",
-			"取り消し線",
+			t("toolbar.strikethrough"),
 			this.adapter.toggleStrikethrough,
 			this.adapter.isStrikethroughActive,
 			() =>
 				!this.adapter.toggleStrikethrough ||
 				!(this.adapter.hasSelection?.() ?? false) ||
-				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true),
 		);
 		if (this.adapter.toggleUnderline) {
 			this.createButton(
 				"underline",
 				"underline",
-				"下線",
+				t("toolbar.underline"),
 				this.adapter.toggleUnderline,
 				this.adapter.isUnderlineActive,
 				() =>
 					!this.adapter.toggleUnderline ||
 					!(this.adapter.hasSelection?.() ?? false) ||
-					!(this.adapter.isInlineSelectionAllowed?.() ?? true)
+					!(this.adapter.isInlineSelectionAllowed?.() ?? true),
 			);
 		}
 		this.createButton(
 			"highlight",
 			"highlighter",
-			"ハイライト",
+			t("toolbar.highlight"),
 			this.adapter.toggleHighlight,
 			this.adapter.isHighlightActive,
 			() =>
 				!this.adapter.toggleHighlight ||
 				!(this.adapter.hasSelection?.() ?? false) ||
-				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true),
 		);
 		this.createButton(
 			"inlineCode",
 			"code",
-			"インラインコード",
+			t("toolbar.inlineCode"),
 			this.adapter.toggleInlineCode,
 			this.adapter.isInlineCodeActive,
 			() =>
 				!this.adapter.toggleInlineCode ||
 				!(this.adapter.hasSelection?.() ?? false) ||
-				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true),
 		);
 	}
 
@@ -313,7 +315,7 @@ export class CommandToolbar {
 		this.headingButton = this.createButton(
 			"heading",
 			"heading",
-			"見出し",
+			t("toolbar.heading"),
 			() => {
 				if (!this.headingButton || !this.adapter.setHeading) return;
 				const menu = new Menu();
@@ -328,7 +330,9 @@ export class CommandToolbar {
 				};
 				for (let level = 1; level <= 6; level += 1) {
 					menu.addItem((item) => {
-						item.setTitle(`見出し${level}`)
+						item.setTitle(
+							t("toolbar.heading.level", { level }),
+						)
 							.setIcon(headingIcons[level])
 							.onClick(() => {
 								this.adapter.setHeading?.(level);
@@ -339,7 +343,7 @@ export class CommandToolbar {
 					});
 				}
 				menu.addItem((item) => {
-					item.setTitle("見出し解除")
+					item.setTitle(t("toolbar.heading.clear"))
 						.setIcon("text")
 						.onClick(() => {
 							this.adapter.clearHeading?.();
@@ -352,7 +356,7 @@ export class CommandToolbar {
 				menu.showAtPosition({ x: rect.left, y: rect.bottom });
 			},
 			() => (this.adapter.getHeadingLevel?.() ?? 0) > 0,
-			() => !this.adapter.setHeading
+			() => !this.adapter.setHeading,
 		);
 	}
 
@@ -360,34 +364,42 @@ export class CommandToolbar {
 		this.createButton(
 			"bulletList",
 			"list",
-			"箇条書きリスト",
+			t("toolbar.bulletList"),
 			this.adapter.toggleBulletList,
 			this.adapter.isBulletListActive,
-			() => !this.adapter.toggleBulletList
+			() => !this.adapter.toggleBulletList,
+		);
+		this.createButton(
+			"taskList",
+			"check-square",
+			t("toolbar.taskList"),
+			this.adapter.toggleTaskList,
+			this.adapter.isTaskListActive,
+			() => !this.adapter.toggleTaskList,
 		);
 		this.createButton(
 			"orderedList",
 			"list-ordered",
-			"番号付きリスト",
+			t("toolbar.orderedList"),
 			this.adapter.toggleOrderedList,
 			this.adapter.isOrderedListActive,
-			() => !this.adapter.toggleOrderedList
+			() => !this.adapter.toggleOrderedList,
 		);
 		this.createButton(
 			"blockquote",
 			"quote",
-			"引用",
+			t("toolbar.blockquote"),
 			this.adapter.toggleBlockquote,
 			this.adapter.isBlockquoteActive,
-			() => !this.adapter.toggleBlockquote
+			() => !this.adapter.toggleBlockquote,
 		);
 		this.createButton(
 			"codeBlock",
 			"code-2",
-			"コードブロック",
+			t("toolbar.codeBlock"),
 			this.adapter.toggleCodeBlock,
 			this.adapter.isCodeBlockActive,
-			() => !this.adapter.toggleCodeBlock
+			() => !this.adapter.toggleCodeBlock,
 		);
 	}
 
@@ -395,24 +407,39 @@ export class CommandToolbar {
 		this.createButton(
 			"link",
 			"link",
-			"リンク挿入",
+			t("toolbar.linkInsert"),
 			this.adapter.insertLink,
 			undefined,
 			() =>
 				!this.adapter.insertLink ||
-				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true),
 		);
 		this.createButton(
 			"ruby",
 			"gem",
-			"ルビ挿入",
+			t("toolbar.rubyInsert"),
 			this.adapter.insertRuby,
 			undefined,
 			() =>
 				!this.adapter.insertRuby ||
 				!(this.adapter.hasSelection?.() ?? false) ||
-				!(this.adapter.isInlineSelectionAllowed?.() ?? true)
+				!(this.adapter.isInlineSelectionAllowed?.() ?? true),
 		);
+		if (this.adapter.toggleTcy || this.adapter.insertTcy || this.adapter.clearTcy) {
+			this.createButton(
+				"tcy",
+				"square-arrow-right",
+				t("toolbar.tcyInsert"),
+				() => this.toggleTcy(),
+				() => this.isTcyActive(),
+				() => this.isTcyButtonDisabled(),
+				undefined,
+				() =>
+					this.isTcyActive()
+						? t("toolbar.tcyClear")
+						: t("toolbar.tcyInsert"),
+			);
+		}
 		const getHrIcon = (): string => {
 			const mode = this.adapter.getWritingMode?.();
 			return mode === "vertical-rl"
@@ -422,11 +449,11 @@ export class CommandToolbar {
 		this.horizontalRuleButton = this.createButton(
 			"horizontalRule",
 			getHrIcon(),
-			"区切り線",
+			t("toolbar.horizontalRule"),
 			this.adapter.insertHorizontalRule,
 			undefined,
 			() => !this.adapter.insertHorizontalRule,
-			getHrIcon
+			getHrIcon,
 		);
 	}
 
@@ -434,10 +461,10 @@ export class CommandToolbar {
 		this.createButton(
 			"clearFormatting",
 			"eraser",
-			"書式クリア",
+			t("toolbar.clearFormatting"),
 			this.adapter.clearFormatting,
 			undefined,
-			() => !this.adapter.clearFormatting
+			() => !this.adapter.clearFormatting,
 		);
 	}
 
@@ -445,7 +472,7 @@ export class CommandToolbar {
 		this.rubyToggleButton = this.createButton(
 			"rubyToggle",
 			"eye",
-			"ルビ表示のオン/オフ",
+			t("toolbar.ruby.toggle"),
 			this.adapter.toggleRuby,
 			() => this.adapter.isRubyEnabled?.() ?? true,
 			() =>
@@ -455,8 +482,8 @@ export class CommandToolbar {
 				this.adapter.isRubyEnabled?.() === false ? "eye-off" : "eye",
 			() =>
 				this.adapter.isRubyEnabled?.() === false
-					? "ルビ表示をオンにする"
-					: "ルビ表示をオフにする"
+					? t("toolbar.ruby.enable")
+					: t("toolbar.ruby.disable"),
 		);
 	}
 
@@ -464,15 +491,15 @@ export class CommandToolbar {
 		this.createButton(
 			"plainTextView",
 			"type",
-			"全文プレーン表示",
+			t("toolbar.plainText.toggle"),
 			this.adapter.togglePlainTextView,
 			() => this.adapter.isPlainTextView?.() ?? false,
 			() => !this.adapter.togglePlainTextView,
 			undefined,
 			() =>
-				this.adapter.isPlainTextView?.() ?? false
-					? "全文プレーン表示をオフにする"
-					: "全文プレーン表示をオンにする"
+				(this.adapter.isPlainTextView?.() ?? false)
+					? t("toolbar.plainText.disable")
+					: t("toolbar.plainText.enable"),
 		);
 	}
 
@@ -480,20 +507,20 @@ export class CommandToolbar {
 		this.sourceToggleButton = this.createButton(
 			"sourceMode",
 			"file-text",
-			"ソーステキスト編集",
+			t("toolbar.source.toggle"),
 			this.adapter.toggleSourceMode,
 			() => this.adapter.isSourceMode?.() ?? false,
 			() =>
 				!this.adapter.toggleSourceMode ||
 				(this.adapter.isPlainTextView?.() ?? false),
 			() =>
-				this.adapter.isSourceMode?.() ?? false
+				(this.adapter.isSourceMode?.() ?? false)
 					? "file-code"
 					: "file-text",
 			() =>
-				this.adapter.isSourceMode?.() ?? false
-					? "装飾表示に戻す"
-					: "ソーステキスト編集モード"
+				(this.adapter.isSourceMode?.() ?? false)
+					? t("toolbar.source.disable")
+					: t("toolbar.source.enable"),
 		);
 	}
 
@@ -501,7 +528,7 @@ export class CommandToolbar {
 		this.ceImeToggleButton = this.createButton(
 			"ceImeMode",
 			"toggle-left",
-			"CE補助(IME)",
+			t("toolbar.ceIme.toggle"),
 			this.adapter.toggleCeImeMode,
 			() => this.adapter.isCeImeMode?.() ?? false,
 			() => !this.adapter.toggleCeImeMode,
@@ -509,8 +536,8 @@ export class CommandToolbar {
 				this.adapter.isCeImeMode?.() ? "toggle-right" : "toggle-left",
 			() =>
 				this.adapter.isCeImeMode?.()
-					? "CE補助(IME)をオフにする"
-					: "CE補助(IME)をオンにする"
+					? t("toolbar.ceIme.disable")
+					: t("toolbar.ceIme.enable"),
 		);
 	}
 
@@ -518,10 +545,10 @@ export class CommandToolbar {
 		this.createButton(
 			"settings",
 			"settings",
-			"表示設定",
+			t("common.displaySettings"),
 			this.adapter.openSettings,
 			undefined,
-			() => !this.adapter.openSettings
+			() => !this.adapter.openSettings,
 		);
 	}
 
@@ -529,22 +556,21 @@ export class CommandToolbar {
 		this.createButton(
 			"outline",
 			"list-tree",
-			"アウトライン",
+			t("toolbar.outline"),
 			this.adapter.openOutline,
 			undefined,
-			() => !this.adapter.openOutline
+			() => !this.adapter.openOutline,
 		);
 	}
 
 	private updateButtonStates(): void {
 		const writingMode = this.adapter.getWritingMode?.();
 		if (this.writingModeButton) {
-			const label =
-				writingMode === "vertical-rl" ? "横書き" : "縦書き";
-			this.writingModeButton.setAttr(
-				"aria-label",
-				`${label}に切り替え`
-			);
+			const nextTitle =
+				writingMode === "vertical-rl"
+					? t("toolbar.writingMode.toHorizontal")
+					: t("toolbar.writingMode.toVertical");
+			this.writingModeButton.setAttr("aria-label", nextTitle);
 		}
 		if (this.horizontalRuleButton) {
 			const desiredIcon =
@@ -552,7 +578,7 @@ export class CommandToolbar {
 					? "separator-vertical"
 					: "separator-horizontal";
 			const state = this.buttons.find(
-				(entry) => entry.button === this.horizontalRuleButton
+				(entry) => entry.button === this.horizontalRuleButton,
 			);
 			if (state && state.currentIcon !== desiredIcon) {
 				setIcon(this.horizontalRuleButton, desiredIcon);
@@ -575,5 +601,32 @@ export class CommandToolbar {
 				state.currentIcon = nextIcon;
 			}
 		}
+	}
+
+	private isTcyActive(): boolean {
+		return this.adapter.isTcyActive?.() ?? false;
+	}
+
+	private toggleTcy(): void {
+		if (this.adapter.toggleTcy) {
+			this.adapter.toggleTcy();
+			return;
+		}
+		if (this.isTcyActive()) {
+			this.adapter.clearTcy?.();
+			return;
+		}
+		this.adapter.insertTcy?.();
+	}
+
+	private isTcyButtonDisabled(): boolean {
+		const hasSelection = this.adapter.hasSelection?.() ?? false;
+		const inlineAllowed = this.adapter.isInlineSelectionAllowed?.() ?? true;
+		if (!hasSelection || !inlineAllowed) return true;
+		if (this.adapter.toggleTcy) return false;
+		if (this.isTcyActive()) {
+			return !this.adapter.clearTcy;
+		}
+		return !this.adapter.insertTcy;
 	}
 }

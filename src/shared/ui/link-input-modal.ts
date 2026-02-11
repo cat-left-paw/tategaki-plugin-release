@@ -1,4 +1,5 @@
 import { Modal, App, ButtonComponent, TextComponent } from "obsidian";
+import { t } from "../i18n";
 
 export interface LinkInputResult {
 	url: string | null;
@@ -32,13 +33,13 @@ export class LinkInputModal extends Modal {
 		this.modalEl.addClass('tategaki-link-input-modal');
 
 		// タイトル
-		contentEl.createEl("h2", { text: "リンクの挿入" });
+		contentEl.createEl("h2", { text: t("modal.linkInput.title") });
 
 		// URL入力
 		const urlContainer = contentEl.createDiv("tategaki-link-url-container");
 
 		urlContainer.createEl("label", {
-			text: "URL",
+			text: t("modal.linkInput.urlLabel"),
 			cls: "tategaki-link-label",
 		});
 
@@ -51,18 +52,18 @@ export class LinkInputModal extends Modal {
 		if (this.needsTextInput) {
 			const textContainer = contentEl.createDiv("tategaki-link-text-container");
 			textContainer.createEl("label", {
-				text: "リンクテキスト",
+				text: t("modal.linkInput.textLabel"),
 				cls: "tategaki-link-label",
 			});
 
 			this.textInput = new TextComponent(textContainer);
 			this.textInput.inputEl.addClass("tategaki-link-input");
-			this.textInput.setPlaceholder("リンクのテキスト");
+			this.textInput.setPlaceholder(t("modal.linkInput.textPlaceholder"));
 		} else {
 			// 選択テキストがある場合は表示のみ
 			const textContainer = contentEl.createDiv("tategaki-link-text-container");
 			textContainer.createEl("label", {
-				text: "リンクテキスト",
+				text: t("modal.linkInput.textLabel"),
 				cls: "tategaki-link-label",
 			});
 
@@ -75,7 +76,7 @@ export class LinkInputModal extends Modal {
 
 		// キャンセルボタン
 		new ButtonComponent(buttonContainer)
-			.setButtonText("キャンセル")
+			.setButtonText(t("common.cancel"))
 			.onClick(() => {
 				this.result = { url: null, text: null, cancelled: true };
 				this.close();
@@ -83,7 +84,7 @@ export class LinkInputModal extends Modal {
 
 		// 挿入ボタン
 		new ButtonComponent(buttonContainer)
-			.setButtonText("挿入")
+			.setButtonText(t("modal.linkInput.insert"))
 			.setClass("mod-cta")
 			.onClick(() => {
 				this.submitLink();

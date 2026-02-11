@@ -1,5 +1,6 @@
 import { Editor } from "@tiptap/core";
 import { SearchEngine, type SearchOptions, type SearchResult } from "./search-engine";
+import { t } from "../../shared/i18n";
 
 export interface SearchReplaceOptions {
 	caseSensitive: boolean;
@@ -78,26 +79,26 @@ export class SearchReplacePanel {
 
 		this.searchInput = searchRow.createEl("input");
 		this.searchInput.type = "text";
-		this.searchInput.placeholder = "検索...";
+		this.searchInput.placeholder = t("search.placeholder");
 		this.searchInput.className = "tategaki-search-replace-input";
 
 		const navContainer = searchRow.createDiv("tategaki-search-replace-nav");
 
 		const prevButton = navContainer.createEl("button");
 		prevButton.textContent = "↑";
-		prevButton.title = "前を検索";
+		prevButton.title = t("search.prev");
 		prevButton.className = "tategaki-search-replace-icon-button";
 		prevButton.addEventListener("click", () => this.findPrevious());
 
 		const nextButton = navContainer.createEl("button");
 		nextButton.textContent = "↓";
-		nextButton.title = "次を検索";
+		nextButton.title = t("search.next");
 		nextButton.className = "tategaki-search-replace-icon-button";
 		nextButton.addEventListener("click", () => this.findNext());
 
 		const closeButton = searchRow.createEl("button");
 		closeButton.textContent = "×";
-		closeButton.title = "閉じる";
+		closeButton.title = t("search.close");
 		closeButton.className = "tategaki-search-replace-icon-button";
 		closeButton.addEventListener("click", () => this.hide());
 
@@ -114,7 +115,7 @@ export class SearchReplacePanel {
 
 			this.replaceInput = replaceRow.createEl("input");
 			this.replaceInput.type = "text";
-			this.replaceInput.placeholder = "置換...";
+			this.replaceInput.placeholder = t("search.replacePlaceholder");
 			this.replaceInput.className = "tategaki-search-replace-input";
 
 			const replaceButtonContainer = replaceRow.createDiv(
@@ -122,12 +123,12 @@ export class SearchReplacePanel {
 			);
 
 			const replaceOneButton = replaceButtonContainer.createEl("button");
-			replaceOneButton.textContent = "置換";
+			replaceOneButton.textContent = t("search.replaceOne");
 			replaceOneButton.className = "tategaki-search-replace-action-button";
 			replaceOneButton.addEventListener("click", () => this.replaceOne());
 
 			const replaceAllButton = replaceButtonContainer.createEl("button");
-			replaceAllButton.textContent = "全置換";
+			replaceAllButton.textContent = t("search.replaceAll");
 			replaceAllButton.className = "tategaki-search-replace-action-button";
 			replaceAllButton.addEventListener("click", () => this.replaceAll());
 		}
@@ -139,7 +140,7 @@ export class SearchReplacePanel {
 		this.caseSensitiveCheckbox = caseSensitiveLabel.createEl("input");
 		this.caseSensitiveCheckbox.type = "checkbox";
 		this.caseSensitiveCheckbox.className = "tategaki-search-replace-option-checkbox";
-		caseSensitiveLabel.createSpan().textContent = "大文字小文字区別";
+		caseSensitiveLabel.createSpan().textContent = t("search.caseSensitive");
 
 		this.setupEventListeners();
 		this.container.appendChild(this.panel);
@@ -291,7 +292,7 @@ export class SearchReplacePanel {
 	private updateMatchCount(): void {
 		if (!this.matchCountElement) return;
 		if (this.currentResults.length === 0) {
-			this.matchCountElement.textContent = "マッチなし";
+			this.matchCountElement.textContent = t("search.noMatch");
 		} else {
 			this.matchCountElement.textContent = `${this.currentIndex + 1} / ${
 				this.currentResults.length

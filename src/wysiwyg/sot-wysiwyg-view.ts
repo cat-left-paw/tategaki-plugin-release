@@ -27,9 +27,10 @@ import type { SoTEditor } from "./sot/sot-editor";
 import { OverlayImeTextarea } from "./sot/overlay-ime-textarea";
 import { OverlayImeReplaceController } from "./sot/overlay-ime-replace";
 import {
-	handleListOutlinerKeydown,
-	runListOutlinerAction,
-} from "./sot/sot-list-outliner";
+	handleListOutlinerKeydownForCe,
+	runListOutlinerActionForCe,
+	type SoTListOutlinerCeBridgeHost,
+} from "./sot/sot-list-outliner-ce";
 import { SoTOutlinePanel } from "./sot/outline-panel";
 import type { LineRange } from "./sot/line-ranges";
 import {
@@ -46,6 +47,17 @@ import {
 	replacePlainEditSelection,
 	wrapPlainEditSelection,
 } from "./sot/sot-plain-edit-utils";
+import {
+	collectClearableTcySpansForLine,
+	collectRenderableTcyRangesForLine,
+	type TcyRange,
+} from "./sot/sot-inline-tcy";
+import {
+	isTcySelectionActive,
+	runClearTcyCommand,
+	runInsertTcyCommand,
+	runToggleTcyCommand,
+} from "./sot/sot-inline-tcy-commands";
 import {
 	SoTPlainEditController,
 	type PlainEditRange,
@@ -77,6 +89,7 @@ import {
 	getRectUnion,
 } from "./sot/sot-selection-geometry";
 import { SoTPointerHandler } from "./sot/sot-pointer";
+import { t } from "../shared/i18n";
 import { SoTSelectionOverlay } from "./sot/sot-selection-overlay";
 import { openExternalUrl } from "../shared/open-external-url";
 import { tryRenderNativeSelectionFallback } from "./sot/sot-selection-fallback";
@@ -109,6 +122,7 @@ type InlineStyleClass =
 	| "tategaki-md-code"
 	| "tategaki-md-strike"
 	| "tategaki-md-highlight"
+	| "tategaki-md-tcy"
 	| "tategaki-md-link"
 	| "tategaki-md-image"
 	| "tategaki-md-embed"
@@ -1461,7 +1475,9 @@ export class SoTWysiwygView extends ItemView {
 			toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
 			toggle.setAttribute(
 				"aria-label",
-				collapsed ? "見出しを展開" : "見出しを折りたたむ",
+				collapsed
+					? t("heading.toggle.expand")
+					: t("heading.toggle.collapse"),
 			);
 
 			// アイコンを設定（書字方向によって異なる）
@@ -1489,7 +1505,10 @@ export class SoTWysiwygView extends ItemView {
 		box.setAttribute("role", "checkbox");
 		const checked = lineEl.dataset.taskChecked === "1";
 		box.setAttribute("aria-checked", checked ? "true" : "false");
-		box.setAttribute("aria-label", checked ? "完了" : "未完了");
+		box.setAttribute(
+			"aria-label",
+			checked ? t("task.checked") : t("task.unchecked"),
+		);
 		return box;
 	}
 
@@ -2918,6 +2937,46 @@ export class SoTWysiwygView extends ItemView {
 		return results;
 	}
 
+	private collectClearableRubySpansForLine(
+		absFrom: number,
+		lineText: string,
+	): ClearableSpan[] {
+		const spans: ClearableSpan[] = [];
+		const regex = createAozoraRubyRegExp();
+		for (const match of lineText.matchAll(regex)) {
+			const full = match[0] ?? "";
+			const start = match.index ?? -1;
+			if (!full || start < 0) continue;
+			const openIndex = full.indexOf("《");
+			const closeIndex = full.lastIndexOf("》");
+			if (openIndex < 0 || closeIndex <= openIndex) continue;
+
+			const hasDelimiter = full.startsWith("|") || full.startsWith("｜");
+			const baseStartRel = start + (hasDelimiter ? 1 : 0);
+			const baseEndRel = start + openIndex;
+			if (baseEndRel <= baseStartRel) continue;
+
+			const markers: HiddenRange[] = [];
+			if (hasDelimiter) {
+				markers.push({
+					from: absFrom + start,
+					to: absFrom + start + 1,
+				});
+			}
+			markers.push({
+				from: absFrom + start + openIndex,
+				to: absFrom + start + full.length,
+			});
+
+			spans.push({
+				from: absFrom + baseStartRel,
+				to: absFrom + baseEndRel,
+				markers,
+			});
+		}
+		return spans;
+	}
+
 	private collectInlineMathRangesForLine(
 		absFrom: number,
 		absTo: number,
@@ -3507,6 +3566,31 @@ export class SoTWysiwygView extends ItemView {
 		});
 	}
 
+	private applyTcyRangesToSegments(
+		segments: RenderSegment[],
+		tcyRanges: TcyRange[],
+	): RenderSegment[] {
+		if (segments.length === 0 || tcyRanges.length === 0) return segments;
+		const offsets: number[] = [];
+		for (const range of tcyRanges) {
+			offsets.push(range.from, range.to);
+		}
+		const split = this.splitSegmentsAtOffsets(segments, offsets);
+		return split.map((seg) => {
+			const tcy = tcyRanges.find(
+				(range) => seg.from >= range.from && seg.to <= range.to,
+			);
+			if (!tcy) return seg;
+			const classNames = seg.classNames.includes("tategaki-md-tcy")
+				? seg.classNames
+				: [...seg.classNames, "tategaki-md-tcy"];
+			return {
+				...seg,
+				classNames,
+			};
+		});
+	}
+
 	private applyLinkRangesToSegments(
 		segments: RenderSegment[],
 		links: LinkRange[],
@@ -3677,8 +3761,26 @@ export class SoTWysiwygView extends ItemView {
 					classNames: ["tategaki-sot-run"],
 				},
 			];
+			const hidden = blockDecoration.hidden.map((range) => ({
+				from: range.from,
+				to: range.to,
+			}));
+			const tcyRanges: TcyRange[] = [];
+			collectRenderableTcyRangesForLine(
+				safeFrom,
+				safeTo,
+				lineText,
+				hidden,
+				[],
+				tcyRanges,
+				{
+					enableAutoTcy: this.plugin.settings.wysiwyg.enableAutoTcy === true,
+					rubyRanges: [],
+				},
+			);
+			const hiddenApplied = this.applyHiddenRangesToSegments(base, hidden);
 			return storeSegments(
-				this.applyHiddenRangesToSegments(base, blockDecoration.hidden),
+				this.applyTcyRangesToSegments(hiddenApplied, tcyRanges),
 			);
 		}
 
@@ -3686,6 +3788,7 @@ export class SoTWysiwygView extends ItemView {
 		const styles: InlineRange[] = [];
 		const links: LinkRange[] = [];
 		const rubyRanges: RubyRange[] = [];
+		const tcyRanges: TcyRange[] = [];
 
 		for (const r of blockDecoration.hidden) {
 			hidden.push(r);
@@ -3752,6 +3855,18 @@ export class SoTWysiwygView extends ItemView {
 				styles,
 				rubyRanges,
 			);
+			collectRenderableTcyRangesForLine(
+				safeFrom,
+				safeTo,
+				lineText,
+				hidden,
+				styles,
+				tcyRanges,
+				{
+					enableAutoTcy: this.plugin.settings.wysiwyg.enableAutoTcy === true,
+					rubyRanges,
+				},
+			);
 			const fallback = this.buildInlineSegmentsFallback(
 				safeFrom,
 				safeTo,
@@ -3771,7 +3886,10 @@ export class SoTWysiwygView extends ItemView {
 			);
 			const linked = this.applyLinkRangesToSegments(hiddenApplied, links);
 			return storeSegments(
-				this.applyRubyRangesToSegments(linked, rubyRanges),
+				this.applyTcyRangesToSegments(
+					this.applyRubyRangesToSegments(linked, rubyRanges),
+					tcyRanges,
+				),
 			);
 		}
 
@@ -3782,6 +3900,18 @@ export class SoTWysiwygView extends ItemView {
 			hidden,
 			styles,
 			rubyRanges,
+		);
+		collectRenderableTcyRangesForLine(
+			safeFrom,
+			safeTo,
+			lineText,
+			hidden,
+			styles,
+			tcyRanges,
+			{
+				enableAutoTcy: this.plugin.settings.wysiwyg.enableAutoTcy === true,
+				rubyRanges,
+			},
 		);
 
 		const fallback = this.buildInlineSegmentsFallback(
@@ -3799,13 +3929,17 @@ export class SoTWysiwygView extends ItemView {
 			);
 			const linked = this.applyLinkRangesToSegments(hiddenApplied, links);
 			return storeSegments(
-				this.applyRubyRangesToSegments(linked, rubyRanges),
+				this.applyTcyRangesToSegments(
+					this.applyRubyRangesToSegments(linked, rubyRanges),
+					tcyRanges,
+				),
 			);
 		}
 		if (
 			hidden.length === 0 &&
 			styles.length === 0 &&
-			rubyRanges.length === 0
+			rubyRanges.length === 0 &&
+			tcyRanges.length === 0
 		) {
 			const base = [
 				{
@@ -3842,6 +3976,13 @@ export class SoTWysiwygView extends ItemView {
 			cuts.add(to);
 		}
 		for (const range of rubyRanges) {
+			const from = Math.max(safeFrom, Math.min(range.from, safeTo));
+			const to = Math.max(safeFrom, Math.min(range.to, safeTo));
+			if (to <= from) continue;
+			cuts.add(from);
+			cuts.add(to);
+		}
+		for (const range of tcyRanges) {
 			const from = Math.max(safeFrom, Math.min(range.from, safeTo));
 			const to = Math.max(safeFrom, Math.min(range.to, safeTo));
 			if (to <= from) continue;
@@ -3891,6 +4032,15 @@ export class SoTWysiwygView extends ItemView {
 			return undefined;
 		};
 
+		const hasTcyRange = (from: number, to: number): boolean => {
+			for (const range of tcyRanges) {
+				if (from >= range.from && to <= range.to) {
+					return true;
+				}
+			}
+			return false;
+		};
+
 		for (let i = 0; i < boundaries.length - 1; i += 1) {
 			const from = boundaries[i]!;
 			const to = boundaries[i + 1]!;
@@ -3902,6 +4052,9 @@ export class SoTWysiwygView extends ItemView {
 			const rubyText = collectRubyText(from, to);
 			if (rubyText && !classNames.includes("tategaki-aozora-ruby")) {
 				classNames.push("tategaki-aozora-ruby");
+			}
+			if (hasTcyRange(from, to) && !classNames.includes("tategaki-md-tcy")) {
+				classNames.push("tategaki-md-tcy");
 			}
 			const href = collectHref(from, to);
 			const last = segments[segments.length - 1];
@@ -4384,7 +4537,7 @@ export class SoTWysiwygView extends ItemView {
 		const loadingMessage = this.loadingOverlayEl.createDiv(
 			"tategaki-sot-loading-message",
 		);
-		loadingMessage.textContent = "読み込み中…";
+		loadingMessage.textContent = t("common.loading");
 
 		this.derivedRootEl = this.contentWrapperEl.createDiv(
 			"tategaki-sot-derived-root",
@@ -5355,6 +5508,8 @@ export class SoTWysiwygView extends ItemView {
 			getHeadingLevel: () => this.getHeadingLevel(),
 			toggleBulletList: wrap(() => this.toggleList("bullet")),
 			isBulletListActive: () => this.isBulletListActive(),
+			toggleTaskList: wrap(() => this.toggleList("task")),
+			isTaskListActive: () => this.isTaskListActive(),
 			toggleOrderedList: wrap(() => this.toggleList("ordered")),
 			isOrderedListActive: () => this.isOrderedListActive(),
 			toggleBlockquote: wrap(() => this.toggleBlockquote()),
@@ -5363,11 +5518,15 @@ export class SoTWysiwygView extends ItemView {
 			isCodeBlockActive: () => this.isCodeBlockActive(),
 			insertLink: wrap(() => this.insertLink()),
 			insertRuby: wrap(() => this.insertRuby()),
+			toggleTcy: wrap(() => this.toggleTcy()),
+			isTcyActive: () => this.isTcyActive(),
+			insertTcy: wrap(() => this.insertTcy()),
 			insertHorizontalRule: wrap(() => this.insertHorizontalRule()),
 			openSettings: wrap(() => this.openSettingsPanel()),
 			openOutline: () => {
 				this.openOutline();
 			},
+			clearTcy: wrap(() => this.clearTcy()),
 			clearFormatting: wrap(() => this.clearFormatting()),
 			toggleRuby: wrap(() => this.toggleRubyVisibility()),
 			isRubyEnabled: () =>
@@ -5893,6 +6052,24 @@ export class SoTWysiwygView extends ItemView {
 				if (span.to <= from || span.from >= to) continue;
 				removals.push(...span.markers);
 			}
+
+			const rubySpans = this.collectClearableRubySpansForLine(
+				lineFrom,
+				lineText,
+			);
+			for (const span of rubySpans) {
+				if (span.to <= from || span.from >= to) continue;
+				removals.push(...span.markers);
+			}
+
+			const tcySpans = collectClearableTcySpansForLine(
+				lineFrom,
+				lineText,
+			);
+			for (const span of tcySpans) {
+				if (span.to <= from || span.from >= to) continue;
+				removals.push(...span.markers);
+			}
 		}
 
 		this.collectInlineStyleRemovalsForRange(
@@ -6193,7 +6370,8 @@ export class SoTWysiwygView extends ItemView {
 			if (this.lineBlockKinds[i] !== "normal") continue;
 			const info = parseHeadingLine(lines[i] ?? "");
 			if (!info.hasHeading) continue;
-			const text = info.content.length > 0 ? info.content : "（無題）";
+			const text =
+				info.content.length > 0 ? info.content : t("outline.untitledHeading");
 			const offset = ranges[i]?.from ?? 0;
 			items.push({ line: i, level: info.level, text, offset });
 		}
@@ -6254,8 +6432,11 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private isBulletListActive(): boolean {
-		const kind = this.getListKindAtSelection();
-		return kind === "bullet" || kind === "task";
+		return this.getListKindAtSelection() === "bullet";
+	}
+
+	private isTaskListActive(): boolean {
+		return this.getListKindAtSelection() === "task";
 	}
 
 	private isOrderedListActive(): boolean {
@@ -6345,7 +6526,7 @@ export class SoTWysiwygView extends ItemView {
 		this.focusInputSurface(true);
 	}
 
-	private toggleList(kind: "bullet" | "ordered"): void {
+	private toggleList(kind: "bullet" | "ordered" | "task"): void {
 		if (!this.sotEditor) return;
 		const selection = this.sotEditor.getSelection();
 		const from = Math.min(selection.anchor, selection.head);
@@ -6379,7 +6560,10 @@ export class SoTWysiwygView extends ItemView {
 
 		const isTargetKind = (info: ListLineInfo) => {
 			if (kind === "bullet") {
-				return info.kind === "bullet" || info.kind === "task";
+				return info.kind === "bullet";
+			}
+			if (kind === "task") {
+				return info.kind === "task";
 			}
 			return info.kind === "ordered";
 		};
@@ -6393,7 +6577,12 @@ export class SoTWysiwygView extends ItemView {
 				if (!isTargetKind(info)) continue;
 				nextText = `${info.prefix}${info.indent}${info.content}`;
 			} else {
-				const marker = kind === "bullet" ? "- " : "1. ";
+				const marker =
+					kind === "bullet"
+						? "- "
+						: kind === "task"
+							? "- [ ] "
+							: "1. ";
 				nextText = `${info.prefix}${info.indent}${marker}${info.content}`;
 			}
 			if (nextText !== lineText) {
@@ -6713,11 +6902,71 @@ export class SoTWysiwygView extends ItemView {
 		isDot: boolean,
 	): string {
 		if (isDot) {
+			const emphasisChar = ruby.trim() || "・";
 			return Array.from(baseText)
-				.map((char) => `｜${char}《・》`)
+				.map((char) => `｜${char}《${emphasisChar}》`)
 				.join("");
 		}
 		return `｜${baseText}《${ruby}》`;
+	}
+
+	private getCustomEmphasisChars(): string[] {
+		return this.plugin.settings.wysiwyg.customEmphasisChars ?? [];
+	}
+
+	private normalizeCustomEmphasisChars(chars: string[]): string[] {
+		if (!Array.isArray(chars)) return [];
+		const normalized: string[] = [];
+		const seen = new Set<string>();
+		for (const entry of chars) {
+			if (typeof entry !== "string") continue;
+			const trimmed = entry.trim();
+			if (!trimmed) continue;
+			const first = Array.from(trimmed)[0] ?? "";
+			if (!first || seen.has(first)) continue;
+			seen.add(first);
+			normalized.push(first);
+			if (normalized.length >= 20) break;
+		}
+		return normalized;
+	}
+
+	private async saveCustomEmphasisChars(chars: string[]): Promise<void> {
+		const normalized = this.normalizeCustomEmphasisChars(chars);
+		const current = this.getCustomEmphasisChars();
+		if (
+			current.length === normalized.length &&
+			current.every((char, index) => char === normalized[index])
+		) {
+			return;
+		}
+		try {
+			await this.plugin.updateSettings({
+				wysiwyg: {
+					...this.plugin.settings.wysiwyg,
+					customEmphasisChars: normalized,
+				},
+			});
+		} catch (error) {
+			console.error("[Tategaki SoT] Failed to save custom emphasis chars", error);
+			new Notice(t("notice.customEmphasis.saveFailed"), 2500);
+		}
+	}
+
+	private insertTcy(): void {
+		runInsertTcyCommand(this);
+	}
+
+	private toggleTcy(): void {
+		runToggleTcyCommand(this);
+	}
+
+	private isTcyActive(): boolean {
+		return isTcySelectionActive(this);
+	}
+
+	private clearTcy(): void {
+		runClearTcyCommand(this);
 	}
 
 	private insertRuby(): void {
@@ -6730,7 +6979,7 @@ export class SoTWysiwygView extends ItemView {
 				return;
 			}
 			if (selectedText.includes("\n")) {
-				new Notice("ルビは1行内の選択のみ対応しています。", 2000);
+				new Notice(t("notice.ruby.singleLineOnly"), 2000);
 				return;
 			}
 			new RubyInputModal(
@@ -6750,6 +6999,14 @@ export class SoTWysiwygView extends ItemView {
 						() => this.adjustPlainEditOverlaySize(),
 					);
 				},
+				{
+					customEmphasisChars: this.getCustomEmphasisChars(),
+					onCustomEmphasisCharsChange: (chars) => {
+						void this.saveCustomEmphasisChars(chars);
+					},
+					contentFontFamily:
+						this.plugin.settings.common.fontFamily ?? "",
+				},
 			).open();
 			return;
 		}
@@ -6765,7 +7022,7 @@ export class SoTWysiwygView extends ItemView {
 			return;
 		}
 		if (originalSelectedText.includes("\n")) {
-			new Notice("ルビは1行内の選択のみ対応しています。", 2000);
+			new Notice(t("notice.ruby.singleLineOnly"), 2000);
 			return;
 		}
 
@@ -6798,42 +7055,53 @@ export class SoTWysiwygView extends ItemView {
 
 		const displayText = hasRubyNode ? rubyBaseText : originalSelectedText;
 
-		new RubyInputModal(this.app, displayText, (result: RubyInputResult) => {
-			if (result.cancelled) {
-				return;
-			}
+		new RubyInputModal(
+			this.app,
+			displayText,
+			(result: RubyInputResult) => {
+				if (result.cancelled) {
+					return;
+				}
 
-			if (!result.ruby || result.ruby.trim() === "") {
-				if (!hasRubyNode) return;
+				if (!result.ruby || result.ruby.trim() === "") {
+					if (!hasRubyNode) return;
+					this.updatePendingText("", true);
+					this.immediateRender = true;
+					const restored = hasRubyNode
+						? rubyBaseText
+						: originalSelectedText;
+					this.runCeMutation(() => {
+						this.sotEditor?.replaceRange(rangeFrom, rangeTo, restored);
+					});
+					const nextPos = rangeFrom + restored.length;
+					this.setSelectionNormalized(nextPos, nextPos);
+					this.focusInputSurface(true);
+					return;
+				}
+
+				const insertText = this.buildAozoraRubyText(
+					displayText,
+					result.ruby,
+					result.isDot,
+				);
 				this.updatePendingText("", true);
 				this.immediateRender = true;
-				const restored = hasRubyNode
-					? rubyBaseText
-					: originalSelectedText;
 				this.runCeMutation(() => {
-					this.sotEditor?.replaceRange(rangeFrom, rangeTo, restored);
+					this.sotEditor?.replaceRange(rangeFrom, rangeTo, insertText);
 				});
-				const nextPos = rangeFrom + restored.length;
+
+				const nextPos = rangeFrom + insertText.length;
 				this.setSelectionNormalized(nextPos, nextPos);
 				this.focusInputSurface(true);
-				return;
-			}
-
-			const insertText = this.buildAozoraRubyText(
-				displayText,
-				result.ruby,
-				result.isDot,
-			);
-			this.updatePendingText("", true);
-			this.immediateRender = true;
-			this.runCeMutation(() => {
-				this.sotEditor?.replaceRange(rangeFrom, rangeTo, insertText);
-			});
-
-			const nextPos = rangeFrom + insertText.length;
-			this.setSelectionNormalized(nextPos, nextPos);
-			this.focusInputSurface(true);
-		}).open();
+			},
+			{
+				customEmphasisChars: this.getCustomEmphasisChars(),
+				onCustomEmphasisCharsChange: (chars) => {
+					void this.saveCustomEmphasisChars(chars);
+				},
+				contentFontFamily: this.plugin.settings.common.fontFamily ?? "",
+			},
+		).open();
 	}
 
 	private insertHorizontalRule(): void {
@@ -6869,13 +7137,13 @@ export class SoTWysiwygView extends ItemView {
 			});
 			new Notice(
 				next
-					? "ルビ表示をオンにしました。"
-					: "ルビ表示をオフにしました。",
+					? t("notice.ruby.enabled")
+					: t("notice.ruby.disabled"),
 				1800,
 			);
 		} catch (error) {
 			console.error("[Tategaki SoT] Failed to toggle ruby", error);
-			new Notice("ルビ表示の切り替えに失敗しました。", 2500);
+			new Notice(t("notice.ruby.toggleFailed"), 2500);
 		}
 	}
 
@@ -6913,7 +7181,7 @@ export class SoTWysiwygView extends ItemView {
 	private async toggleReadingMode(): Promise<void> {
 		const file = this.currentFile;
 		if (!file) {
-			new Notice("対象ファイルが見つかりません。", 2500);
+			new Notice(t("notice.targetFileNotFound"), 2500);
 			return;
 		}
 		const opened = await this.plugin.modeManager.toggleReadingView(file, {
@@ -6922,8 +7190,8 @@ export class SoTWysiwygView extends ItemView {
 		});
 		new Notice(
 			opened
-				? "書籍モードビューを開きました。"
-				: "書籍モードビューを閉じました。",
+				? t("notice.bookMode.opened")
+				: t("notice.bookMode.closed"),
 			2000,
 		);
 	}
@@ -6945,14 +7213,14 @@ export class SoTWysiwygView extends ItemView {
 
 	private async activateMarkdownLeafForCommand(): Promise<MarkdownView | null> {
 		if (!this.currentFile) {
-			new Notice("対象のファイルが見つかりません。", 2500);
+			new Notice(t("notice.targetFileNotFoundAlt"), 2500);
 			return null;
 		}
 		const markdownView = await this.ensureMarkdownViewForFile(
 			this.currentFile,
 		);
 		if (!markdownView || !this.pairedMarkdownLeaf) {
-			new Notice("Markdown ビューが見つからないため実行できません。", 2500);
+			new Notice(t("notice.markdownViewMissingExecute"), 2500);
 			return null;
 		}
 		this.app.workspace.setActiveLeaf(this.pairedMarkdownLeaf, {
@@ -6964,7 +7232,7 @@ export class SoTWysiwygView extends ItemView {
 
 	private openOutline(): void {
 		if (!this.outlinePanel) {
-			new Notice("アウトラインを開けませんでした。", 2000);
+			new Notice(t("notice.outline.openFailed"), 2000);
 			return;
 		}
 		this.outlinePanel.toggle();
@@ -7480,7 +7748,7 @@ export class SoTWysiwygView extends ItemView {
 	private toggleSourceMode(): void {
 		if (this.plainTextViewEnabled) {
 			new Notice(
-				"全文プレーン表示中はソーステキスト編集を使えません。",
+				t("notice.sourceEdit.unavailableInPlainText"),
 				2500,
 			);
 			return;
@@ -7890,13 +8158,13 @@ export class SoTWysiwygView extends ItemView {
 			this.setCeImeMode(false);
 			let label = reason;
 			if (reason === "selection") {
-				label = "選択の復元に失敗";
+				label = t("notice.ceIme.reason.selectionRestoreFailed");
 			} else if (reason === "external") {
-				label = "外部更新を検知";
+				label = t("notice.ceIme.reason.externalUpdated");
 			} else if (reason === "verification") {
-				label = "キャレット整合性チェック";
+				label = t("notice.ceIme.reason.caretVerification");
 			}
-			new Notice(`CE補助モードを一時停止しました (${label})`, 2500);
+			new Notice(t("notice.ceIme.suspended", { reason: label }), 2500);
 		}
 	}
 
@@ -8395,17 +8663,29 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private handleListOutlinerKeydown(event: KeyboardEvent): boolean {
-		if (this.ceImeMode || this.sourceModeEnabled) return false;
-		const host = this.getListOutlinerHost();
-		if (!host) return false;
-		return handleListOutlinerKeydown(host, event);
+		return handleListOutlinerKeydownForCe(
+			this.getListOutlinerCeBridgeHost(),
+			event,
+		);
 	}
 
 	runListOutlinerAction(action: "move-up" | "move-down"): boolean {
-		if (this.ceImeMode || this.sourceModeEnabled) return false;
-		const host = this.getListOutlinerHost();
-		if (!host) return false;
-		return runListOutlinerAction(host, action);
+		return runListOutlinerActionForCe(
+			this.getListOutlinerCeBridgeHost(),
+			action,
+		);
+	}
+
+	private getListOutlinerCeBridgeHost(): SoTListOutlinerCeBridgeHost {
+		return {
+			sourceModeEnabled: this.sourceModeEnabled,
+			ceImeMode: this.ceImeMode,
+			ceImeComposing: this.ceImeComposing,
+			getListOutlinerHost: () => this.getListOutlinerHost(),
+			syncSelectionFromCe: () => this.syncSelectionFromCe(),
+			syncSelectionToCe: () => this.syncSelectionToCe(),
+			runCeMutation: (action) => this.runCeMutation(action),
+		};
 	}
 
 	private getListOutlinerHost() {
@@ -9524,6 +9804,7 @@ export class SoTWysiwygView extends ItemView {
 		}
 		this.ensureLineRendered(lineEl);
 		const computedStyle = window.getComputedStyle(this.derivedRootEl);
+		const lineComputedStyle = window.getComputedStyle(lineEl);
 		const writingMode = computedStyle.writingMode;
 		const lineLength = lineRange.to - lineRange.from;
 		const localOffset = Math.max(
@@ -9599,8 +9880,10 @@ export class SoTWysiwygView extends ItemView {
 		}
 
 		const isVertical = writingMode.startsWith("vertical");
-		const fontSize = parseFloat(computedStyle.fontSize) || 18;
+		const rootFontSize = parseFloat(computedStyle.fontSize) || 18;
+		const fontSize = parseFloat(lineComputedStyle.fontSize) || rootFontSize;
 		const lineHeightPx =
+			Number.parseFloat(lineComputedStyle.lineHeight) ||
 			Number.parseFloat(computedStyle.lineHeight) ||
 			Math.max(1, fontSize * 1.8);
 		let pendingCaretIndex: number | null = null;
@@ -9717,8 +10000,13 @@ export class SoTWysiwygView extends ItemView {
 			const padBottom =
 				Number.parseFloat(computedStyle.paddingBottom) || 0;
 			const padRight = Number.parseFloat(computedStyle.paddingRight) || 0;
-			const lineSize = Math.max(fontSize * 1.8, 32); // 1行/1列のサイズ
-			const imeExtraSpace = Math.max(fontSize * 0.5, 0); // 余裕分（折り返しズレ緩和）
+			const lineSize = Math.max(lineHeightPx, fontSize * 1.8, 32); // 1行/1列のサイズ
+			const imeExtraSpace = Math.max(
+				fontSize * 0.5,
+				lineHeightPx * 0.25,
+				0,
+			); // 余裕分（折り返しズレ緩和）
+			this.applyOverlayTextStyle(lineEl, lineLength, localOffset);
 			this.overlayTextarea.setTextIndent(inlineIndent);
 			if (isVertical) {
 				// 縦書き: 行頭から下端までの高さ
@@ -9765,6 +10053,48 @@ export class SoTWysiwygView extends ItemView {
 			this.pendingCaretScroll = false;
 			this.scrollCaretIntoView();
 		}
+	}
+
+	private applyOverlayTextStyle(
+		lineEl: HTMLElement,
+		lineLength: number,
+		localOffset: number,
+	): void {
+		if (!this.overlayTextarea) return;
+		const styleSource = this.resolveOverlayStyleSourceNode(
+			lineEl,
+			lineLength,
+			localOffset,
+		);
+		const style = window.getComputedStyle(styleSource);
+		this.overlayTextarea.setTextStyle({
+			fontFamily: style.fontFamily,
+			fontSize: style.fontSize,
+			lineHeight: style.lineHeight,
+			fontWeight: style.fontWeight,
+			fontStyle: style.fontStyle,
+			letterSpacing: style.letterSpacing,
+			color: style.color,
+			textDecorationLine: style.textDecorationLine || "none",
+		});
+	}
+
+	private resolveOverlayStyleSourceNode(
+		lineEl: HTMLElement,
+		lineLength: number,
+		localOffset: number,
+	): HTMLElement {
+		if (lineLength <= 0) return lineEl;
+		const primary = this.findTextNodeAtOffset(lineEl, localOffset);
+		if (primary?.node.parentElement) {
+			return primary.node.parentElement;
+		}
+		const fallbackOffset = Math.max(0, localOffset - 1);
+		const fallback = this.findTextNodeAtOffset(lineEl, fallbackOffset);
+		if (fallback?.node.parentElement) {
+			return fallback.node.parentElement;
+		}
+		return lineEl;
 	}
 
 	private scrollCaretIntoView(): void {
@@ -9839,7 +10169,7 @@ export class SoTWysiwygView extends ItemView {
 		if (isExternal) {
 			void openExternalUrl(this.app, trimmed).then((opened) => {
 				if (!opened) {
-					new Notice("リンクを開けませんでした。", 2500);
+					new Notice(t("settings.notice.linkOpenFailed"), 2500);
 				}
 			});
 			return;

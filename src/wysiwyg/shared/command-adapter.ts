@@ -34,6 +34,8 @@ export interface CommandUiAdapter {
 
 	toggleBulletList?: () => void;
 	isBulletListActive?: () => boolean;
+	toggleTaskList?: () => void;
+	isTaskListActive?: () => boolean;
 	toggleOrderedList?: () => void;
 	isOrderedListActive?: () => boolean;
 	toggleBlockquote?: () => void;
@@ -43,7 +45,11 @@ export interface CommandUiAdapter {
 
 	insertLink?: () => void;
 	insertRuby?: () => void;
+	toggleTcy?: () => void;
+	isTcyActive?: () => boolean;
+	insertTcy?: () => void;
 	insertHorizontalRule?: () => void;
+	clearTcy?: () => void;
 	clearFormatting?: () => void;
 
 	toggleSourceMode?: () => void;

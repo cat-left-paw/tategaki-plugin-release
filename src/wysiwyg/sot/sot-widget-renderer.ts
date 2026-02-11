@@ -1,6 +1,7 @@
 import { MarkdownRenderChild, MarkdownRenderer } from "obsidian";
 
 import type { App } from "obsidian";
+import { t } from "../../shared/i18n";
 
 import type { LineRange } from "./line-ranges";
 
@@ -45,7 +46,7 @@ export function renderMathWidgetLine(
 	) {
 		const msg = document.createElement("div");
 		msg.className = "tategaki-md-math-widget-loading";
-		msg.textContent = "数式ブロックの解析に失敗しました。";
+		msg.textContent = t("widget.math.parseFailed");
 		lineEl.appendChild(msg);
 		return;
 	}
@@ -64,7 +65,7 @@ export function renderMathWidgetLine(
 
 	const loading = document.createElement("div");
 	loading.className = "tategaki-md-math-widget-loading";
-	loading.textContent = "数式をレンダリング中…";
+	loading.textContent = t("widget.math.rendering");
 	wrapper.appendChild(loading);
 
 	const content = document.createElement("div");
@@ -80,7 +81,7 @@ export function renderMathWidgetLine(
 	const startRange = context.lineRanges[startIndex];
 	const endRange = context.lineRanges[endIndex];
 	if (!startRange || !endRange) {
-		loading.textContent = "数式ブロック範囲が不正です。";
+		loading.textContent = t("widget.math.rangeInvalid");
 		return;
 	}
 	const markdown = doc.slice(startRange.from, endRange.to);
@@ -103,7 +104,7 @@ export function renderMathWidgetLine(
 		})
 		.catch(() => {
 			if (!lineEl.isConnected) return;
-			loading.textContent = "数式のレンダリングに失敗しました。";
+			loading.textContent = t("widget.math.renderFailed");
 		});
 }
 
@@ -127,7 +128,7 @@ export function renderCalloutWidgetLine(
 	) {
 		const msg = document.createElement("div");
 		msg.className = "tategaki-md-callout-widget-loading";
-		msg.textContent = "コールアウトの解析に失敗しました。";
+		msg.textContent = t("widget.callout.parseFailed");
 		lineEl.appendChild(msg);
 		return;
 	}
@@ -146,7 +147,7 @@ export function renderCalloutWidgetLine(
 
 	const loading = document.createElement("div");
 	loading.className = "tategaki-md-callout-widget-loading";
-	loading.textContent = "コールアウトをレンダリング中…";
+	loading.textContent = t("widget.callout.rendering");
 	wrapper.appendChild(loading);
 
 	const content = document.createElement("div");
@@ -189,7 +190,7 @@ export function renderCalloutWidgetLine(
 		.catch(() => {
 			if (!lineEl.isConnected) return;
 			if ((lineEl.dataset.calloutRange ?? "") !== expectedRange) return;
-			loading.textContent = "コールアウトのレンダリングに失敗しました。";
+			loading.textContent = t("widget.callout.renderFailed");
 		});
 }
 
@@ -213,7 +214,7 @@ export function renderTableWidgetLine(
 	) {
 		const msg = document.createElement("div");
 		msg.className = "tategaki-md-table-widget-loading";
-		msg.textContent = "テーブルの解析に失敗しました。";
+		msg.textContent = t("widget.table.parseFailed");
 		lineEl.appendChild(msg);
 		return;
 	}
@@ -232,7 +233,7 @@ export function renderTableWidgetLine(
 
 	const loading = document.createElement("div");
 	loading.className = "tategaki-md-table-widget-loading";
-	loading.textContent = "テーブルをレンダリング中…";
+	loading.textContent = t("widget.table.rendering");
 	wrapper.appendChild(loading);
 
 	const content = document.createElement("div");
@@ -274,7 +275,7 @@ export function renderTableWidgetLine(
 		.catch(() => {
 			if (!lineEl.isConnected) return;
 			if ((lineEl.dataset.tableRange ?? "") !== expectedRange) return;
-			loading.textContent = "テーブルのレンダリングに失敗しました。";
+			loading.textContent = t("widget.table.renderFailed");
 		});
 }
 
@@ -298,7 +299,7 @@ export function renderDeflistWidgetLine(
 	) {
 		const msg = document.createElement("div");
 		msg.className = "tategaki-md-deflist-widget-loading";
-		msg.textContent = "定義リストの解析に失敗しました。";
+		msg.textContent = t("widget.deflist.parseFailed");
 		lineEl.appendChild(msg);
 		return;
 	}
@@ -317,7 +318,7 @@ export function renderDeflistWidgetLine(
 
 	const loading = document.createElement("div");
 	loading.className = "tategaki-md-deflist-widget-loading";
-	loading.textContent = "定義リストをレンダリング中…";
+	loading.textContent = t("widget.deflist.rendering");
 	wrapper.appendChild(loading);
 
 	const content = document.createElement("div");
@@ -359,7 +360,7 @@ export function renderDeflistWidgetLine(
 		.catch(() => {
 			if (!lineEl.isConnected) return;
 			if ((lineEl.dataset.deflistRange ?? "") !== expectedRange) return;
-			loading.textContent = "定義リストのレンダリングに失敗しました。";
+			loading.textContent = t("widget.deflist.renderFailed");
 		});
 }
 
@@ -420,7 +421,7 @@ export function renderEmbedWidgetLine(
 
 	const loading = document.createElement("div");
 	loading.className = "tategaki-md-embed-widget-loading";
-	loading.textContent = "埋め込みを読み込み中…";
+	loading.textContent = t("widget.embed.loading");
 	wrapper.appendChild(loading);
 
 	const content = document.createElement("div");
@@ -434,14 +435,14 @@ export function renderEmbedWidgetLine(
 	lineEl.appendChild(eol);
 
 	if (!target) {
-		loading.textContent = "埋め込み先が空です。";
+		loading.textContent = t("widget.embed.empty");
 		return;
 	}
 
 	const sourcePath = context.getSourcePath();
 	const parsed = parseEmbedTarget(target);
 	if (!parsed) {
-		loading.textContent = `埋め込みの形式が不正です: ${target}`;
+		loading.textContent = t("widget.embed.invalidFormat", { target });
 		return;
 	}
 	const file = context.app.metadataCache.getFirstLinkpathDest(
@@ -449,7 +450,9 @@ export function renderEmbedWidgetLine(
 		sourcePath
 	);
 	if (!file) {
-		loading.textContent = `埋め込み先が見つかりません: ${parsed.linkpath}`;
+		loading.textContent = t("widget.embed.notFound", {
+			linkpath: parsed.linkpath,
+		});
 		return;
 	}
 	const cache = context.app.metadataCache.getFileCache(file);
@@ -460,7 +463,9 @@ export function renderEmbedWidgetLine(
 				normalizeEmbedHeading(parsed.heading!)
 		);
 		if (!exists) {
-			loading.textContent = `見出しが見つかりません: ${parsed.heading}`;
+			loading.textContent = t("widget.embed.headingNotFound", {
+				heading: parsed.heading,
+			});
 			return;
 		}
 	}
@@ -470,7 +475,9 @@ export function renderEmbedWidgetLine(
 			(blocks as any)[parsed.blockId] ||
 			(blocks as any)[`^${parsed.blockId}`];
 		if (!exists) {
-			loading.textContent = `ブロックが見つかりません: ${parsed.blockId}`;
+			loading.textContent = t("widget.embed.blockNotFound", {
+				blockId: parsed.blockId,
+			});
 			return;
 		}
 	}
@@ -498,7 +505,7 @@ export function renderEmbedWidgetLine(
 		.catch(() => {
 			if (!lineEl.isConnected) return;
 			if ((lineEl.dataset.embedTarget ?? "").trim() !== target) return;
-			loading.textContent = "埋め込みのレンダリングに失敗しました。";
+			loading.textContent = t("widget.embed.renderFailed");
 		});
 }
 

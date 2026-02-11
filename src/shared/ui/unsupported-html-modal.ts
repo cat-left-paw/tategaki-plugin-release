@@ -1,4 +1,5 @@
 import { App, Modal } from "obsidian";
+import { t } from "../i18n";
 
 export type UnsupportedHtmlAction = "read-only" | "discard" | "cancel";
 
@@ -17,15 +18,19 @@ export class UnsupportedHtmlModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		contentEl.createEl("h2", { text: "未対応HTMLタグの検出" });
+		contentEl.createEl("h2", { text: t("modal.unsupportedHtml.title") });
 		contentEl.createEl("p", {
-			text: "未対応のHTMLタグが含まれているため、そのまま編集すると失われる可能性があります。",
+			text: t("modal.unsupportedHtml.desc"),
 		});
 
 		if (this.tags.length > 0) {
-			const list = contentEl.createDiv("tategaki-unsupported-html-tag-list");
+			const list = contentEl.createDiv(
+				"tategaki-unsupported-html-tag-list",
+			);
 			list.createEl("div", {
-				text: `検出されたタグ: ${this.tags.join(", ")}`,
+				text: t("modal.unsupportedHtml.detectedTags", {
+					tags: this.tags.join(", "),
+				}),
 			});
 		}
 
@@ -34,7 +39,7 @@ export class UnsupportedHtmlModal extends Modal {
 		});
 
 		const readOnlyButton = buttonContainer.createEl("button", {
-			text: "読み取り専用で開く",
+			text: t("modal.unsupportedHtml.readOnly"),
 			cls: "mod-cta",
 		});
 		readOnlyButton.addEventListener("click", () => {
@@ -43,7 +48,7 @@ export class UnsupportedHtmlModal extends Modal {
 		});
 
 		const discardButton = buttonContainer.createEl("button", {
-			text: "破棄して開く",
+			text: t("modal.unsupportedHtml.discard"),
 			cls: "mod-warning",
 		});
 		discardButton.addEventListener("click", () => {
@@ -52,7 +57,7 @@ export class UnsupportedHtmlModal extends Modal {
 		});
 
 		const cancelButton = buttonContainer.createEl("button", {
-			text: "キャンセル",
+			text: t("common.cancel"),
 		});
 		cancelButton.addEventListener("click", () => {
 			this.result = "cancel";

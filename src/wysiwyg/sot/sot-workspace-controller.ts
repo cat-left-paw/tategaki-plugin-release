@@ -8,6 +8,7 @@ import {
 	setIcon,
 } from "obsidian";
 import type { KeymapEventHandler } from "obsidian";
+import { t } from "../../shared/i18n";
 import { FileSwitchModal } from "../../shared/ui/file-switch-modal";
 import { NewNoteModal } from "../../shared/ui/new-note-modal";
 import { MarkdownViewSoTEditor } from "./markdownview-sot-editor";
@@ -15,8 +16,6 @@ import { MarkdownViewSoTEditor } from "./markdownview-sot-editor";
 const PAIRED_MARKDOWN_BADGE_CLASS = "tategaki-paired-tab-badge";
 const PAIRED_MARKDOWN_BADGE_ICON_CLASS = "tategaki-paired-tab-badge-icon";
 const PAIRED_MARKDOWN_BADGE_TEXT_CLASS = "tategaki-paired-tab-badge-text";
-const PAIRED_MARKDOWN_BADGE_TEXT = "縦";
-const PAIRED_MARKDOWN_BADGE_TITLE = "Tategaki編集中";
 const SOT_TAB_BADGE_CLASS = "tategaki-sot-tab-badge";
 const SOT_TAB_BADGE_TITLE = "Tategaki SoT";
 const RECENT_FILE_LIMIT = 50;
@@ -33,7 +32,7 @@ export class SoTWorkspaceController {
 		this.host.showLoadingOverlay();
 		const markdownView = await this.ensureMarkdownViewForFile(file);
 		if (!markdownView) {
-			new Notice("Markdown ビューが見つからないため閉じます。", 2500);
+			new Notice(t("notice.markdownViewMissingClose"), 2500);
 			this.host.closeSelf();
 			return;
 		}
@@ -238,7 +237,7 @@ export class SoTWorkspaceController {
 		);
 		modal.open();
 		if (files.length === 0) {
-			new Notice("切り替え可能なファイルが見つかりません。", 2000);
+			new Notice(t("notice.switchableFilesNotFound"), 2000);
 		}
 	}
 
@@ -260,7 +259,7 @@ export class SoTWorkspaceController {
 	async createNewNote(name: string, baseFolder: string): Promise<void> {
 		const trimmed = name.trim();
 		if (!trimmed) {
-			new Notice("ファイル名を入力してください。", 2000);
+			new Notice(t("notice.fileNameRequired"), 2000);
 			return;
 		}
 		const cleaned = trimmed.replace(/^[\\/]+/, "").replace(/^\.\//, "");
@@ -270,7 +269,7 @@ export class SoTWorkspaceController {
 		const filePath = normalizePath(joined);
 		const existing = this.host.app.vault.getAbstractFileByPath(filePath);
 		if (existing instanceof TFile) {
-			new Notice("既存ノートを開きます。", 2000);
+			new Notice(t("notice.openExistingNote"), 2000);
 			await this.switchToFile(existing);
 			return;
 		}
@@ -285,11 +284,11 @@ export class SoTWorkspaceController {
 						"[Tategaki SoT] Failed to create folder",
 						error
 					);
-					new Notice("フォルダの作成に失敗しました。", 2500);
+					new Notice(t("notice.createFolderFailed"), 2500);
 					return;
 				}
 			} else if (!(folder instanceof TFolder)) {
-				new Notice("フォルダ名が不正です。", 2500);
+				new Notice(t("notice.invalidFolderName"), 2500);
 				return;
 			}
 		}
@@ -298,19 +297,19 @@ export class SoTWorkspaceController {
 			await this.switchToFile(file);
 		} catch (error) {
 			console.error("[Tategaki SoT] Failed to create note", error);
-			new Notice("新規ノートの作成に失敗しました。", 2500);
+			new Notice(t("notice.createNoteFailed"), 2500);
 		}
 	}
 
 	async switchToFile(file: TFile): Promise<void> {
 		if (this.host.currentFile?.path === file.path) {
-			new Notice("既に表示中のファイルです。", 1500);
+			new Notice(t("notice.fileAlreadyDisplayed"), 1500);
 			return;
 		}
 		const pairedLeaf = this.getValidPairedMarkdownLeaf();
 		if (!pairedLeaf) {
 			new Notice(
-				"ペアの Markdown ビューが見つからないため切り替えできません。",
+				t("notice.markdownPairMissingSwitch"),
 				2500
 			);
 			return;
@@ -330,7 +329,7 @@ export class SoTWorkspaceController {
 		} catch (error) {
 			this.host.suppressPairCheck = false;
 			console.error("[Tategaki SoT] Failed to switch file", error);
-			new Notice("ファイル切り替えに失敗しました。", 2500);
+			new Notice(t("notice.fileSwitchFailed"), 2500);
 		}
 	}
 
@@ -425,7 +424,7 @@ export class SoTWorkspaceController {
 			if (!this.host.pairedMismatchNotified) {
 				this.host.pairedMismatchNotified = true;
 				new Notice(
-					"ペアの Markdown ビューが対象ファイルと一致しないため閉じます。",
+					t("notice.markdownPairMismatchClose"),
 					2500
 				);
 			}
@@ -458,8 +457,9 @@ export class SoTWorkspaceController {
 			badge.className = PAIRED_MARKDOWN_BADGE_CLASS;
 			badgeHost.appendChild(badge);
 		}
-		badge.setAttribute("aria-label", PAIRED_MARKDOWN_BADGE_TITLE);
-		badge.setAttribute("title", PAIRED_MARKDOWN_BADGE_TITLE);
+		const pairedBadgeTitle = t("badge.pairedMarkdown.title");
+		badge.setAttribute("aria-label", pairedBadgeTitle);
+		badge.setAttribute("title", pairedBadgeTitle);
 		if (
 			!badge.querySelector(`.${PAIRED_MARKDOWN_BADGE_ICON_CLASS}`)
 		) {
@@ -473,7 +473,7 @@ export class SoTWorkspaceController {
 		) {
 			const textEl = doc.createElement("span");
 			textEl.className = PAIRED_MARKDOWN_BADGE_TEXT_CLASS;
-			textEl.textContent = PAIRED_MARKDOWN_BADGE_TEXT;
+			textEl.textContent = t("badge.pairedMarkdown.short");
 			badge.appendChild(textEl);
 		}
 		if (badge.parentElement !== badgeHost) {
@@ -513,7 +513,7 @@ export class SoTWorkspaceController {
 		setIcon(iconEl, "user-round-pen");
 		const textEl = doc.createElement("span");
 		textEl.className = PAIRED_MARKDOWN_BADGE_TEXT_CLASS;
-		textEl.textContent = PAIRED_MARKDOWN_BADGE_TEXT;
+		textEl.textContent = t("badge.pairedMarkdown.short");
 		badge.appendChild(textEl);
 		badgeHost.insertBefore(badge, badgeHost.firstChild);
 		this.host.sotTabBadgeEl = badge;

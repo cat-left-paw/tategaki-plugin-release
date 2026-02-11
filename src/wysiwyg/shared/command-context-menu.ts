@@ -1,5 +1,6 @@
 import { Menu } from "obsidian";
 import type { CommandUiAdapter } from "./command-adapter";
+import { t } from "../../shared/i18n";
 
 export class CommandContextMenu {
 	private adapter: CommandUiAdapter;
@@ -30,7 +31,7 @@ export class CommandContextMenu {
 		const hasSelection = this.adapter.hasSelection?.() ?? false;
 		if (this.adapter.cut) {
 			menu.addItem((item) => {
-				item.setTitle("切り取り")
+				item.setTitle(t("common.cut"))
 					.setIcon("scissors")
 					.setDisabled(!hasSelection)
 					.onClick(() => {
@@ -41,7 +42,7 @@ export class CommandContextMenu {
 		}
 		if (this.adapter.copy) {
 			menu.addItem((item) => {
-				item.setTitle("コピー")
+				item.setTitle(t("common.copy"))
 					.setIcon("copy")
 					.setDisabled(!hasSelection)
 					.onClick(() => {
@@ -52,7 +53,7 @@ export class CommandContextMenu {
 		}
 		if (this.adapter.paste) {
 			menu.addItem((item) => {
-				item.setTitle("貼り付け")
+				item.setTitle(t("common.paste"))
 					.setIcon("clipboard-paste")
 					.onClick(() => {
 						void this.adapter.paste?.();
@@ -62,7 +63,7 @@ export class CommandContextMenu {
 		}
 		if (this.adapter.selectAll) {
 			menu.addItem((item) => {
-				item.setTitle("すべて選択")
+				item.setTitle(t("common.selectAll"))
 					.setIcon("select-all")
 					.onClick(() => {
 						this.adapter.selectAll?.();
@@ -80,31 +81,31 @@ export class CommandContextMenu {
 		const inlineAllowed = this.adapter.isInlineSelectionAllowed?.() ?? true;
 		const items = [
 			{
-				title: "太字",
+				title: t("toolbar.bold"),
 				icon: "bold",
 				action: this.adapter.toggleBold,
 				active: this.adapter.isBoldActive,
 			},
 			{
-				title: "斜体",
+				title: t("toolbar.italic"),
 				icon: "italic",
 				action: this.adapter.toggleItalic,
 				active: this.adapter.isItalicActive,
 			},
 			{
-				title: "取り消し線",
+				title: t("toolbar.strikethrough"),
 				icon: "strikethrough",
 				action: this.adapter.toggleStrikethrough,
 				active: this.adapter.isStrikethroughActive,
 			},
 			{
-				title: "下線",
+				title: t("toolbar.underline"),
 				icon: "underline",
 				action: this.adapter.toggleUnderline,
 				active: this.adapter.isUnderlineActive,
 			},
 			{
-				title: "ハイライト",
+				title: t("toolbar.highlight"),
 				icon: "highlighter",
 				action: this.adapter.toggleHighlight,
 				active: this.adapter.isHighlightActive,
@@ -137,7 +138,7 @@ export class CommandContextMenu {
 		const currentLevel = this.adapter.getHeadingLevel?.() ?? 0;
 		for (let level = 1; level <= 6; level += 1) {
 			menu.addItem((item) => {
-				item.setTitle(`見出し${level}`)
+				item.setTitle(t("toolbar.heading.level", { level }))
 					.setIcon(`heading-${level}`)
 					.onClick(() => {
 						this.adapter.setHeading?.(level);
@@ -148,7 +149,7 @@ export class CommandContextMenu {
 			});
 		}
 		menu.addItem((item) => {
-			item.setTitle("見出し解除")
+			item.setTitle(t("toolbar.heading.clear"))
 				.setIcon("text")
 				.onClick(() => {
 					this.adapter.clearHeading?.();
@@ -163,13 +164,19 @@ export class CommandContextMenu {
 	private addBlockSection(menu: Menu): void {
 		const items = [
 			{
-				title: "箇条書きリスト",
+				title: t("toolbar.bulletList"),
 				icon: "list",
 				action: this.adapter.toggleBulletList,
 				active: this.adapter.isBulletListActive,
 			},
 			{
-				title: "番号付きリスト",
+				title: t("toolbar.taskList"),
+				icon: "check-square",
+				action: this.adapter.toggleTaskList,
+				active: this.adapter.isTaskListActive,
+			},
+			{
+				title: t("toolbar.orderedList"),
 				icon: "list-ordered",
 				action: this.adapter.toggleOrderedList,
 				active: this.adapter.isOrderedListActive,
@@ -203,12 +210,27 @@ export class CommandContextMenu {
 			const inlineAllowed =
 				this.adapter.isInlineSelectionAllowed?.() ?? true;
 			menu.addItem((item) => {
-				item.setTitle("ルビ挿入")
+				item.setTitle(t("toolbar.rubyInsert"))
 					.setIcon("gem")
 					.setDisabled(!hasSelection || !inlineAllowed)
 					.onClick(() => {
 						this.adapter.insertRuby?.();
 					});
+			});
+			added = true;
+		}
+		if (this.adapter.toggleTcy || this.adapter.insertTcy || this.adapter.clearTcy) {
+			const active = this.isTcyActive();
+			menu.addItem((item) => {
+				item.setTitle(active ? t("toolbar.tcyClear") : t("toolbar.tcyInsert"))
+					.setIcon("square-arrow-right")
+					.setDisabled(this.isTcyDisabled())
+					.onClick(() => {
+						this.toggleTcy();
+					});
+				if (active) {
+					item.setChecked(true);
+				}
 			});
 			added = true;
 		}
@@ -218,14 +240,43 @@ export class CommandContextMenu {
 	}
 
 	private addClearSection(menu: Menu): void {
-		if (!this.adapter.clearFormatting) return;
+		if (!this.adapter.clearFormatting) {
+			return;
+		}
 		menu.addItem((item) => {
-			item.setTitle("書式クリア")
+			item.setTitle(t("toolbar.clearFormatting"))
 				.setIcon("eraser")
 				.onClick(() => {
 					this.adapter.clearFormatting?.();
 				});
 		});
+	}
+
+	private isTcyActive(): boolean {
+		return this.adapter.isTcyActive?.() ?? false;
+	}
+
+	private toggleTcy(): void {
+		if (this.adapter.toggleTcy) {
+			this.adapter.toggleTcy();
+			return;
+		}
+		if (this.isTcyActive()) {
+			this.adapter.clearTcy?.();
+			return;
+		}
+		this.adapter.insertTcy?.();
+	}
+
+	private isTcyDisabled(): boolean {
+		const hasSelection = this.adapter.hasSelection?.() ?? false;
+		const inlineAllowed = this.adapter.isInlineSelectionAllowed?.() ?? true;
+		if (!hasSelection || !inlineAllowed) return true;
+		if (this.adapter.toggleTcy) return false;
+		if (this.isTcyActive()) {
+			return !this.adapter.clearTcy;
+		}
+		return !this.adapter.insertTcy;
 	}
 
 }

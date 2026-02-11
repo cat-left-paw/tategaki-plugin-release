@@ -35,10 +35,13 @@ import {
 } from "./extensions/simple-inline-marks";
 import { WbrNode } from "./extensions/wbr";
 import { TategakiImage } from "./extensions/tategaki-image";
+import { AozoraTcyNode } from "./extensions/aozora-tcy";
+import { AutoTcyDecoration } from "./extensions/auto-tcy-decoration";
 import {
 	convertAozoraRubySyntaxToHtml,
 	convertRubyElementsToAozora,
 } from "../../shared/aozora-ruby";
+import { convertAozoraTcySyntaxToHtml } from "../../shared/aozora-tcy";
 
 export interface TategakiCompatEditorOptions {
 	element: HTMLElement;
@@ -85,6 +88,10 @@ export function createTategakiCompatEditor(options: TategakiCompatEditorOptions)
 			Text,
 			ObsidianHighlightMark,
 			AozoraRubyNode,
+			AozoraTcyNode,
+			AutoTcyDecoration.configure({
+				isEnabled: () => settings.wysiwyg.enableAutoTcy === true,
+			}),
 			Heading.configure({
 				levels: [1, 2, 3, 4, 5, 6],
 			}),
@@ -206,10 +213,14 @@ export function createTategakiCompatEditor(options: TategakiCompatEditorOptions)
 				},
 			},
 			transformPastedHTML: (html: string) => {
-				return convertAozoraRubySyntaxToHtml(html);
+				return convertAozoraTcySyntaxToHtml(
+					convertAozoraRubySyntaxToHtml(html)
+				);
 			},
 			transformPastedText: (text: string) => {
-				return convertAozoraRubySyntaxToHtml(text);
+				return convertAozoraTcySyntaxToHtml(
+					convertAozoraRubySyntaxToHtml(text)
+				);
 			},
 			// ブロック間の改行が \n\n になるのを防ぎ、コピー元どおりの行構造を保つ
 			clipboardTextSerializer: (slice: Slice): string => {
