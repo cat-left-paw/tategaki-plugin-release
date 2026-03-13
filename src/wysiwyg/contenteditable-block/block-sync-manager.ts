@@ -20,7 +20,7 @@ import {
 		writeSyncBackupPair,
 	} from "../../shared/sync-backup";
 	import { BackupTriggerDetector } from "../../shared/backup-trigger";
-	import { debugWarn } from "../../shared/logger";
+	import { debugWarn, debugError } from "../../shared/logger";
 
 interface BlockSyncManagerOptions {
 	app: App;
@@ -359,7 +359,7 @@ export class BlockContentSyncManager {
 		try {
 			diskMarkdownBefore = await this.app.vault.read(this.currentFile);
 		} catch (error) {
-			console.error("Tategaki BlockSync: failed to read file before save", error);
+			debugError("Tategaki BlockSync: failed to read file before save", error);
 			new Notice(t("notice.sync.readBeforeSaveFailed"), 3000);
 			this.updateState({
 				lastSyncResult: "error",
@@ -409,7 +409,7 @@ export class BlockContentSyncManager {
 							this.backupTriggerDetector.recordBackup();
 						}
 					} catch (error) {
-						console.error("Tategaki BlockSync: failed to write sync backup", error);
+						debugError("Tategaki BlockSync: failed to write sync backup", error);
 						new Notice(
 							t("notice.sync.backupCreateFailedContinue"),
 							3500
@@ -424,7 +424,7 @@ export class BlockContentSyncManager {
 			try {
 				readBack = await this.app.vault.read(this.currentFile);
 			} catch (error) {
-				console.error("Tategaki BlockSync: failed to read back file after save", error);
+				debugError("Tategaki BlockSync: failed to read back file after save", error);
 				new Notice(
 					t("notice.sync.readBackFailedBackedUp"),
 					4000
@@ -443,7 +443,7 @@ export class BlockContentSyncManager {
 			}
 
 			if (!areMarkdownContentsEquivalent(markdown, readBack)) {
-				console.error("Tategaki BlockSync: read-back verification mismatch after save", {
+				debugError("Tategaki BlockSync: read-back verification mismatch after save", {
 					file: this.currentFile.path,
 				});
 				new Notice(
@@ -458,7 +458,7 @@ export class BlockContentSyncManager {
 						4500
 					);
 				} catch (rollbackError) {
-					console.error("Tategaki BlockSync: rollback failed", rollbackError);
+					debugError("Tategaki BlockSync: rollback failed", rollbackError);
 					new Notice(
 						t("notice.sync.rollbackFailedRestore"),
 						6000
@@ -488,7 +488,7 @@ export class BlockContentSyncManager {
 				lastSyncMessage: null,
 			});
 		} catch (error) {
-			console.error("Tategaki BlockSync: failed to save file", error);
+			debugError("Tategaki BlockSync: failed to save file", error);
 			new Notice(t("notice.sync.saveFailed"), 3000);
 			this.updateState({
 				saving: false,
@@ -534,7 +534,7 @@ export class BlockContentSyncManager {
 			});
 			return true;
 		} catch (error) {
-			console.error("Tategaki BlockSync: failed to load file", error);
+			debugError("Tategaki BlockSync: failed to load file", error);
 			new Notice(t("notice.sync.loadFailed"), 2000);
 			return false;
 		}
@@ -639,7 +639,7 @@ export class BlockContentSyncManager {
 									break;
 							}
 						} catch (error) {
-							console.error("Tategaki BlockSync: conflict resolution failed", error);
+							debugError("Tategaki BlockSync: conflict resolution failed", error);
 							new Notice(t("notice.sync.conflictResolutionFailed"), 4000);
 						}
 
@@ -744,7 +744,7 @@ export class BlockContentSyncManager {
 					this.executeFileSwitchAction(result.action)
 						.then(() => resolve(true))
 						.catch((error) => {
-							console.error(
+							debugError(
 								"Tategaki BlockSync: file switch action failed",
 								error
 							);

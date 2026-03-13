@@ -25,8 +25,6 @@ export class CommandToolbar {
 	private horizontalRuleButton: HTMLButtonElement | null = null;
 	private sourceToggleButton: HTMLButtonElement | null = null;
 	private rubyToggleButton: HTMLButtonElement | null = null;
-	private ceImeToggleButton: HTMLButtonElement | null = null;
-
 	constructor(container: HTMLElement, adapter: CommandUiAdapter) {
 		this.container = container;
 		this.adapter = adapter;
@@ -42,7 +40,6 @@ export class CommandToolbar {
 		this.horizontalRuleButton = null;
 		this.sourceToggleButton = null;
 		this.rubyToggleButton = null;
-		this.ceImeToggleButton = null;
 	}
 
 	update(): void {
@@ -94,10 +91,6 @@ export class CommandToolbar {
 		}
 		this.createSeparator();
 		this.createSourceToggleButton();
-		if (this.adapter.toggleCeImeMode) {
-			this.createSeparator();
-			this.createCeImeToggleButton();
-		}
 		if (this.adapter.openSettings) {
 			this.createSeparator();
 			this.createSettingsButton();
@@ -521,23 +514,6 @@ export class CommandToolbar {
 				(this.adapter.isSourceMode?.() ?? false)
 					? t("toolbar.source.disable")
 					: t("toolbar.source.enable"),
-		);
-	}
-
-	private createCeImeToggleButton(): void {
-		this.ceImeToggleButton = this.createButton(
-			"ceImeMode",
-			"toggle-left",
-			t("toolbar.ceIme.toggle"),
-			this.adapter.toggleCeImeMode,
-			() => this.adapter.isCeImeMode?.() ?? false,
-			() => !this.adapter.toggleCeImeMode,
-			() =>
-				this.adapter.isCeImeMode?.() ? "toggle-right" : "toggle-left",
-			() =>
-				this.adapter.isCeImeMode?.()
-					? t("toolbar.ceIme.disable")
-					: t("toolbar.ceIme.enable"),
 		);
 	}
 

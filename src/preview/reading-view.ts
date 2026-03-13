@@ -21,19 +21,14 @@ import {
 	normalizeMarkdownForTipTap,
 	protectIndentation,
 } from "../wysiwyg/tiptap-compat/markdown-adapter";
+import {
+	parseFrontmatterBlock,
+	type FrontmatterData,
+} from "../shared/frontmatter";
+import { debugError } from "../shared/logger";
 
 export const TATEGAKI_READING_VIEW_TYPE = "tategaki-reading-view";
 const RECENT_FILE_LIMIT = 20;
-
-type FrontmatterData = {
-	title?: string;
-	subtitle?: string;
-	original_title?: string;
-	author?: string;
-	translator?: string;
-	co_authors?: string[];
-	co_translators?: string[];
-};
 
 type ReadingReturnMode = "edit" | "sot";
 
@@ -423,7 +418,7 @@ export class TategakiReadingView extends ItemView {
 				},
 			});
 		} catch (error) {
-			console.error("[Tategaki] Failed to toggle writing mode", error);
+			debugError("[Tategaki] Failed to toggle writing mode", error);
 			new Notice(t("notice.writingMode.toggleFailed"), 2500);
 		}
 	}
@@ -625,7 +620,7 @@ export class TategakiReadingView extends ItemView {
 				try {
 					await this.app.vault.createFolder(folderPath);
 				} catch (error) {
-					console.error(
+					debugError(
 						"[Tategaki Reading] Failed to create folder",
 						error,
 					);
@@ -641,7 +636,7 @@ export class TategakiReadingView extends ItemView {
 			const file = await this.app.vault.create(filePath, "");
 			await this.switchToFile(file);
 		} catch (error) {
-			console.error("[Tategaki Reading] Failed to create note", error);
+			debugError("[Tategaki Reading] Failed to create note", error);
 			new Notice(t("notice.createNoteFailed"), 2500);
 		}
 	}
@@ -704,6 +699,10 @@ export class TategakiReadingView extends ItemView {
 		page: HTMLElement,
 		pageIndex: number
 	): void {
+		// フロントマター表紙ページはアウトライン対象外
+		if (page.getAttribute("data-page-kind") === "frontmatter-cover") {
+			return;
+		}
 		const headings = Array.from(
 			page.querySelectorAll<HTMLElement>(
 				"h1, h2, h3, h4, h5, h6"
@@ -725,6 +724,10 @@ export class TategakiReadingView extends ItemView {
 	private updateOutlineItems(pages: HTMLElement[]): void {
 		const items: OutlineItem[] = [];
 		pages.forEach((page, pageIndex) => {
+			// フロントマター表紙ページはアウトライン対象外
+			if (page.getAttribute("data-page-kind") === "frontmatter-cover") {
+				return;
+			}
 			const headings = Array.from(
 				page.querySelectorAll<HTMLElement>(
 					"h1, h2, h3, h4, h5, h6"
@@ -818,7 +821,7 @@ export class TategakiReadingView extends ItemView {
 		try {
 			content = await this.app.vault.read(file);
 		} catch (error) {
-			console.error("[Tategaki] Failed to read reading view file", error);
+			debugError("[Tategaki] Failed to read reading view file", error);
 			return;
 		}
 		if (token !== this.renderToken) {
@@ -827,12 +830,8 @@ export class TategakiReadingView extends ItemView {
 
 		const settings = this.plugin.settings;
 		const effectiveCommon = this.getEffectiveCommonSettings();
-		const snapshotHtml = this.buildSnapshotHtml(
-			content,
-			file.path,
-			settings,
-			effectiveCommon
-		);
+		const { bodyHtml: snapshotHtml, frontmatterCoverHtml } =
+			this.buildSnapshotHtmlParts(content, file.path, settings, effectiveCommon);
 
 		this.destroyPager();
 		this.hostEl.empty();
@@ -849,6 +848,7 @@ export class TategakiReadingView extends ItemView {
 			this.pager = new PagedReadingMode({
 				container: this.hostEl,
 				contentHtml: snapshotHtml,
+				frontmatterCoverHtml: frontmatterCoverHtml ?? undefined,
 				writingMode: effectiveCommon.writingMode,
 				settings: effectiveCommon,
 				previewSettings: settings.preview,
@@ -869,7 +869,7 @@ export class TategakiReadingView extends ItemView {
 				},
 			});
 		} catch (error) {
-			console.error("[Tategaki] Failed to start reading view", error);
+			debugError("[Tategaki] Failed to start reading view", error);
 			this.pager = null;
 		}
 	}
@@ -890,12 +890,12 @@ export class TategakiReadingView extends ItemView {
 		}
 	}
 
-	private buildSnapshotHtml(
+	private buildSnapshotHtmlParts(
 		content: string,
 		filePath: string,
 		settings: TategakiV2Settings,
 		common: CommonSettings
-	): string {
+	): { bodyHtml: string; frontmatterCoverHtml: string | null } {
 		const extracted = extractFrontmatterBlock(content);
 		const enableRuby = settings.wysiwyg.enableRuby !== false;
 		const protectedMarkdown = protectIndentation(extracted.body);
@@ -910,28 +910,95 @@ export class TategakiReadingView extends ItemView {
 		);
 
 		const doc = this.hostEl?.ownerDocument ?? document;
-		const wrapper = doc.createElement("div");
-		wrapper.className = "tategaki-reading-view-snapshot";
-
 		const { frontmatter } = this.parseFrontmatter(content);
+
+		// フロントマター要素を生成（設定が有効で内容がある場合）
+		let frontmatterEl: HTMLElement | null = null;
 		if (frontmatter && !settings.preview.hideFrontmatter) {
-			const frontmatterEl = this.renderFrontmatter(frontmatter, settings);
+			frontmatterEl = this.renderFrontmatter(frontmatter, settings);
 			if (frontmatterEl) {
 				this.applyFrontmatterWritingMode(
 					frontmatterEl,
 					common.writingMode
 				);
-				wrapper.appendChild(frontmatterEl);
 			}
 		}
 
+		// 本文 HTML を構築（見出し前改ページマークを付与）
 		const proseMirror = doc.createElement("div");
 		proseMirror.className = "tiptap ProseMirror";
 		proseMirror.setAttribute("contenteditable", "false");
 		proseMirror.innerHTML = normalizedMarkdown;
-		wrapper.appendChild(proseMirror);
 
-		return wrapper.innerHTML;
+		// 見出しのページ扱い（新設定を優先）
+		const headingPagMode = settings.preview.bookHeadingPaginationMode ?? "none";
+		const headingPagLevel = settings.preview.bookHeadingPaginationLevel ?? 0;
+		// 後方互換: 旧設定もフォールバックとして参照
+		const effectiveLevel = headingPagLevel > 0
+			? headingPagLevel
+			: (settings.preview.bookPageBreakBeforeHeadingLevel ?? 0);
+		const effectiveMode = headingPagMode !== "none"
+			? headingPagMode
+			: (effectiveLevel > 0 ? "page-break" : "none");
+
+		if (effectiveMode !== "none" && effectiveLevel > 0) {
+			for (let l = 1; l <= effectiveLevel; l++) {
+				const headings = proseMirror.querySelectorAll<HTMLElement>(`h${l}`);
+				headings.forEach((h) => {
+					if (effectiveMode === "title-page") {
+						h.setAttribute("data-tategaki-title-page", "true");
+					} else {
+						h.setAttribute("data-tategaki-page-break-before", "true");
+					}
+				});
+			}
+		}
+
+		// 独立ページ分離モード（新設定を優先、旧設定もフォールバック）
+		const fmDisplayMode = settings.preview.bookFrontmatterDisplayMode ?? "inline";
+		const useCoverPage =
+			fmDisplayMode === "separate-page" && frontmatterEl !== null;
+
+		if (useCoverPage && frontmatterEl) {
+			// 独立ページのレイアウト
+			const fmLayout = settings.preview.bookFrontmatterSeparatePageLayout ?? "normal";
+			if (fmLayout === "center") {
+				frontmatterEl.classList.add("tategaki-frontmatter-layout-center");
+			}
+
+			// 独立ページの文字方向
+			const fmWritingMode = settings.preview.bookFrontmatterSeparatePageWritingMode ?? "inherit";
+			if (fmWritingMode !== "inherit") {
+				frontmatterEl.style.writingMode = fmWritingMode;
+				frontmatterEl.classList.add("tategaki-frontmatter-writing-override");
+				if (fmWritingMode === "horizontal-tb") {
+					frontmatterEl.classList.add("tategaki-frontmatter-horizontal");
+				} else if (fmWritingMode === "vertical-rl") {
+					frontmatterEl.classList.add("tategaki-frontmatter-vertical");
+				}
+			}
+
+			// frontmatter は表紙ページ用 HTML として分離
+			const coverWrapper = doc.createElement("div");
+			coverWrapper.className = "tategaki-reading-view-snapshot tategaki-frontmatter-cover-snapshot";
+			coverWrapper.appendChild(frontmatterEl);
+			const frontmatterCoverHtml = coverWrapper.innerHTML;
+
+			// 本文のみ
+			const bodyWrapper = doc.createElement("div");
+			bodyWrapper.className = "tategaki-reading-view-snapshot";
+			bodyWrapper.appendChild(proseMirror);
+			return { bodyHtml: bodyWrapper.innerHTML, frontmatterCoverHtml };
+		}
+
+		// 通常モード: frontmatter + 本文を結合
+		const wrapper = doc.createElement("div");
+		wrapper.className = "tategaki-reading-view-snapshot";
+		if (frontmatterEl) {
+			wrapper.appendChild(frontmatterEl);
+		}
+		wrapper.appendChild(proseMirror);
+		return { bodyHtml: wrapper.innerHTML, frontmatterCoverHtml: null };
 	}
 
 	private resolveImageSrc(src: string, contextFilePath: string | null): string {
@@ -963,108 +1030,7 @@ export class TategakiReadingView extends ItemView {
 		frontmatter: FrontmatterData | null;
 		contentWithoutFrontmatter: string;
 	} {
-		const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n/;
-		const match = content.match(frontmatterRegex);
-
-		if (!match) {
-			return {
-				frontmatter: null,
-				contentWithoutFrontmatter: content,
-			};
-		}
-
-		const yamlContent = match[1];
-		const contentWithoutFrontmatter = content.slice(match[0].length);
-
-		const frontmatter: FrontmatterData = {};
-		const lines = yamlContent.split("\n");
-
-		let currentKey = "";
-		let currentArray: string[] = [];
-		let isInArray = false;
-
-		for (const line of lines) {
-			const trimmedLine = line.trim();
-			if (!trimmedLine || trimmedLine.startsWith("#")) continue;
-
-			if (trimmedLine.startsWith("- ")) {
-				if (isInArray) {
-					currentArray.push(trimmedLine.slice(2).trim());
-				}
-				continue;
-			}
-
-			if (isInArray && !trimmedLine.startsWith("- ")) {
-				if (currentKey === "co_authors") {
-					frontmatter.co_authors = currentArray;
-				} else if (currentKey === "co_translators") {
-					frontmatter.co_translators = currentArray;
-				}
-				isInArray = false;
-				currentArray = [];
-			}
-
-			const colonIndex = trimmedLine.indexOf(":");
-			if (colonIndex !== -1) {
-				const key = trimmedLine.slice(0, colonIndex).trim();
-				const value = trimmedLine.slice(colonIndex + 1).trim();
-
-				switch (key) {
-					case "title":
-						frontmatter.title = value;
-						currentKey = key;
-						break;
-					case "subtitle":
-						frontmatter.subtitle = value;
-						currentKey = key;
-						break;
-					case "original_title":
-						frontmatter.original_title = value;
-						currentKey = key;
-						break;
-					case "author":
-						frontmatter.author = value;
-						currentKey = key;
-						break;
-					case "translator":
-						frontmatter.translator = value;
-						currentKey = key;
-						break;
-					case "co_authors":
-						if (!value) {
-							isInArray = true;
-							currentKey = key;
-							currentArray = [];
-						} else {
-							frontmatter.co_authors = [value];
-						}
-						break;
-					case "co_translators":
-						if (!value) {
-							isInArray = true;
-							currentKey = key;
-							currentArray = [];
-						} else {
-							frontmatter.co_translators = [value];
-						}
-						break;
-				}
-			}
-		}
-
-		if (isInArray) {
-			if (currentKey === "co_authors") {
-				frontmatter.co_authors = currentArray;
-			} else if (currentKey === "co_translators") {
-				frontmatter.co_translators = currentArray;
-			}
-		}
-
-		return {
-			frontmatter:
-				Object.keys(frontmatter).length > 0 ? frontmatter : null,
-			contentWithoutFrontmatter,
-		};
+		return parseFrontmatterBlock(content);
 	}
 
 	private renderFrontmatter(

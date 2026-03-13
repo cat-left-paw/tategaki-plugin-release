@@ -5,11 +5,15 @@ import type {
 	HeaderFooterContent,
 } from "../../types/settings";
 import { MeasuredPagination } from "./measured-pagination";
-import { debugLog } from "../../shared/logger";
+import { splitIntoBookSegments } from "./book-page-segments";
+import type { BookPageSegment } from "./book-page-segments";
+import { htmlHasVisibleContent } from "./visible-content";
+import { debugLog, debugError } from "../../shared/logger";
 
 export interface PagedReadingModeOptions {
 	container: HTMLElement;
 	contentHtml: string;
+	frontmatterCoverHtml?: string; // 表紙ページ用 HTML（設定有効時のみ）
 	writingMode: WritingMode;
 	settings: CommonSettings;
 	previewSettings?: PreviewSettings;
@@ -72,6 +76,8 @@ export function calculatePagedScrollTop(
 export class PagedReadingMode {
 	private container: HTMLElement;
 	private contentHtml: string;
+	private frontmatterCoverHtml: string | null;
+	private hasCoverPage = false;
 	private writingMode: WritingMode;
 	private settings: CommonSettings;
 	private previewSettings: PreviewSettings;
@@ -84,6 +90,7 @@ export class PagedReadingMode {
 	private styleEl: HTMLStyleElement | null = null;
 	private viewportEl: HTMLElement | null = null;
 	private pagesContainerEl: HTMLElement | null = null;
+	private stagingPagesContainerEl: HTMLElement | null = null;
 	private pageElements: HTMLElement[] = [];
 	private headerEl: HTMLDivElement | null = null;
 	private footerEl: HTMLDivElement | null = null;
@@ -139,6 +146,8 @@ export class PagedReadingMode {
 	constructor(options: PagedReadingModeOptions) {
 		this.container = options.container;
 		this.contentHtml = options.contentHtml;
+		this.frontmatterCoverHtml = options.frontmatterCoverHtml ?? null;
+		this.hasCoverPage = !!(options.frontmatterCoverHtml);
 		this.writingMode = options.writingMode;
 		this.settings = options.settings;
 		this.previewSettings = options.previewSettings ?? {
@@ -185,6 +194,8 @@ export class PagedReadingMode {
 		this.pageElements = [];
 		this.pagesContainerEl?.remove();
 		this.pagesContainerEl = null;
+		this.stagingPagesContainerEl?.remove();
+		this.stagingPagesContainerEl = null;
 		this.headerEl?.remove();
 		this.headerEl = null;
 		this.footerEl?.remove();
@@ -291,6 +302,18 @@ export class PagedReadingMode {
 			"--tategaki-heading-text-color",
 			headingColor
 		);
+		this.container.style.setProperty(
+			"--tategaki-heading-margin-after",
+			`${this.settings.headingMarginAfter ?? 0.45}em`
+		);
+		this.container.style.setProperty(
+			"--tategaki-heading-align",
+			this.settings.headingAlign ?? "start"
+		);
+		const dividers = this.settings.headingDividerLevels ?? { h1: true, h2: true, h3: false, h4: false, h5: false, h6: false };
+		for (const level of ["h1", "h2", "h3", "h4", "h5", "h6"] as const) {
+			this.container.classList.toggle(`tategaki-heading-divider-${level}`, Boolean(dividers[level]));
+		}
 
 		const doc = this.container.ownerDocument;
 		this.styleEl = doc.createElement("style");
@@ -300,24 +323,24 @@ export class PagedReadingMode {
 		this.viewportEl = doc.createElement("div");
 		this.viewportEl.className = "tategaki-reading-paged-viewport";
 
-		this.pagesContainerEl = doc.createElement("div");
-		this.pagesContainerEl.className =
-			"tategaki-reading-paged-pages-container";
+		this.pagesContainerEl = this.createPagesContainer(doc);
+		this.stagingPagesContainerEl = this.createPagesContainer(doc, true);
 
 		this.viewportEl.appendChild(this.pagesContainerEl);
 		this.container.appendChild(this.viewportEl);
+		this.container.appendChild(this.stagingPagesContainerEl);
 
-			this.updatePaginationLayoutClasses();
-			this.ensureFixedHeaderFooterElements();
-			this.setupInputHandlers();
-			try {
-				this.container.focus();
-			} catch (_) {
-				// noop: focus失敗は無視
-			}
-			this.setupResizeObserver();
-			void this.render();
+		this.updatePaginationLayoutClasses();
+		this.ensureFixedHeaderFooterElements();
+		this.setupInputHandlers();
+		try {
+			this.container.focus();
+		} catch (_) {
+			// noop: focus失敗は無視
 		}
+		this.setupResizeObserver();
+		void this.render();
+	}
 
 	private setupResizeObserver(): void {
 		const view = this.container.ownerDocument.defaultView;
@@ -382,6 +405,21 @@ export class PagedReadingMode {
 			}, 50);
 		});
 		this.resizeObserver.observe(this.container);
+	}
+
+	private createPagesContainer(
+		doc: Document,
+		isStaging = false
+	): HTMLDivElement {
+		const pagesContainer = doc.createElement("div");
+		pagesContainer.className = "tategaki-reading-paged-pages-container";
+		if (isStaging) {
+			pagesContainer.classList.add(
+				"tategaki-reading-paged-pages-container-staging"
+			);
+			pagesContainer.setAttribute("aria-hidden", "true");
+		}
+		return pagesContainer;
 	}
 
 	private setupInputHandlers(): void {
@@ -592,6 +630,16 @@ export class PagedReadingMode {
 			isVertical
 		);
 		this.pagesContainerEl.classList.toggle("pages-vertical", !isVertical);
+		if (this.stagingPagesContainerEl) {
+			this.stagingPagesContainerEl.classList.toggle(
+				"pages-horizontal-reverse",
+				isVertical
+			);
+			this.stagingPagesContainerEl.classList.toggle(
+				"pages-vertical",
+				!isVertical
+			);
+		}
 	}
 
 	private removeInputHandlers(): void {
@@ -938,11 +986,30 @@ export class PagedReadingMode {
 		}
 		const total = this.pageCount;
 		const progress = this.getProgress();
+		const { displayPage, displayTotal } = this.getDisplayPageNumbers();
 		this.onPageChange({
-			currentPage: total === 0 ? 0 : this.pageIndex + 1,
-			totalPages: total,
+			currentPage: total === 0 ? 0 : displayPage,
+			totalPages: displayTotal,
 			progress,
 		});
+	}
+
+	/**
+	 * 表示用ページ番号を計算する
+	 * - 表紙ページあり: cover=0, 本文=1,2,3... / total=本文ページ数
+	 * - 表紙ページなし: 1,2,3... / total=全ページ数
+	 */
+	private getDisplayPageNumbers(): { displayPage: number; displayTotal: number } {
+		if (this.pageCount === 0) {
+			return { displayPage: 0, displayTotal: 0 };
+		}
+		if (this.hasCoverPage) {
+			// cover(index=0) → 表示 0、本文(index>=1) → 表示 index
+			const displayPage = this.pageIndex; // 0=cover, 1=本文1p, ...
+			const displayTotal = Math.max(0, this.pageCount - 1); // 本文ページ数
+			return { displayPage, displayTotal };
+		}
+		return { displayPage: this.pageIndex + 1, displayTotal: this.pageCount };
 	}
 
 	private getPagePaddingValues(): {
@@ -1170,8 +1237,7 @@ export class PagedReadingMode {
 	}
 
 	private updateFixedHeaderFooterContent(): void {
-		const totalPages = this.pageCount;
-		const pageNumber = totalPages === 0 ? 0 : this.pageIndex + 1;
+		const { displayPage: pageNumber, displayTotal: totalPages } = this.getDisplayPageNumbers();
 		this.ensureFixedHeaderFooterElements();
 
 		if (this.headerEl) {
@@ -1219,6 +1285,8 @@ export class PagedReadingMode {
 				return;
 			}
 
+			this.ensureImmediateCoverPageVisible();
+
 			// レイアウト反映を待つ（複数回）
 			await new Promise((resolve) => requestAnimationFrame(resolve));
 			if (token !== this.renderToken || this.destroyed) {
@@ -1251,13 +1319,13 @@ export class PagedReadingMode {
 			this.emitPageChange();
 			this.logLayoutMetrics();
 
-				if (this.onRendered) {
-					try {
-						this.onRendered({ pages: this.pageElements });
-					} catch (error) {
-						// Ignore consumer callback errors to keep rendering stable.
-					}
+			if (this.onRendered) {
+				try {
+					this.onRendered({ pages: this.pageElements });
+				} catch (error) {
+					// Ignore consumer callback errors to keep rendering stable.
 				}
+			}
 		} finally {
 			this.isRendering = false;
 			const currentSize = this.getViewportSize();
@@ -1282,12 +1350,128 @@ export class PagedReadingMode {
 		return { width, height };
 	}
 
+	/**
+	 * 本文セグメントの HTML に視覚的コンテンツが含まれるか判定する。
+	 * 空白・改行・<br> のみの段落などは false を返す。
+	 */
+	private hasVisibleBodyContent(html: string, doc: Document): boolean {
+		return htmlHasVisibleContent(html, doc);
+	}
+
+	private ensureImmediateCoverPageVisible(): HTMLElement | null {
+		const pagesContainerEl = this.pagesContainerEl;
+		if (
+			!pagesContainerEl ||
+			!this.hasCoverPage ||
+			!this.frontmatterCoverHtml
+		) {
+			return null;
+		}
+		if (pagesContainerEl.childElementCount > 0) {
+			const existingCoverPage = this.getFrontmatterCoverPage(pagesContainerEl);
+			return pagesContainerEl.childElementCount === 1
+				? existingCoverPage
+				: null;
+		}
+		const coverPage = this.createFrontmatterCoverPage(0);
+		pagesContainerEl.replaceChildren(coverPage);
+		this.pageElements = [coverPage];
+		this.pageCount = 1;
+		return coverPage;
+	}
+
+	private getFrontmatterCoverPage(
+		container: HTMLElement
+	): HTMLElement | null {
+		const firstChild =
+			container.firstElementChild instanceof HTMLElement
+				? container.firstElementChild
+				: null;
+		if (
+			firstChild?.classList.contains("tategaki-page") &&
+			firstChild.getAttribute("data-page-kind") === "frontmatter-cover"
+		) {
+			return firstChild;
+		}
+		return null;
+	}
+
+	private createFrontmatterCoverPage(pageIndex: number): HTMLElement {
+		const coverPage = this.createPageElement(pageIndex);
+		coverPage.setAttribute("data-page-kind", "frontmatter-cover");
+		const coverWrapper = coverPage.querySelector(
+			".page-content"
+		) as HTMLElement | null;
+		if (coverWrapper && this.frontmatterCoverHtml) {
+			coverWrapper.innerHTML = this.frontmatterCoverHtml;
+		}
+		return coverPage;
+	}
+
+	private createTitlePage(
+		segment: BookPageSegment & { kind: "title-page" },
+		doc: Document,
+		pageIndex: number
+	): HTMLElement {
+		const titlePage = this.createPageElement(pageIndex);
+		titlePage.setAttribute("data-page-kind", "title-page");
+		titlePage.classList.add("tategaki-title-page");
+		const titleContent = titlePage.querySelector(
+			".page-content"
+		) as HTMLElement | null;
+		if (titleContent) {
+			const headingEl = doc.createElement(segment.headingTag);
+			headingEl.className = "tategaki-title-page-heading";
+			headingEl.innerHTML = segment.headingInnerHtml;
+			titleContent.appendChild(headingEl);
+			titleContent.classList.add("tategaki-title-page-content");
+		}
+		return titlePage;
+	}
+
+	private commitPageElements(
+		pagesContainerEl: HTMLElement,
+		pageElements: HTMLElement[]
+	): void {
+		pagesContainerEl.replaceChildren(...pageElements);
+		pageElements.forEach((page, pageIndex) => {
+			page.setAttribute("data-page", pageIndex.toString());
+		});
+		this.pageElements = pageElements;
+		this.pageCount = Math.max(1, pageElements.length);
+		const maxIndex = Math.max(0, this.pageCount - 1);
+		if (this.pendingPageIndex !== null) {
+			this.pageIndex = Math.max(
+				0,
+				Math.min(this.pendingPageIndex, maxIndex)
+			);
+			this.pendingPageIndex = null;
+		} else if (this.pageIndex > maxIndex) {
+			this.pageIndex = maxIndex;
+		}
+	}
+
+	private notifyCommittedPages(pageElements: HTMLElement[]): void {
+		if (!this.onPageAdded) {
+			return;
+		}
+		pageElements.forEach((page, pageIndex) => {
+			try {
+				this.onPageAdded?.(page, pageIndex);
+			} catch (_) {
+				// noop
+			}
+		});
+	}
+
 	private async splitContentIntoPages(token: number): Promise<void> {
 		const pagesContainerEl = this.pagesContainerEl;
+		const stagingPagesContainerEl = this.stagingPagesContainerEl;
 		const viewportEl = this.viewportEl;
-		if (!pagesContainerEl || !viewportEl) {
-			console.error("[Tategaki] Missing container elements:", {
+		if (!pagesContainerEl || !stagingPagesContainerEl || !viewportEl) {
+			debugError("[Tategaki] Missing container elements:", {
 				pagesContainerEl: !!this.pagesContainerEl,
+				stagingPagesContainerEl: !!this.stagingPagesContainerEl,
 				viewportEl: !!this.viewportEl,
 			});
 			return;
@@ -1299,12 +1483,7 @@ export class PagedReadingMode {
 		}
 
 		this.paginationInProgress = true;
-
-		// 既存のページをクリア
-		this.pageElements.forEach((page) => page.remove());
-		this.pageElements = [];
-		pagesContainerEl.textContent = "";
-
+		stagingPagesContainerEl.textContent = "";
 
 		// ビューポートサイズを取得
 		const viewportWidth = Math.max(1, viewportEl.clientWidth);
@@ -1313,14 +1492,38 @@ export class PagedReadingMode {
 		const pagePadding = this.getPagePaddingValues();
 
 		const pageElements: HTMLElement[] = [];
-		let lastEmit = 0;
-		const emitPageUpdate = (force = false) => {
-			if (this.destroyed || token !== this.renderToken) {
+		const immediateCoverPage = this.ensureImmediateCoverPageVisible();
+		// カバーページの有無に関わらず、常にインクリメンタルにページを表示する。
+		// これにより長いドキュメントでもページネーション完了を待たず最初のページが見える。
+		const publishPagesIncrementally = true;
+		const finalCoverPage =
+			this.hasCoverPage && this.frontmatterCoverHtml
+				? (immediateCoverPage ?? this.createFrontmatterCoverPage(0))
+				: null;
+		if (finalCoverPage) {
+			pageElements.push(finalCoverPage);
+		}
+		let lastIncrementalEmit = 0;
+		const publishPageIfReady = (page: HTMLElement): void => {
+			if (!publishPagesIncrementally) {
 				return;
 			}
+			const pageIndex = pageElements.length - 1;
+			page.setAttribute("data-page", pageIndex.toString());
+			pagesContainerEl.appendChild(page);
 			this.pageElements = pageElements;
 			this.pageCount = Math.max(1, pageElements.length);
+
+			if (this.onPageAdded && page.getAttribute("data-page-kind") !== "frontmatter-cover") {
+				try {
+					this.onPageAdded(page, pageIndex);
+				} catch (_) {
+					// noop
+				}
+			}
+
 			const maxIndex = Math.max(0, this.pageCount - 1);
+			let shouldEmit = false;
 			if (
 				this.pendingPageIndex !== null &&
 				this.pendingPageIndex <= maxIndex
@@ -1332,123 +1535,121 @@ export class PagedReadingMode {
 					this.pageIndex = targetIndex;
 					this.scrollToCurrentPage(false, isReverse);
 				}
+				shouldEmit = true;
 			} else if (this.pageIndex > maxIndex) {
 				this.pageIndex = maxIndex;
+				shouldEmit = true;
 			}
+
 			const now =
 				this.container.ownerDocument.defaultView?.performance?.now?.() ??
 				Date.now();
-			if (force || now - lastEmit > 120) {
+			if (shouldEmit || now - lastIncrementalEmit >= 120) {
 				this.emitPageChange();
-				lastEmit = now;
+				lastIncrementalEmit = now;
 			}
 		};
 
-		// 実測ページネーションを実行
-		const pagination = new MeasuredPagination({
-			container: pagesContainerEl,
-			contentHtml: this.contentHtml,
-			writingMode:
-				this.writingMode === "vertical-rl"
-					? "vertical-rl"
-					: "horizontal-tb",
-			pageWidth: viewportWidth,
-			pageHeight: viewportHeight,
-			paddingTop: pagePadding.paddingTop,
-			paddingBottom: pagePadding.paddingBottom,
-			paddingLeft: pagePadding.paddingLeft,
-			paddingRight: pagePadding.paddingRight,
-			timeSliceMs: 12,
-			onPage: (pageInfo) => {
-				if (this.destroyed || token !== this.renderToken) {
-					pageInfo.element.remove();
-					return;
-				}
-				const pageIndex = pageElements.length;
-				pageInfo.element.setAttribute(
-					"data-page",
-					pageIndex.toString()
-				);
-				pageElements.push(pageInfo.element);
-					if (this.onPageAdded) {
-						try {
-							this.onPageAdded(pageInfo.element, pageIndex);
-						} catch (error) {
-							// Ignore consumer callback errors to keep pagination stable.
-						}
+		// コンテンツをセグメント分割（章扉見出しを事前に分離）
+		const doc = this.container.ownerDocument;
+		const segments: BookPageSegment[] = splitIntoBookSegments(
+			this.contentHtml,
+			doc
+		);
+
+		// ページネーションヘルパー: 本文セグメントをページネーションして pageElements に追加
+		const paginateBodySegment = async (
+			bodyHtml: string
+		): Promise<void> => {
+			const pagination = new MeasuredPagination({
+				container: stagingPagesContainerEl,
+				contentHtml: bodyHtml,
+				writingMode:
+					this.writingMode === "vertical-rl"
+						? "vertical-rl"
+						: "horizontal-tb",
+				pageWidth: viewportWidth,
+				pageHeight: viewportHeight,
+				paddingTop: pagePadding.paddingTop,
+				paddingBottom: pagePadding.paddingBottom,
+				paddingLeft: pagePadding.paddingLeft,
+				paddingRight: pagePadding.paddingRight,
+				timeSliceMs: 12,
+				onPage: (pageInfo) => {
+					if (this.destroyed || token !== this.renderToken) {
+						pageInfo.element.remove();
+						return;
 					}
-					emitPageUpdate(pageElements.length === 1);
-			},
-			onProgress: (current, total) => {
-			},
-		});
-		this.activePagination = pagination;
+					pageElements.push(pageInfo.element);
+					publishPageIfReady(pageInfo.element);
+				},
+				onProgress: () => {},
+			});
+			this.activePagination = pagination;
+			await pagination.paginate();
+		};
 
 		try {
-			const pages = await pagination.paginate();
+			// セグメントを順に処理してページ列を構築
+			for (const segment of segments) {
+				if (this.destroyed || token !== this.renderToken) {
+					break;
+				}
+				if (segment.kind === "title-page") {
+					// 章扉セグメント → 単独ページとして追加
+					const titlePage = this.createTitlePage(
+						segment,
+						doc,
+						pageElements.length
+					);
+					pageElements.push(titlePage);
+					publishPageIfReady(titlePage);
+				} else {
+					// 本文セグメント → 視覚的コンテンツがある場合のみページネーション
+					if (this.hasVisibleBodyContent(segment.html, doc)) {
+						await paginateBodySegment(segment.html);
+					}
+				}
+			}
+
 			if (this.destroyed || token !== this.renderToken) {
-				pages.forEach((pageInfo) => pageInfo.element.remove());
-				this.pageElements.forEach((page) => page.remove());
-				this.pageElements = [];
 				return;
 			}
 			if (!this.pagesContainerEl || !this.viewportEl) {
-				pages.forEach((pageInfo) => pageInfo.element.remove());
-				this.pageElements.forEach((page) => page.remove());
-				this.pageElements = [];
 				return;
 			}
 
-			// ページ要素を配置
-				this.pageElements = pageElements.length
-					? pageElements
-					: pages.map((pageInfo, index) => {
-							pageInfo.element.setAttribute(
-								"data-page",
-								index.toString()
-							);
-							return pageInfo.element;
-						});
-			} catch (error) {
+			this.commitPageElements(pagesContainerEl, pageElements);
+			if (!publishPagesIncrementally) {
+				this.notifyCommittedPages(pageElements);
+			}
+		} catch (error) {
 			if (this.destroyed || token !== this.renderToken) {
 				return;
 			}
-			console.error("[Tategaki] Pagination failed:", error);
-			if (!pagesContainerEl) {
-				return;
+			debugError("[Tategaki] Pagination failed:", error);
+			const fallbackPages: HTMLElement[] = [];
+			if (finalCoverPage) {
+				fallbackPages.push(finalCoverPage);
 			}
-			// フォールバック: シンプルな1ページ表示
-			const fallbackPage = this.createPageElement(0);
-			const wrapper = fallbackPage.querySelector(
-				".page-content"
-			) as HTMLElement;
-			if (wrapper) {
-				wrapper.innerHTML = this.contentHtml;
+			if (this.hasVisibleBodyContent(this.contentHtml, doc)) {
+				const fallbackPage = this.createPageElement(fallbackPages.length);
+				const wrapper = fallbackPage.querySelector(
+					".page-content"
+				) as HTMLElement | null;
+				if (wrapper) {
+					wrapper.innerHTML = this.contentHtml;
+				}
+				fallbackPages.push(fallbackPage);
 			}
-			pagesContainerEl.appendChild(fallbackPage);
-			this.pageElements.push(fallbackPage);
+			this.commitPageElements(pagesContainerEl, fallbackPages);
+			if (!publishPagesIncrementally) {
+				this.notifyCommittedPages(fallbackPages);
+			}
 		} finally {
 			this.paginationInProgress = false;
-			if (this.pendingPageIndex !== null) {
-				const maxIndex = Math.max(0, this.pageCount - 1);
-				const targetIndex = Math.max(
-					0,
-					Math.min(this.pendingPageIndex, maxIndex)
-				);
-				this.pendingPageIndex = null;
-				if (targetIndex !== this.pageIndex) {
-					const isReverse = targetIndex < this.pageIndex;
-					this.pageIndex = targetIndex;
-					this.scrollToCurrentPage(false, isReverse);
-					this.emitPageChange();
-				}
-			} else if (this.pageIndex >= this.pageCount) {
-				this.pageIndex = Math.max(0, this.pageCount - 1);
-				this.emitPageChange();
-			}
-			if (this.activePagination === pagination) {
-				this.activePagination = null;
-			}
+			stagingPagesContainerEl.textContent = "";
+			this.activePagination = null;
 		}
 	}
 
@@ -1457,6 +1658,7 @@ export class PagedReadingMode {
 		const page = doc.createElement("div");
 		page.className = "tategaki-page";
 		page.setAttribute("data-page", pageIndex.toString());
+		page.setAttribute("data-writing-mode", this.writingMode);
 
 		// .page-content ラッパーを追加（MeasuredPagination との互換性のため）
 		const wrapper = doc.createElement("div");

@@ -77,18 +77,6 @@ function applyIndentOutdent(
 		endLine = Math.max(startLine, endLine - 1);
 	}
 
-	const stableSelection = (() => {
-		if (selection.anchor !== selection.head) return null;
-		const lineIndex = findLineIndexFromRanges(selection.head, ranges);
-		if (lineIndex === null) return null;
-		const range = ranges[lineIndex];
-		if (!range) return null;
-		return {
-			lineIndex,
-			offset: selection.head - range.from,
-		};
-	})();
-
 	const candidates: number[] = [];
 	for (let i = startLine; i <= endLine; i += 1) {
 		if (!isNormalLine(lineBlockKinds, i)) continue;
@@ -177,7 +165,7 @@ function applyIndentOutdent(
 	}
 
 	if (changes.length === 0) return false;
-	applyChangesWithSelection(host, changes, selection, stableSelection);
+	applyChangesWithSelection(host, changes, selection, null);
 
 	// 番号付きリストのリナンバリング:
 	// インデント/アウトデント後に、影響範囲周辺の番号付きリストの番号を
@@ -551,8 +539,14 @@ function findPreviousListItemLevel(
 		if (!isNormalLine(lineBlockKinds, i)) return null;
 		const text = lines[i] ?? "";
 		const info = parseListLine(text);
-		if (info.kind === "none") return null;
 		if (info.prefix !== prefix) return null;
+		if (info.kind === "none") {
+			const indentColumns = countIndentColumns(info.indent);
+			if (text.trim().length === 0 || indentColumns > 0) {
+				continue;
+			}
+			return null;
+		}
 		const indentColumns = countIndentColumns(info.indent);
 		return Math.max(0, Math.floor(indentColumns / unit));
 	}

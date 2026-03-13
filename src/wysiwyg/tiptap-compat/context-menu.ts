@@ -20,6 +20,7 @@ import {
 	createAozoraTcyRegExp,
 	isValidAozoraTcyBody,
 } from "../../shared/aozora-tcy";
+import { resolveTipTapRubySelection } from "./ruby-selection";
 
 export interface ContextMenuAction {
 	name: string;
@@ -587,96 +588,71 @@ export class TipTapCompatContextMenu {
 			).open();
 			return;
 		}
-		const { from, to } = editor.state.selection;
-		const originalSelectedText = editor.state.doc.textBetween(from, to, " ");
-
-		if (!originalSelectedText || originalSelectedText.trim() === "") {
-			return;
-		}
-
-		let rangeFrom = from;
-		let rangeTo = to;
-		let hasRubyNode = false;
-		let rubyNodeText = "";
-		const $from = editor.state.doc.resolve(from);
-		const $to = editor.state.doc.resolve(to);
-
-		for (let depth = $from.depth; depth > 0; depth--) {
-			const node = $from.node(depth);
-			if (node.type.name === "aozoraRuby") {
-				const nodePos = $from.before(depth);
-				rangeFrom = Math.min(rangeFrom, nodePos);
-				rangeTo = Math.max(rangeTo, nodePos + node.nodeSize);
-				rubyNodeText = node.textContent;
-				hasRubyNode = true;
-				break;
+			const rubySelection = resolveTipTapRubySelection(editor);
+			if (!rubySelection) {
+				return;
 			}
-		}
+			const {
+				rangeFrom,
+				rangeTo,
+				displayText,
+				replacementText,
+				hasRubyNode,
+				hasDelimiter,
+			} = rubySelection;
 
-		for (let depth = $to.depth; depth > 0; depth--) {
-			const node = $to.node(depth);
-			if (node.type.name === "aozoraRuby") {
-				const nodePos = $to.before(depth);
-				rangeFrom = Math.min(rangeFrom, nodePos);
-				rangeTo = Math.max(rangeTo, nodePos + node.nodeSize);
-				rubyNodeText = node.textContent;
-				hasRubyNode = true;
-				break;
-			}
-		}
+			new RubyInputModal(
+				this.app,
+				displayText,
+				(result: RubyInputResult) => {
+					if (result.cancelled) {
+						return;
+					}
+					const emphasisChar = (result.ruby ?? "").trim() || "・";
 
-		const displayText =
-			hasRubyNode && rubyNodeText === originalSelectedText
-				? rubyNodeText
-				: originalSelectedText;
+					const rubyEnabled = this.options.getRubyEnabled?.() ?? true;
 
-		new RubyInputModal(
-			this.app,
-			displayText,
-			(result: RubyInputResult) => {
-				if (result.cancelled) {
-					return;
-				}
-				const emphasisChar = (result.ruby ?? "").trim() || "・";
+					if (!result.ruby || result.ruby.trim() === "") {
+						if (hasRubyNode) {
+							editor
+								.chain()
+								.focus()
+								.deleteRange({ from: rangeFrom, to: rangeTo })
+								.setTextSelection(rangeFrom)
+								.insertContent(replacementText)
+								.run();
+						}
+						return;
+					}
 
-				const rubyEnabled = this.options.getRubyEnabled?.() ?? true;
-
-				if (!result.ruby || result.ruby.trim() === "") {
-					if (hasRubyNode) {
+					if (!rubyEnabled) {
 						editor
 							.chain()
 							.focus()
 							.deleteRange({ from: rangeFrom, to: rangeTo })
-							.insertContent(originalSelectedText)
+							.setTextSelection(rangeFrom)
 							.run();
-					}
-					return;
-				}
 
-				if (!rubyEnabled) {
+						if (result.isDot) {
+							const rubyText = Array.from(displayText)
+								.map((char) => `｜${char}《${emphasisChar}》`)
+								.join("");
+							editor.chain().focus().insertContent(rubyText).run();
+						} else {
+							const delimiter =
+								hasRubyNode && !hasDelimiter ? "" : "｜";
+							const rubyText = `${delimiter}${displayText}《${result.ruby}》`;
+							editor.chain().focus().insertContent(rubyText).run();
+						}
+						return;
+					}
+
 					editor
 						.chain()
 						.focus()
 						.deleteRange({ from: rangeFrom, to: rangeTo })
+						.setTextSelection(rangeFrom)
 						.run();
-
-					if (result.isDot) {
-						const rubyText = Array.from(displayText)
-							.map((char) => `｜${char}《${emphasisChar}》`)
-							.join("");
-						editor.chain().focus().insertContent(rubyText).run();
-					} else {
-						const rubyText = `｜${displayText}《${result.ruby}》`;
-						editor.chain().focus().insertContent(rubyText).run();
-					}
-					return;
-				}
-
-				editor
-					.chain()
-					.focus()
-					.deleteRange({ from: rangeFrom, to: rangeTo })
-					.run();
 
 				if (result.isDot) {
 					Array.from(displayText).forEach((char) => {
@@ -698,25 +674,25 @@ export class TipTapCompatContextMenu {
 							})
 							.run();
 					});
-				} else {
-					editor
-						.chain()
-						.focus()
-						.insertContent({
-							type: "aozoraRuby",
-							attrs: {
-								ruby: result.ruby,
-								hasDelimiter: true,
-							},
-							content: [
-								{
-									type: "text",
-									text: displayText,
+					} else {
+						editor
+							.chain()
+							.focus()
+							.insertContent({
+								type: "aozoraRuby",
+								attrs: {
+									ruby: result.ruby,
+									hasDelimiter: hasRubyNode ? hasDelimiter : true,
 								},
-							],
-						})
-						.run();
-				}
+								content: [
+									{
+										type: "text",
+										text: displayText,
+									},
+								],
+							})
+							.run();
+					}
 			},
 			{
 				customEmphasisChars:

@@ -51,7 +51,7 @@ export class ViewModeSelectionModal extends Modal {
 			this.result.mode = "edit";
 			return;
 		}
-		if (mode === "edit" || mode === "compat") {
+		if (mode === "edit" || mode === "reading" || mode === "compat") {
 			this.result.mode = mode;
 		}
 	}

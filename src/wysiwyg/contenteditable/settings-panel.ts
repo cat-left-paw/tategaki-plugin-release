@@ -10,7 +10,7 @@ import {
 } from "../../types/settings";
 import { App, Modal, Setting, setIcon } from "obsidian";
 import TategakiV2Plugin from "../../core/plugin";
-import { debugWarn } from "../../shared/logger";
+import { debugWarn, debugError } from "../../shared/logger";
 import { showConfirmModal } from "../../shared/ui/confirm-modal";
 import { t } from "../../shared/i18n";
 
@@ -28,9 +28,6 @@ const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
 	縦書きまたは横書きを選択: "Choose vertical or horizontal writing.",
 	縦書き: "Vertical",
 	横書き: "Horizontal",
-	選択をネイティブにする: "Use native selection",
-	"大きな範囲選択・端超えオートスクロール時のみネイティブ選択を補助的に使います（通常時はSoT選択を優先）":
-		"Use native selection only for large-range selections or edge auto-scroll (SoT selection is preferred normally).",
 	使用する: "Use",
 	使用しない: "Do not use",
 	SoT全文プレーン表示: "SoT full plain-text view",
@@ -103,21 +100,20 @@ const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
 	キャレットのカスタム色: "Custom caret color",
 	キャレットの幅: "Caret width",
 	"キャレットの太さを調整します（px）": "Adjust caret width (px).",
-	CE補助モードでネイティブキャレットを使用:
-		"Use native caret in CE assist mode",
-	"CE補助(IME)をオンにしたとき、OS標準のキャレットを使うか選べます":
-		"Choose whether to use OS-native caret while CE assist (IME) is on.",
 	IME表示の補正: "IME offsets",
 	"横書き: 上方向補正": "Horizontal: vertical offset",
-	"横書きIMEの表示位置を、上方向(+) / 下方向(-)に調整します（em単位）":
-		"Adjust horizontal IME position up (+) / down (-) in em.",
+	"横書きIMEの表示位置を、既定値から上方向(+) / 下方向(-)に調整します（相対値・em単位、0=既定）":
+		"Adjust horizontal IME position relative to the default, up (+) / down (-) in em (0 = default).",
 	"縦書き: 右方向補正": "Vertical: horizontal offset",
-	"縦書きIMEの表示位置を、右方向(+) / 左方向(-)に調整します（em単位）":
-		"Adjust vertical IME position right (+) / left (-) in em.",
+	"縦書きIMEの表示位置を、既定値から右方向(+) / 左方向(-)に調整します（相対値・em単位、0=既定）":
+		"Adjust vertical IME position relative to the default, right (+) / left (-) in em (0 = default).",
 	参照設定: "Reading",
 	フロントマター情報を表示: "Show frontmatter info",
 	"YAML自体ではなく、title/authorなどの内容を本文先頭に表示します":
 		"Show title/author info at the top instead of raw YAML.",
+	フロントマターを表紙ページにする: "Show frontmatter as cover page",
+	"フロントマター（title/authorなど）を本文と分離し、0ページの表紙として独立させます":
+		"Display frontmatter (title/author etc.) on a separate cover page (page 0).",
 	書籍モード: "Book mode",
 	ヘッダーの内容: "Header content",
 	書籍モードのヘッダーに表示する内容を選びます:
@@ -153,6 +149,15 @@ const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
 		"Adjust top padding of book-mode content area (0-200px).",
 	"書籍モード本文エリアの下余白を調整（0〜200px）":
 		"Adjust bottom padding of book-mode content area (0-200px).",
+	見出し前改ページ: "Page break before headings",
+	"指定レベル以上の見出しの前で改ページします（0=無効）":
+		"Insert a page break before headings at or above this level (0=off).",
+	"H1以上": "H1 and above",
+	"H2以上": "H2 and above",
+	"H3以上": "H3 and above",
+	"H4以上": "H4 and above",
+	"H5以上": "H5 and above",
+	"H6以上": "H6 and above",
 	テーマ: "Theme",
 	"同期バックアップ（互換モード）": "Sync backup (compatibility mode)",
 	同期バックアップを作成: "Create sync backups",
@@ -227,6 +232,26 @@ function localizeSettingsPanelDom(root: HTMLElement): void {
 			el.label = sp(el.label);
 		}
 	});
+}
+
+const IME_OFFSET_RELATIVE_MIN = -1;
+const IME_OFFSET_RELATIVE_MAX = 1;
+
+function clampImeOffsetRelative(value: number): number {
+	return Math.max(
+		IME_OFFSET_RELATIVE_MIN,
+		Math.min(IME_OFFSET_RELATIVE_MAX, value),
+	);
+}
+
+function toRelativeImeOffset(value: number | undefined, base: number): number {
+	const absolute =
+		typeof value === "number" && Number.isFinite(value) ? value : base;
+	return clampImeOffsetRelative(absolute - base);
+}
+
+function fromRelativeImeOffset(relative: number, base: number): number {
+	return base + clampImeOffsetRelative(relative);
 }
 
 /**
@@ -901,6 +926,24 @@ export class SettingsPanelModal extends Modal {
 
 		this.createSettingsUI(scrollContainer);
 		localizeSettingsPanelDom(contentEl);
+
+		// プラグイン設定への導線
+		const pluginSettingsFooter = contentEl.createDiv(
+			"tategaki-settings-plugin-footer",
+		);
+		pluginSettingsFooter
+			.createEl("button", {
+				text: t("modal.settingsPanel.openPluginSettings"),
+				cls: "tategaki-settings-plugin-footer-button",
+			})
+			.addEventListener("click", () => {
+				this.close();
+				this.plugin.openPluginSettings();
+			});
+		pluginSettingsFooter.createEl("span", {
+			text: t("modal.settingsPanel.pluginSettingsHint"),
+			cls: "tategaki-settings-plugin-footer-hint",
+		});
 	}
 
 	/** 折りたたみ可能なセクションを作成 */
@@ -963,9 +1006,6 @@ export class SettingsPanelModal extends Modal {
 		const caretWidthReason = isCompatMode
 			? "互換モードでは反映されません"
 			: "CE補助(IME)中は反映されません";
-		const ceNativeCaretDisabled = isCompatMode;
-		const ceNativeCaretReason = "互換モードでは利用できません";
-
 		// スライダーへの参照を保持
 		let lineHeightSlider: HTMLInputElement;
 		let lineHeightValueSpan: HTMLSpanElement;
@@ -1006,46 +1046,6 @@ export class SettingsPanelModal extends Modal {
 								select.value as any;
 							this.applySettings();
 						});
-					},
-				);
-
-				// 選択: ネイティブ（巨大文書向け）
-				this.createSettingItem(
-					content,
-					"選択をネイティブにする",
-					"大きな範囲選択・端超えオートスクロール時のみネイティブ選択を補助的に使います（通常時はSoT選択を優先）",
-					(itemEl) => {
-						const button = itemEl.createEl("button", {
-							cls: "tategaki-toggle-button",
-						});
-
-						const getCurrent = () =>
-							this.tempSettings.wysiwyg.useNativeSelection ===
-							true;
-
-						const refresh = (enabled: boolean) => {
-							this.updateToggleButton(
-								button,
-								enabled,
-								"使用する",
-								"使用しない",
-							);
-						};
-
-						refresh(getCurrent());
-
-						button.addEventListener("click", () => {
-							const next = !getCurrent();
-							this.tempSettings.wysiwyg.useNativeSelection = next;
-							refresh(next);
-							this.applySettings();
-						});
-					},
-					{
-						disabled: isCompatMode,
-						disabledReason: isCompatMode
-							? "互換モードでは反映されません"
-							: undefined,
 					},
 				);
 
@@ -1928,6 +1928,98 @@ export class SettingsPanelModal extends Modal {
 						});
 					},
 				);
+
+				// 見出し後マージン
+				this.createSettingItem(
+					content,
+					"見出し後マージン",
+					"見出しの後（縦書き：左側、横書き：下側）のマージン（em）",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv("tategaki-slider-control");
+
+						const slider = wrapper.createEl("input");
+						slider.type = "range";
+						slider.min = "0";
+						slider.max = "1.5";
+						slider.step = "0.05";
+						const currentMargin = this.tempSettings.common.headingMarginAfter ?? 0.45;
+						slider.value = currentMargin.toString();
+						slider.className = "tategaki-slider-input";
+
+						const valueSpan = wrapper.createEl("span");
+						valueSpan.textContent = `${currentMargin.toFixed(2)}em`;
+						valueSpan.className = "tategaki-slider-value is-wide";
+
+						slider.addEventListener("input", () => {
+							const value = parseFloat(slider.value);
+							this.tempSettings.common.headingMarginAfter = value;
+							valueSpan.textContent = `${value.toFixed(2)}em`;
+							this.applySettings({ debounce: true });
+						});
+
+						slider.addEventListener("change", () => {
+							this.applySettings();
+						});
+					},
+				);
+
+				// 見出し区切り線
+				this.createSettingItem(
+					content,
+					"見出し区切り線",
+					"区切り線を表示する見出しレベルを選択",
+					(itemEl) => {
+						const wrapper = itemEl.createDiv("tategaki-heading-divider-checks");
+						const levels = ["h1", "h2", "h3", "h4", "h5", "h6"] as const;
+						const currentDividers = this.tempSettings.common.headingDividerLevels ?? {
+							h1: true, h2: true, h3: false, h4: false, h5: false, h6: false,
+						};
+						for (const level of levels) {
+							const label = wrapper.createEl("label", { cls: "tategaki-heading-divider-label" });
+							const checkbox = label.createEl("input", { type: "checkbox" });
+							checkbox.checked = Boolean(currentDividers[level]);
+							label.appendText(level.toUpperCase());
+							checkbox.addEventListener("change", () => {
+								if (!this.tempSettings.common.headingDividerLevels) {
+									this.tempSettings.common.headingDividerLevels = {
+										h1: true, h2: true, h3: false, h4: false, h5: false, h6: false,
+									};
+								}
+								this.tempSettings.common.headingDividerLevels[level] = checkbox.checked;
+								this.applySettings();
+							});
+						}
+					},
+				);
+
+				// 見出しの位置
+				this.createSettingItem(
+					content,
+					"見出しの位置",
+					"見出しテキストの配置位置",
+					(itemEl) => {
+						const select = itemEl.createEl("select");
+						select.className = "tategaki-settings-select";
+
+						const isVertical = this.tempSettings.common.writingMode !== "horizontal-tb";
+						const labelPairs: Record<string, [string, string]> = {
+							start: ["上", "左"],
+							center: ["中央", "中央"],
+							end: ["下", "右"],
+						};
+
+						for (const value of ["start", "center", "end"] as const) {
+							const text = isVertical ? labelPairs[value][0] : labelPairs[value][1];
+							select.createEl("option", { text, value });
+						}
+
+						select.value = this.tempSettings.common.headingAlign ?? "start";
+						select.addEventListener("change", () => {
+							this.tempSettings.common.headingAlign = select.value as "start" | "center" | "end";
+							this.applySettings();
+						});
+					},
+				);
 			},
 		);
 
@@ -2007,6 +2099,44 @@ export class SettingsPanelModal extends Modal {
 						});
 
 						slider.addEventListener("change", () => {
+							this.applySettings();
+						});
+					},
+				);
+			},
+		);
+
+		// ─── 選択モード設定 ───
+		this.createCollapsibleSection(
+			container,
+			"pointer",
+			"選択モード",
+			false,
+			(content) => {
+				this.createSettingItem(
+					content,
+					"SoTの選択方法",
+					"クリック位置の反映を優先するか、ドラッグ選択の自然さを優先するかを選びます。",
+					(itemEl) => {
+						const select = itemEl.createEl("select");
+						select.className = "tategaki-settings-select";
+
+						select.createEl("option", {
+							text: "クリック優先",
+							value: "fast-click",
+						});
+						select.createEl("option", {
+							text: "ドラッグ選択優先",
+							value: "native-drag",
+						});
+
+						select.value =
+							this.tempSettings.wysiwyg.sotSelectionMode ??
+							"fast-click";
+
+						select.addEventListener("change", () => {
+							this.tempSettings.wysiwyg.sotSelectionMode =
+								select.value as any;
 							this.applySettings();
 						});
 					},
@@ -2115,148 +2245,115 @@ export class SettingsPanelModal extends Modal {
 					},
 				);
 
-				// CE補助モード: ネイティブキャレット
-				this.createSettingItem(
-					content,
-					"CE補助モードでネイティブキャレットを使用",
-					"CE補助(IME)をオンにしたとき、OS標準のキャレットを使うか選べます",
-					(itemEl) => {
-						const button = itemEl.createEl("button", {
-							cls: "tategaki-toggle-button",
-						});
+				},
+		);
 
-						const getCurrent = () =>
-							this.tempSettings.wysiwyg.ceUseNativeCaret !==
-							false;
-
-						const refresh = (enabled: boolean) => {
-							this.updateToggleButton(
-								button,
-								enabled,
-								"使用する",
-								"使用しない",
+			// ─── IME表示の補正 ───
+			this.createCollapsibleSection(
+				container,
+				"keyboard",
+				"IME表示の補正",
+				false,
+				(content) => {
+					// 横書きIME: 上方向補正
+					this.createSettingItem(
+						content,
+						"横書き: 上方向補正",
+						"横書きIMEの表示位置を、既定値から上方向(+) / 下方向(-)に調整します（相対値・em単位、0=既定）",
+						(itemEl) => {
+							const wrapper = itemEl.createDiv(
+								"tategaki-slider-control",
 							);
-						};
 
-						refresh(getCurrent());
+							const slider = wrapper.createEl("input");
+							slider.type = "range";
+							slider.min = String(IME_OFFSET_RELATIVE_MIN);
+							slider.max = String(IME_OFFSET_RELATIVE_MAX);
+							slider.step = "0.01";
+							const defaultValue =
+								DEFAULT_V2_SETTINGS.wysiwyg.imeOffsetHorizontalEm ??
+								0;
+							const initialValue = toRelativeImeOffset(
+								this.tempSettings.wysiwyg.imeOffsetHorizontalEm,
+								defaultValue,
+							);
+							slider.value = initialValue.toFixed(2);
+							slider.className = "tategaki-slider-input is-medium";
 
-						button.addEventListener("click", () => {
-							const next = !getCurrent();
-							this.tempSettings.wysiwyg.ceUseNativeCaret = next;
-							refresh(next);
-							this.applySettings();
-						});
-					},
-					{
-						disabled: ceNativeCaretDisabled,
-						disabledReason: ceNativeCaretDisabled
-							? ceNativeCaretReason
-							: undefined,
-					},
-				);
-			},
-		);
+							const valueSpan = wrapper.createEl("span");
+							valueSpan.textContent = initialValue.toFixed(2);
+							valueSpan.className = "tategaki-slider-value is-wide";
 
-		// ─── IME表示の補正 ───
-		this.createCollapsibleSection(
-			container,
-			"keyboard",
-			"IME表示の補正",
-			false,
-			(content) => {
-				// 横書きIME: 上方向補正
-				this.createSettingItem(
-					content,
-					"横書き: 上方向補正",
-					"横書きIMEの表示位置を、上方向(+) / 下方向(-)に調整します（em単位）",
-					(itemEl) => {
-						const wrapper = itemEl.createDiv(
-							"tategaki-slider-control",
-						);
+							slider.addEventListener("input", () => {
+								const value = parseFloat(slider.value);
+								this.tempSettings.wysiwyg.imeOffsetHorizontalEm =
+									fromRelativeImeOffset(value, defaultValue);
+								valueSpan.textContent = value.toFixed(2);
+								this.applySettings({ debounce: true });
+							});
 
-						const slider = wrapper.createEl("input");
-						slider.type = "range";
-						slider.min = "-1";
-						slider.max = "1";
-						slider.step = "0.01";
-						const initialValue =
-							this.tempSettings.wysiwyg.imeOffsetHorizontalEm ??
-							DEFAULT_V2_SETTINGS.wysiwyg.imeOffsetHorizontalEm ??
-							0;
-						slider.value = initialValue.toFixed(2);
-						slider.className = "tategaki-slider-input is-medium";
+							slider.addEventListener("change", () => {
+								this.applySettings();
+							});
+						},
+						{
+							disabled: imeDisabled,
+							disabledReason: imeDisabled
+								? imeDisabledReason
+								: undefined,
+						},
+					);
 
-						const valueSpan = wrapper.createEl("span");
-						valueSpan.textContent = initialValue.toFixed(2);
-						valueSpan.className = "tategaki-slider-value is-wide";
+					// 縦書きIME: 右方向補正
+					this.createSettingItem(
+						content,
+						"縦書き: 右方向補正",
+						"縦書きIMEの表示位置を、既定値から右方向(+) / 左方向(-)に調整します（相対値・em単位、0=既定）",
+						(itemEl) => {
+							const wrapper = itemEl.createDiv(
+								"tategaki-slider-control",
+							);
 
-						slider.addEventListener("input", () => {
-							const value = parseFloat(slider.value);
-							this.tempSettings.wysiwyg.imeOffsetHorizontalEm =
-								value;
-							valueSpan.textContent = value.toFixed(2);
-							this.applySettings({ debounce: true });
-						});
+							const slider = wrapper.createEl("input");
+							slider.type = "range";
+							slider.min = String(IME_OFFSET_RELATIVE_MIN);
+							slider.max = String(IME_OFFSET_RELATIVE_MAX);
+							slider.step = "0.01";
+							const defaultValue =
+								DEFAULT_V2_SETTINGS.wysiwyg.imeOffsetVerticalEm ??
+								0;
+							const initialValue = toRelativeImeOffset(
+								this.tempSettings.wysiwyg.imeOffsetVerticalEm,
+								defaultValue,
+							);
+							slider.value = initialValue.toFixed(2);
+							slider.className = "tategaki-slider-input is-medium";
 
-						slider.addEventListener("change", () => {
-							this.applySettings();
-						});
-					},
-					{
-						disabled: imeDisabled,
-						disabledReason: imeDisabled
-							? imeDisabledReason
-							: undefined,
-					},
-				);
+							const valueSpan = wrapper.createEl("span");
+							valueSpan.textContent = initialValue.toFixed(2);
+							valueSpan.className = "tategaki-slider-value is-wide";
 
-				// 縦書きIME: 右方向補正
-				this.createSettingItem(
-					content,
-					"縦書き: 右方向補正",
-					"縦書きIMEの表示位置を、右方向(+) / 左方向(-)に調整します（em単位）",
-					(itemEl) => {
-						const wrapper = itemEl.createDiv(
-							"tategaki-slider-control",
-						);
+							slider.addEventListener("input", () => {
+								const value = parseFloat(slider.value);
+								this.tempSettings.wysiwyg.imeOffsetVerticalEm =
+									fromRelativeImeOffset(value, defaultValue);
+								valueSpan.textContent = value.toFixed(2);
+								this.applySettings({ debounce: true });
+							});
 
-						const slider = wrapper.createEl("input");
-						slider.type = "range";
-						slider.min = "-1";
-						slider.max = "1";
-						slider.step = "0.01";
-						const initialValue =
-							this.tempSettings.wysiwyg.imeOffsetVerticalEm ??
-							DEFAULT_V2_SETTINGS.wysiwyg.imeOffsetVerticalEm ??
-							0;
-						slider.value = initialValue.toFixed(2);
-						slider.className = "tategaki-slider-input is-medium";
-
-						const valueSpan = wrapper.createEl("span");
-						valueSpan.textContent = initialValue.toFixed(2);
-						valueSpan.className = "tategaki-slider-value is-wide";
-
-						slider.addEventListener("input", () => {
-							const value = parseFloat(slider.value);
-							this.tempSettings.wysiwyg.imeOffsetVerticalEm =
-								value;
-							valueSpan.textContent = value.toFixed(2);
-							this.applySettings({ debounce: true });
-						});
-
-						slider.addEventListener("change", () => {
-							this.applySettings();
-						});
-					},
-					{
-						disabled: imeDisabled,
-						disabledReason: imeDisabled
-							? imeDisabledReason
-							: undefined,
-					},
-				);
-			},
-		);
+							slider.addEventListener("change", () => {
+								this.applySettings();
+							});
+						},
+						{
+							disabled: imeDisabled,
+							disabledReason: imeDisabled
+								? imeDisabledReason
+								: undefined,
+						},
+					);
+				},
+			);
 
 		// ─── 参照設定 ───
 		this.createCollapsibleSection(
@@ -2325,6 +2422,102 @@ export class SettingsPanelModal extends Modal {
 							setVisibility(!visible);
 							refreshButton();
 						});
+					},
+				);
+
+				// フロントマター表示方式
+				this.createSettingItem(
+					content,
+					"書籍モード表示方式",
+					"フロントマターを本文先頭に流すか、独立ページにするかを選びます",
+					(itemEl) => {
+						const isFrontmatterVisible = () =>
+							!(this.tempSettings.preview.hideFrontmatter ?? true);
+
+						const select = itemEl.createEl("select");
+						select.className = "tategaki-settings-select is-medium";
+						select.createEl("option", { text: sp("本文先頭"), value: "inline" });
+						select.createEl("option", { text: sp("独立ページ"), value: "separate-page" });
+
+						select.value = this.tempSettings.preview.bookFrontmatterDisplayMode ?? "inline";
+						select.disabled = !isFrontmatterVisible();
+
+						select.addEventListener("change", () => {
+							const mode = select.value as "inline" | "separate-page";
+							this.tempSettings.preview.bookFrontmatterDisplayMode = mode;
+							// 旧設定も同期
+							this.tempSettings.preview.bookFrontmatterAsCoverPage = mode === "separate-page";
+							this.applySettings();
+							refreshSubSettings();
+						});
+
+						// 独立ページ時のサブ設定コンテナ
+						const subContainer = content.createDiv("tategaki-sub-settings");
+
+						const refreshSubSettings = () => {
+							const isSeparate =
+								(this.tempSettings.preview.bookFrontmatterDisplayMode ?? "inline") === "separate-page";
+							const visible = isFrontmatterVisible();
+							subContainer.style.display = isSeparate && visible ? "" : "none";
+							select.disabled = !visible;
+						};
+
+						// レイアウト設定
+						// 文字方向設定コンテナ（中央配置時のみ表示）
+						const wmContainer = subContainer.createDiv("tategaki-sub-settings");
+
+						const refreshWmVisibility = () => {
+							const isCenter =
+								(this.tempSettings.preview.bookFrontmatterSeparatePageLayout ?? "normal") === "center";
+							wmContainer.style.display = isCenter ? "" : "none";
+							// 通常レイアウト時は文字方向を「本文に合わせる」にリセット
+							if (!isCenter && this.tempSettings.preview.bookFrontmatterSeparatePageWritingMode !== "inherit") {
+								this.tempSettings.preview.bookFrontmatterSeparatePageWritingMode = "inherit";
+								this.applySettings();
+							}
+						};
+
+						this.createSettingItem(
+							subContainer,
+							"独立ページのレイアウト",
+							"独立ページの配置方式を選びます",
+							(sub) => {
+								const layoutSelect = sub.createEl("select");
+								layoutSelect.className = "tategaki-settings-select is-medium";
+								layoutSelect.createEl("option", { text: sp("通常"), value: "normal" });
+								layoutSelect.createEl("option", { text: sp("中央配置"), value: "center" });
+								layoutSelect.value = this.tempSettings.preview.bookFrontmatterSeparatePageLayout ?? "normal";
+								layoutSelect.addEventListener("change", () => {
+									this.tempSettings.preview.bookFrontmatterSeparatePageLayout =
+										layoutSelect.value as "normal" | "center";
+									this.applySettings();
+									refreshWmVisibility();
+								});
+							},
+						);
+
+						// 文字方向設定（中央配置時のみ表示）
+						this.createSettingItem(
+							wmContainer,
+							"独立ページの文字方向",
+							"中央配置の書字方向を指定します",
+							(sub) => {
+								const wmSelect = sub.createEl("select");
+								wmSelect.className = "tategaki-settings-select is-medium";
+								wmSelect.createEl("option", { text: sp("本文に合わせる"), value: "inherit" });
+								wmSelect.createEl("option", { text: sp("横書き"), value: "horizontal-tb" });
+								wmSelect.createEl("option", { text: sp("縦書き"), value: "vertical-rl" });
+								wmSelect.value = this.tempSettings.preview.bookFrontmatterSeparatePageWritingMode ?? "inherit";
+								wmSelect.addEventListener("change", () => {
+									this.tempSettings.preview.bookFrontmatterSeparatePageWritingMode =
+										wmSelect.value as "inherit" | "horizontal-tb" | "vertical-rl";
+									this.applySettings();
+								});
+							},
+						);
+
+						refreshWmVisibility();
+						refreshSubSettings();
 					},
 				);
 			},
@@ -2615,6 +2808,84 @@ export class SettingsPanelModal extends Modal {
 						});
 					},
 				);
+
+				// 見出しのページ扱い
+				this.createSettingItem(
+					content,
+					"見出しのページ扱い",
+					"見出し前での改ページまたは章扉ページの挿入方式を選びます",
+					(itemEl) => {
+						const modeSelect = itemEl.createEl("select");
+						modeSelect.className = "tategaki-settings-select is-medium";
+						modeSelect.createEl("option", { text: sp("なし"), value: "none" });
+						modeSelect.createEl("option", { text: sp("改ページ"), value: "page-break" });
+						modeSelect.createEl("option", { text: sp("章扉"), value: "title-page" });
+
+						modeSelect.value = this.tempSettings.preview.bookHeadingPaginationMode ?? "none";
+
+						// 対象レベルのサブ設定コンテナ
+						const subContainer = content.createDiv("tategaki-sub-settings");
+
+						this.createSettingItem(
+							subContainer,
+							"対象見出しレベル",
+							"改ページまたは章扉の対象となる見出しレベルを指定します",
+							(sub) => {
+								const levelSelect = sub.createEl("select");
+								levelSelect.className = "tategaki-settings-select is-medium";
+								const levelOptions: Array<{ text: string; value: string }> = [
+									{ text: "H1以上", value: "1" },
+									{ text: "H2以上", value: "2" },
+									{ text: "H3以上", value: "3" },
+									{ text: "H4以上", value: "4" },
+									{ text: "H5以上", value: "5" },
+									{ text: "H6以上", value: "6" },
+								];
+								for (const opt of levelOptions) {
+									levelSelect.createEl("option", {
+										text: sp(opt.text),
+										value: opt.value,
+									});
+								}
+
+								const currentLevel = this.tempSettings.preview.bookHeadingPaginationLevel ?? 0;
+								levelSelect.value = (currentLevel > 0 ? currentLevel : 1).toString();
+
+								levelSelect.addEventListener("change", () => {
+									const val = parseInt(levelSelect.value, 10) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+									this.tempSettings.preview.bookHeadingPaginationLevel = val;
+									// 旧設定も同期
+									this.tempSettings.preview.bookPageBreakBeforeHeadingLevel =
+										this.tempSettings.preview.bookHeadingPaginationMode !== "none" ? val : 0;
+									this.applySettings();
+								});
+							},
+						);
+
+						const refreshSubSettings = () => {
+							const mode = this.tempSettings.preview.bookHeadingPaginationMode ?? "none";
+							subContainer.style.display = mode !== "none" ? "" : "none";
+						};
+
+						modeSelect.addEventListener("change", () => {
+							const mode = modeSelect.value as "none" | "page-break" | "title-page";
+							this.tempSettings.preview.bookHeadingPaginationMode = mode;
+							// レベルが未設定の場合はデフォルトを設定
+							if (mode !== "none" && (this.tempSettings.preview.bookHeadingPaginationLevel ?? 0) === 0) {
+								this.tempSettings.preview.bookHeadingPaginationLevel = 1;
+							}
+							// 旧設定も同期
+							this.tempSettings.preview.bookPageBreakBeforeHeadingLevel =
+								mode !== "none"
+									? (this.tempSettings.preview.bookHeadingPaginationLevel ?? 1) as 0 | 1 | 2 | 3 | 4 | 5 | 6
+									: 0;
+							this.applySettings();
+							refreshSubSettings();
+						});
+
+						refreshSubSettings();
+					},
+				);
 			},
 		);
 
@@ -2758,7 +3029,7 @@ export class SettingsPanelModal extends Modal {
 						this.disableControls(controlContainer);
 					}
 				})
-				.catch((err) => console.error("Error building control:", err));
+				.catch((err) => debugError("Error building control:", err));
 		} else if (disabled) {
 			this.disableControls(controlContainer);
 		}
@@ -2952,7 +3223,7 @@ export class SettingsPanelModal extends Modal {
 							);
 							this.onOpen();
 						} catch (error) {
-							console.error(
+							debugError(
 								"Tategaki: Failed to save theme:",
 								error,
 							);
@@ -2961,7 +3232,7 @@ export class SettingsPanelModal extends Modal {
 				});
 				modal.open();
 			} catch (error) {
-				console.error(
+				debugError(
 					"Tategaki: Failed to open theme name modal:",
 					error,
 				);
@@ -3000,7 +3271,7 @@ export class SettingsPanelModal extends Modal {
 			if (result instanceof Promise) {
 				result.catch((error) => {
 					this.lastAppliedSettingsSnapshot = previousSnapshot;
-					console.error(
+					debugError(
 						"Tategaki SettingsPanel: failed to apply settings",
 						error,
 					);
@@ -3008,7 +3279,7 @@ export class SettingsPanelModal extends Modal {
 			}
 		} catch (error) {
 			this.lastAppliedSettingsSnapshot = previousSnapshot;
-			console.error(
+			debugError(
 				"Tategaki SettingsPanel: failed to apply settings",
 				error,
 			);

@@ -12,6 +12,11 @@ import {
 	PROHIBITED_LINE_START_CHARS,
 	PROHIBITED_LINE_END_CHARS,
 } from "./measured-pagination-types";
+import {
+	cloneNodeWithVisibleContent,
+	hasVisibleText,
+	nodeHasVisibleContent,
+} from "./visible-content";
 
 export class MeasuredPagination {
 	private options: MeasuredPaginationOptions;
@@ -56,7 +61,14 @@ export class MeasuredPagination {
 
 
 		if (totalLength === 0) {
-			return [];
+			const staticPage = this.createStaticContentPage(tempDiv);
+			if (!staticPage) {
+				return [];
+			}
+			if (this.options.onPage) {
+				this.options.onPage(staticPage);
+			}
+			return [staticPage];
 		}
 
 		// ブロックセグメントを作成
@@ -91,13 +103,32 @@ export class MeasuredPagination {
 				break;
 			}
 
+			// 見出し前改ページ: 次の強制ブレーク位置を computeNextPagePrecise に伝える
+			// 注: 章扉(title-page)は book-page-segments.ts で事前分割済みのため、
+			// ここでは page-break のみ処理する
+			const nextBreakCharIndex = this.findNextPageBreakCharIndex(state);
+			const forcedEnd: number | undefined =
+				nextBreakCharIndex !== null && nextBreakCharIndex > state.startIndex
+					? nextBreakCharIndex
+					: undefined;
+
 			const pageInfo = await this.computeNextPagePrecise(
 				state,
 				slice,
-				timeBudgetMs
+				timeBudgetMs,
+				forcedEnd
 			);
+
 			if (!pageInfo) {
 				break;
+			}
+
+			// 強制改ページで空白文字のみのページが生成された場合はスキップ
+			const pw = pageInfo.element.querySelector(".page-content");
+			if (pw && !nodeHasVisibleContent(pw)) {
+				pageInfo.element.remove();
+				iteration++;
+				continue;
 			}
 
 			pages.push(pageInfo);
@@ -154,6 +185,22 @@ export class MeasuredPagination {
 	}
 
 	/**
+	 * 現在位置より後にある最初の強制改ページ位置（文字インデックス）を返す
+	 * data-tategaki-page-break-before="true" が付いたブロックの開始位置
+	 */
+	private findNextPageBreakCharIndex(state: PaginationState): number | null {
+		for (const segment of state.blockSegments) {
+			if (
+				segment.startIndex > state.startIndex &&
+				segment.block.getAttribute("data-tategaki-page-break-before") === "true"
+			) {
+				return segment.startIndex;
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * ブロックセグメントを作成
 	 */
 	private createBlockSegments(
@@ -176,6 +223,12 @@ export class MeasuredPagination {
 		while ((node = walker.nextNode())) {
 			const text = node.textContent;
 			if (!text) continue;
+
+			// collectTextNodes と同じく Ruby annotation テキストを除外して
+			// 文字インデックスを state.textNodes / prefixLengths と一致させる
+			if (this.isRubyAnnotationText(node as Text)) {
+				continue;
+			}
 
 			const block = this.findPaginationBlockAncestor(node, container);
 			if (!block) continue;
@@ -272,7 +325,8 @@ export class MeasuredPagination {
 	private async computeNextPagePrecise(
 		state: PaginationState,
 		slice: { start: number },
-		timeBudgetMs: number
+		timeBudgetMs: number,
+		forcedPageEndIndex?: number
 	): Promise<PageInfo | null> {
 		// キャンセルチェック
 		if (this.cancelled) {
@@ -296,6 +350,12 @@ export class MeasuredPagination {
 		wrapper.style.visibility = "hidden";
 
 		const remaining = state.totalLength - state.startIndex;
+		// 強制改ページ位置による上限（相対文字数）
+		const forcedLimit: number | null =
+			forcedPageEndIndex !== undefined && forcedPageEndIndex > state.startIndex
+				? Math.min(remaining, forcedPageEndIndex - state.startIndex)
+				: null;
+		const effectiveRemaining = forcedLimit !== null ? forcedLimit : remaining;
 		const previousSize = state.lastCharCount;
 		const averageSize =
 			state.pageCount > 0
@@ -303,7 +363,7 @@ export class MeasuredPagination {
 				: 0;
 		let heuristicSize = Math.max(previousSize, averageSize);
 		if (heuristicSize <= 0) {
-			heuristicSize = Math.min(remaining, 1800);
+			heuristicSize = Math.min(effectiveRemaining, 1800);
 		}
 		const pageAxisLimit = this.getPageAxisLimit(wrapper, state.writingMode);
 		const blockEstimate = this.estimateCharsForNextPage(
@@ -311,20 +371,20 @@ export class MeasuredPagination {
 			pageAxisLimit
 		);
 		if (blockEstimate > 0) {
-			heuristicSize = Math.max(1, Math.min(remaining, blockEstimate));
+			heuristicSize = Math.max(1, Math.min(effectiveRemaining, blockEstimate));
 		}
 		let low = 1;
 		let high: number;
 		if (blockEstimate > 0) {
 			const margin = Math.max(64, Math.floor(heuristicSize * 0.25));
-			high = Math.min(remaining, heuristicSize + margin);
+			high = Math.min(effectiveRemaining, heuristicSize + margin);
 			if (high < 1) {
 				high = Math.max(1, heuristicSize + margin);
 			}
 		} else {
 			const minHigh = Math.max(512, Math.floor(heuristicSize * 1.1));
 			const cappedHigh = Math.min(
-				remaining,
+				effectiveRemaining,
 				Math.max(minHigh, heuristicSize + 512)
 			);
 			low = Math.max(
@@ -334,7 +394,7 @@ export class MeasuredPagination {
 			high = cappedHigh;
 		}
 		if (high < low) {
-			high = Math.max(low, Math.min(remaining, low + 256));
+			high = Math.max(low, Math.min(effectiveRemaining, low + 256));
 		}
 		let best = 0;
 
@@ -392,7 +452,7 @@ export class MeasuredPagination {
 			}
 
 			const nextProbe = Math.min(
-				remaining,
+				effectiveRemaining,
 				Math.min(state.totalLength - state.startIndex, take + step)
 			);
 			if (nextProbe <= take) break;
@@ -409,7 +469,7 @@ export class MeasuredPagination {
 			if (!this.isOverflow(tempPage, state.writingMode)) {
 				take = nextProbe;
 				step = Math.max(1, Math.floor(step * 1.5));
-				if (take >= remaining) break;
+				if (take >= effectiveRemaining) break;
 			} else {
 				if (step === 1) break;
 				step = Math.max(1, Math.floor(step / 2));
@@ -417,7 +477,7 @@ export class MeasuredPagination {
 		}
 
 		// 最終調整
-		let finalTake = Math.max(1, Math.min(take, remaining));
+		let finalTake = Math.max(1, Math.min(take, effectiveRemaining));
 		let sanityGuard = 0;
 		const SANITY_LIMIT = 32;
 		while (sanityGuard < SANITY_LIMIT) {
@@ -462,13 +522,16 @@ export class MeasuredPagination {
 			wrapper,
 			finalTake
 		);
+		if (forcedLimit !== null) finalTake = Math.min(finalTake, forcedLimit);
 		finalTake = this.adjustBreakForRuby(state, tempPage, wrapper, finalTake);
+		if (forcedLimit !== null) finalTake = Math.min(finalTake, forcedLimit);
 		finalTake = this.adjustBreakForKinsoku(
 			state,
 			tempPage,
 			wrapper,
 			finalTake
 		);
+		if (forcedLimit !== null) finalTake = Math.min(finalTake, forcedLimit);
 		if (finalTake < maxTake) {
 			wrapper.innerHTML = "";
 			const probeFrag = this.cloneFragmentByCharRange(
@@ -500,6 +563,7 @@ export class MeasuredPagination {
 		);
 		wrapper.appendChild(finalFrag);
 		this.pruneTrailingWhitespaceNodes(wrapper);
+		this.pruneTrailingEmptyPageBreakHeadings(wrapper);
 
 		// visibilityを元に戻す
 		wrapper.style.visibility = "";
@@ -754,6 +818,34 @@ export class MeasuredPagination {
 		container.appendChild(page);
 
 		return page;
+	}
+
+	private createStaticContentPage(host: HTMLElement): PageInfo | null {
+		const page = this.createEmptyPage();
+		const wrapper = page.querySelector(".page-content") as HTMLElement | null;
+		if (!wrapper) {
+			page.remove();
+			return null;
+		}
+
+		for (const child of Array.from(host.childNodes)) {
+			const clone = cloneNodeWithVisibleContent(child);
+			if (clone) {
+				wrapper.appendChild(clone);
+			}
+		}
+
+		if (!nodeHasVisibleContent(wrapper)) {
+			page.remove();
+			return null;
+		}
+
+		return {
+			element: page,
+			startIndex: 0,
+			endIndex: 0,
+			charCount: 0,
+		};
 	}
 
 	/**
@@ -1013,7 +1105,7 @@ export class MeasuredPagination {
 			if (last.nodeType === Node.TEXT_NODE) {
 				const text = last as Text;
 				const val = text.nodeValue ?? "";
-				if (/^\s*$/.test(val)) {
+				if (!hasVisibleText(val)) {
 					const prev = last.previousSibling;
 					wrapper.removeChild(last);
 					last = prev;
@@ -1021,6 +1113,27 @@ export class MeasuredPagination {
 				}
 			}
 			break;
+		}
+	}
+
+	/**
+	 * ページ末尾にある空の改ページ見出しゴーストを除去
+	 * cloneFragmentByCharRange が見出し開始位置でクローンすると
+	 * 空の見出し要素が残り、区切り線が表示されてしまうのを防ぐ
+	 */
+	private pruneTrailingEmptyPageBreakHeadings(wrapper: HTMLElement): void {
+		let last = wrapper.lastElementChild;
+		while (last) {
+			if (
+				last.getAttribute("data-tategaki-page-break-before") === "true" &&
+				!nodeHasVisibleContent(last)
+			) {
+				const prev = last.previousElementSibling;
+				last.remove();
+				last = prev;
+			} else {
+				break;
+			}
 		}
 	}
 

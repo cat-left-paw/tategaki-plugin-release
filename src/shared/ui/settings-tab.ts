@@ -12,12 +12,12 @@ import { TategakiV2Settings, PRESET_THEME_IDS } from "../../types/settings";
 import { compareSemver } from "../version";
 import { openExternalUrl } from "../open-external-url";
 import { t } from "../i18n";
+import { debugError } from "../logger";
 
 const UPDATE_CHECK_URL =
 	"https://raw.githubusercontent.com/cat-left-paw/tategaki-plugin-release/main/latest.json";
 const RELEASE_URL =
 	"https://github.com/cat-left-paw/tategaki-plugin-release/releases";
-const DONATION_URL = "https://www.buymeacoffee.com/hidarite";
 
 export class TategakiV2SettingTab extends PluginSettingTab {
 	plugin: TategakiV2Plugin;
@@ -37,7 +37,6 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 		const legacyEnabled = this.plugin.settings.enableLegacyTiptap ?? true;
 		this.addUpdateAndSupportSection(legacyEnabled);
 		this.addThemeSettings(this.plugin.settings);
-		this.addDonationSection();
 	}
 
 	private addSectionHeading(containerEl: HTMLElement, title: string): void {
@@ -360,7 +359,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 									});
 							new Notice(msg, 5000);
 						} catch (error) {
-							console.error("Update check failed", error);
+							debugError("Update check failed", error);
 							new Notice(
 								t("settings.notice.update.failed"),
 								3500,
@@ -392,45 +391,6 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 		if (legacyEnabled) {
 			// 同期バックアップ操作は互換モード設定へ移動
 		}
-	}
-
-	private addDonationSection(): void {
-		const { containerEl } = this;
-
-		this.addSectionHeading(containerEl, t("settings.section.support"));
-
-		const donationSetting = new Setting(containerEl)
-			.setName(t("settings.supportDonation.name"))
-			.setDesc(t("settings.supportDonation.desc"));
-
-		const donationLinkEl = donationSetting.controlEl.createEl("a", {
-			attr: {
-				href: DONATION_URL,
-				target: "_blank",
-				rel: "noopener noreferrer",
-				"aria-label": "Buy me a coffee",
-			},
-			cls: "tategaki-donation-link",
-		});
-
-		donationLinkEl.createEl("img", {
-			attr: {
-				src: "https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png",
-				alt: "Buy me a coffee",
-			},
-			cls: "tategaki-donation-image",
-		});
-
-		donationLinkEl.addEventListener("click", (event) => {
-			event.preventDefault();
-			void (async () => {
-				const opened = await openExternalUrl(this.app, DONATION_URL);
-				if (!opened) {
-					console.error("Failed to open donation link");
-					new Notice(t("settings.notice.linkOpenFailed"), 2500);
-				}
-			})();
-		});
 	}
 
 	private addThemeSettings(settings: TategakiV2Settings) {
@@ -577,7 +537,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 								this.display(); // 設定画面を再表示して現在のテーマ表示を更新
 							})
 							.catch((error) => {
-								console.error(
+								debugError(
 									"Tategaki: failed to load theme",
 									error,
 								);
@@ -625,7 +585,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 							await this.plugin.deleteTheme(theme.id);
 							this.display(); // 設定画面を再表示
 						})().catch((error) => {
-							console.error(
+							debugError(
 								"Tategaki: failed to delete theme",
 								error,
 							);

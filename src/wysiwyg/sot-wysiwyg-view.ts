@@ -40,6 +40,13 @@ import {
 	type ListLineInfo,
 } from "./sot/sot-line-parse";
 import {
+	collectOrderedListRenumberChanges,
+	isSoTBlockquoteOnlyLine,
+	isSoTMarkerOnlyListLine,
+	resolveSoTBlockquoteContinuationEdit,
+	resolveSoTListContinuationEdit,
+} from "./sot/sot-list-enter";
+import {
 	clearPlainEditSelectionFormatting,
 	getPlainEditSelectionRange,
 	insertPlainEditLink,
@@ -101,8 +108,39 @@ import {
 	DEFAULT_DOM_SELECTALL_TIMEOUT_MS,
 } from "./sot/selection-guard";
 import { SoTRenderPipeline } from "./sot/sot-render-pipeline";
+import { OutlineJumpGuard } from "./sot/sot-outline-jump-guard";
+import { SoTChunkController } from "./sot/sot-chunk-controller";
+import {
+	buildSoTAozoraRubyText,
+	findSoTAozoraRubyMatchForSelection,
+} from "./sot/sot-ruby";
+import {
+	captureScrollAnchorFromViewport,
+	computeScrollAnchorAdjustmentFromLineElement,
+	shouldApplyScrollAnchorAdjustment,
+	type SoTScrollAnchor,
+} from "./sot/sot-scroll-anchor";
+import {
+	resolveEnsureLineRenderedTargetIndex,
+	resolveLineElementFromChildren,
+} from "./sot/sot-line-element-contract";
+import {
+	shouldActivateOnAutoScrollStart,
+	shouldDeactivateOnAutoScrollStop,
+	decideOnPointerDown,
+	shouldDeactivateOnPointerEnd,
+} from "./sot/sot-native-selection-assist";
+import { classifyPointerTarget } from "./sot/sot-pointer-strategy";
+import {
+	isNativeSelectionEnabled as policyIsNativeSelectionEnabled,
+	shouldSuppressAutoScrollSelectionRenders as policyShouldSuppressAutoScrollSelectionRenders,
+	isHugeDocSelection as policyIsHugeDocSelection,
+	shouldDeferNativeSelectionSync as policyShouldDeferNativeSelectionSync,
+	type SelectionPolicyState,
+} from "./sot/sot-selection-policy";
 import type { FrontmatterData } from "./sot/sot-wysiwyg-view-frontmatter";
-import { debugLog, debugWarn } from "../shared/logger";
+import { parseFrontmatterBlock } from "../shared/frontmatter";
+import { debugLog, debugWarn, debugError } from "../shared/logger";
 import {
 	isPhoneLikeMobile,
 	PHONE_MEDIA_QUERY,
@@ -210,6 +248,7 @@ export class SoTWysiwygView extends ItemView {
 	private detachSoTListener: (() => void) | null = null;
 
 	private renderPipeline: SoTRenderPipeline | null = null;
+	private readonly chunkController = new SoTChunkController();
 	private wheelThrottleTimer: number | null = null;
 	private scrollDebounceTimer: number | null = null;
 	private scrollDebounceRaf: number | null = null;
@@ -235,8 +274,8 @@ export class SoTWysiwygView extends ItemView {
 	private lineModelRecomputeIdle: number | null = null;
 	private lineModelRecomputeStart: number | null = null;
 	private lineModelRecomputeEnd: number | null = null;
-	private outlineJumpToken = 0;
 	private outlineJumpRaf: number | null = null;
+	private readonly outlineJumpGuard = new OutlineJumpGuard();
 	private boundWheelHandler: ((event: WheelEvent) => void) | null = null;
 	private overlayFocused = false;
 	private suppressNativeSelectionCollapse = false;
@@ -397,6 +436,8 @@ export class SoTWysiwygView extends ItemView {
 	private finishRenderMathTimer: number | null = null;
 	private hideFrontmatter = false;
 	private frontmatterDetected = false;
+	/** フロントマター付きファイル初回表示時のセレクション補正の実行済みフラグ（attachSoTEditor でリセット） */
+	private frontmatterSelectionBootstrapped = false;
 	private collapsePreviewTooltip: HTMLElement | null = null;
 	private readonly lineCacheMaxEntries = 4000;
 	private lineCacheTrimCursor = 0;
@@ -527,13 +568,14 @@ export class SoTWysiwygView extends ItemView {
 			window.cancelAnimationFrame(this.outlineJumpRaf);
 			this.outlineJumpRaf = null;
 		}
+		this.outlineJumpGuard.cancel();
 	}
 
 	private scrollToOutlineLine(lineIndex: number): void {
 		if (!this.derivedRootEl) return;
 		const rootEl = this.derivedRootEl;
-		const token = ++this.outlineJumpToken;
 		this.cancelOutlineJump();
+		const token = this.outlineJumpGuard.begin();
 
 		const computed = window.getComputedStyle(rootEl);
 		const fontSize = Number.parseFloat(computed.fontSize) || 16;
@@ -552,7 +594,7 @@ export class SoTWysiwygView extends ItemView {
 		this.renderPipeline?.onScrollSettled();
 
 		const scrollToLine = (): void => {
-			if (this.outlineJumpToken !== token) return;
+			if (!this.outlineJumpGuard.isTokenValid(token)) return;
 			const targetLineEl = this.getLineElement(lineIndex);
 			if (!targetLineEl) return;
 			this.ensureLineRendered(targetLineEl);
@@ -564,13 +606,15 @@ export class SoTWysiwygView extends ItemView {
 		};
 
 		const retry = (attempt: number): void => {
-			if (this.outlineJumpToken !== token) return;
+			if (!this.outlineJumpGuard.isTokenValid(token)) return;
 			const targetLineEl = this.getLineElement(lineIndex);
 			if (!targetLineEl) {
 				if (attempt < 60) {
 					this.outlineJumpRaf = window.requestAnimationFrame(() =>
 						retry(attempt + 1),
 					);
+				} else {
+					this.outlineJumpGuard.end(token);
 				}
 				return;
 			}
@@ -581,6 +625,7 @@ export class SoTWysiwygView extends ItemView {
 				window.setTimeout(() => {
 					this.renderPipeline?.onScrollSettled();
 					scrollToLine();
+					this.outlineJumpGuard.end(token);
 				}, 100);
 			});
 		};
@@ -684,7 +729,11 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private shouldDeferNativeSelectionSync(): boolean {
-		return this.isScrolling || this.autoScrollSelecting || this.isPointerSelecting;
+		return policyShouldDeferNativeSelectionSync({
+			isScrolling: this.isScrolling,
+			autoScrollSelecting: this.autoScrollSelecting,
+			isPointerSelecting: this.isPointerSelecting,
+		});
 	}
 
 	private flushPendingNativeSelectionSync(force = false): void {
@@ -753,16 +802,14 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private shouldSuppressAutoScrollSelectionRenders(): boolean {
-		if (!this.autoScrollSelecting) return false;
-		if (this.nativeSelectionAssistByAutoScroll) return false;
-		const docLength = this.sotEditor?.getDoc().length ?? 0;
-		if (docLength >= 200000) return true;
-		if (this.lineRanges.length >= 2000) return true;
-		return false;
-	}
-
-	private isNativeSelectionConfigured(): boolean {
-		return this.plugin.settings.wysiwyg.useNativeSelection === true;
+		return policyShouldSuppressAutoScrollSelectionRenders({
+			autoScrollSelecting: this.autoScrollSelecting,
+			assistByAutoScroll: this.nativeSelectionAssistByAutoScroll,
+			docSize: {
+				docLength: this.sotEditor?.getDoc().length ?? 0,
+				lineCount: this.lineRanges.length,
+			},
+		});
 	}
 
 	private syncNativeSelectionDataset(): void {
@@ -781,7 +828,6 @@ export class SoTWysiwygView extends ItemView {
 		debugLog("Tategaki SoT native-selection:", event, {
 			active: this.nativeSelectionAssistActive,
 			enabled: this.isNativeSelectionEnabled(),
-			configured: this.isNativeSelectionConfigured(),
 			ceImeMode: this.ceImeMode,
 			sourceModeEnabled: this.sourceModeEnabled,
 			...detail,
@@ -806,19 +852,28 @@ export class SoTWysiwygView extends ItemView {
 		this.scheduleSelectionOverlayUpdate();
 	}
 
+	/** SelectionPolicyState のスナップショットを返すヘルパー */
+	private getSelectionPolicyState(): SelectionPolicyState {
+		return {
+			ceImeMode: this.ceImeMode,
+			sourceModeEnabled: this.sourceModeEnabled,
+			assistActive: this.nativeSelectionAssistActive,
+		};
+	}
+
 	private isNativeSelectionEnabled(): boolean {
-		if (!this.isNativeSelectionConfigured()) return false;
-		if (this.ceImeMode || this.sourceModeEnabled) return false;
-		return this.nativeSelectionAssistActive;
+		return policyIsNativeSelectionEnabled(this.getSelectionPolicyState());
 	}
 
 	private isHugeDocSelection(): boolean {
-		const docLength = this.sotEditor?.getDoc().length ?? 0;
-		const virtualized =
-			this.renderPipeline?.isVirtualizedRenderEnabled() ?? false;
-		return (
-			docLength >= 100000 || this.lineRanges.length >= 2000 || virtualized
-		);
+		return policyIsHugeDocSelection({
+			docSize: {
+				docLength: this.sotEditor?.getDoc().length ?? 0,
+				lineCount: this.lineRanges.length,
+			},
+			virtualizedRenderEnabled:
+				this.renderPipeline?.isVirtualizedRenderEnabled() ?? false,
+		});
 	}
 
 	private getSoftSelectionRange(): { from: number; to: number } | null {
@@ -1000,6 +1055,18 @@ export class SoTWysiwygView extends ItemView {
 			"--tategaki-heading-text-color",
 			headingColor,
 		);
+		targetEl.style.setProperty(
+			"--tategaki-heading-margin-after",
+			`${effectiveCommon.headingMarginAfter ?? 0.45}em`,
+		);
+		targetEl.style.setProperty(
+			"--tategaki-heading-align",
+			effectiveCommon.headingAlign ?? "start",
+		);
+		const dividers = effectiveCommon.headingDividerLevels ?? { h1: true, h2: true, h3: false, h4: false, h5: false, h6: false };
+		for (const level of ["h1", "h2", "h3", "h4", "h5", "h6"] as const) {
+			targetEl.classList.toggle(`tategaki-heading-divider-${level}`, Boolean(dividers[level]));
+		}
 
 		if (this.writingMode !== effectiveCommon.writingMode) {
 			this.setWritingMode(effectiveCommon.writingMode);
@@ -1134,104 +1201,7 @@ export class SoTWysiwygView extends ItemView {
 		frontmatter: FrontmatterData | null;
 		contentWithoutFrontmatter: string;
 	} {
-		const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n/;
-		const match = content.match(frontmatterRegex);
-
-		if (!match) {
-			return {
-				frontmatter: null,
-				contentWithoutFrontmatter: content,
-			};
-		}
-
-		const yamlContent = match[1];
-		const contentWithoutFrontmatter = content.slice(match[0].length);
-		const frontmatter: FrontmatterData = {};
-		const lines = yamlContent.split("\n");
-
-		let currentKey = "";
-		let currentArray: string[] = [];
-		let isInArray = false;
-
-		for (const line of lines) {
-			const trimmedLine = line.trim();
-			if (!trimmedLine || trimmedLine.startsWith("#")) continue;
-
-			if (trimmedLine.startsWith("- ")) {
-				if (isInArray) {
-					currentArray.push(trimmedLine.slice(2).trim());
-				}
-				continue;
-			}
-
-			if (isInArray && !trimmedLine.startsWith("- ")) {
-				if (currentKey === "co_authors") {
-					frontmatter.co_authors = currentArray;
-				} else if (currentKey === "co_translators") {
-					frontmatter.co_translators = currentArray;
-				}
-				isInArray = false;
-				currentArray = [];
-			}
-
-			const colonIndex = trimmedLine.indexOf(":");
-			if (colonIndex !== -1) {
-				const key = trimmedLine.slice(0, colonIndex).trim();
-				const value = trimmedLine.slice(colonIndex + 1).trim();
-
-				switch (key) {
-					case "title":
-						frontmatter.title = value;
-						break;
-					case "subtitle":
-						frontmatter.subtitle = value;
-						break;
-					case "original_title":
-						frontmatter.original_title = value;
-						break;
-					case "author":
-						frontmatter.author = value;
-						break;
-					case "translator":
-						frontmatter.translator = value;
-						break;
-					case "co_authors":
-					case "co_translators":
-						if (value) {
-							const items = value
-								.split(",")
-								.map((s) => s.trim())
-								.filter((s) => s.length > 0);
-							if (key === "co_authors") {
-								frontmatter.co_authors = items;
-							} else {
-								frontmatter.co_translators = items;
-							}
-						} else {
-							currentKey = key;
-							isInArray = true;
-							currentArray = [];
-						}
-						break;
-					default:
-						break;
-				}
-			}
-		}
-
-		if (isInArray) {
-			if (currentKey === "co_authors") {
-				frontmatter.co_authors = currentArray;
-			} else if (currentKey === "co_translators") {
-				frontmatter.co_translators = currentArray;
-			}
-		}
-
-		return {
-			frontmatter:
-				Object.keys(frontmatter).length > 0 ? frontmatter : null,
-			contentWithoutFrontmatter,
-		};
+		return parseFrontmatterBlock(content);
 	}
 
 	private renderFrontmatter(
@@ -1711,6 +1681,10 @@ export class SoTWysiwygView extends ItemView {
 			if (range.from === range.to) {
 				return range.from;
 			}
+			const lineText = this.sotEditor.getDoc().slice(range.from, range.to);
+			if (isSoTMarkerOnlyListLine(lineText) || isSoTBlockquoteOnlyLine(lineText)) {
+				return range.to;
+			}
 			return this.findNearestCaretVisibleOffset(lineIndex, preferForward);
 		}
 		const first = segments[0]!;
@@ -1734,6 +1708,7 @@ export class SoTWysiwygView extends ItemView {
 		lineIndex: number,
 		preferForward: boolean,
 	): number {
+		const doc = this.sotEditor?.getDoc() ?? "";
 		const step = preferForward ? 1 : -1;
 		for (
 			let i = lineIndex;
@@ -1760,6 +1735,10 @@ export class SoTWysiwygView extends ItemView {
 				if (range.from === range.to) {
 					return range.from;
 				}
+				const lineText = doc.slice(range.from, range.to);
+				if (isSoTMarkerOnlyListLine(lineText) || isSoTBlockquoteOnlyLine(lineText)) {
+					return range.to;
+				}
 				continue;
 			}
 			const first = segments[0];
@@ -1775,6 +1754,17 @@ export class SoTWysiwygView extends ItemView {
 	private getVisibleDocStartOffset(): number {
 		if (!this.sotEditor || this.lineRanges.length === 0) return 0;
 		return this.findNearestCaretVisibleOffset(0, true);
+	}
+
+	private getLineVisibleStartLocalOffset(
+		lineIndex: number,
+		lineRange: LineRange,
+	): number {
+		const visibleStart = this.normalizeOffsetToVisible(lineRange.from, true);
+		if (visibleStart < lineRange.from || visibleStart > lineRange.to) {
+			return 0;
+		}
+		return Math.max(0, visibleStart - lineRange.from);
 	}
 
 	private setSelectionNormalized(
@@ -4350,6 +4340,7 @@ export class SoTWysiwygView extends ItemView {
 		super(leaf);
 		this.plugin = plugin;
 		this.scope = new Scope(this.app.scope);
+		this.chunkController.setEnabled(false);
 		this.plainEditController = new SoTPlainEditController(
 			this as unknown as any,
 		);
@@ -4568,6 +4559,8 @@ export class SoTWysiwygView extends ItemView {
 			this.derivedRootEl,
 			{
 				replaceSelection: (text) => this.replaceSelection(text),
+				handleEnter: ({ shiftKey, pendingText }) =>
+					this.handleOverlayEnter(shiftKey, pendingText),
 				backspace: () => this.backspace(),
 				del: () => this.del(),
 				undo: () => this.sotEditor?.undo(),
@@ -4737,6 +4730,7 @@ export class SoTWysiwygView extends ItemView {
 				this.computeLineRangesFromLines(lines),
 			setLineRanges: (ranges) => {
 				this.lineRanges = ranges;
+				this.rebuildChunkControllerSnapshot();
 			},
 			getLineRanges: () => this.lineRanges,
 			recomputeLineBlockKinds: (lines) =>
@@ -4749,9 +4743,26 @@ export class SoTWysiwygView extends ItemView {
 				this.renderLine(lineEl, range, index),
 			renderLineLight: (lineEl, range, index) =>
 				this.renderLineLight(lineEl, range, index),
+				captureScrollAnchor: () =>
+					this.derivedRootEl &&
+					this.derivedContentEl &&
+					!this.isPointerSelecting &&
+					!this.autoScrollSelecting
+						? captureScrollAnchorFromViewport({
+								containerEl: this.derivedRootEl,
+								lineRootEl: this.derivedContentEl,
+							})
+						: null,
 			resetPendingRenderState: () => this.resetPendingRenderState(),
-			finalizeRender: (scrollTop, scrollLeft) =>
-				this.finalizeRender(scrollTop, scrollLeft),
+			finalizeRender: (scrollTop, scrollLeft, scrollAnchor) =>
+				this.finalizeRender(scrollTop, scrollLeft, scrollAnchor),
+			isLineHidden: (index) =>
+				this.lineHeadingHiddenBy[index] !== null &&
+				this.lineHeadingHiddenBy[index] !== undefined &&
+				!this.isLineInSourceMode(index),
+			hasCollapsedHeadings: () =>
+				this.collapsedHeadingLines.size > 0,
+			getChunkSnapshot: () => this.chunkController.getSnapshot(),
 		});
 
 		this.ceSelectionSync = new SoTCeSelectionSync({
@@ -4810,20 +4821,19 @@ export class SoTWysiwygView extends ItemView {
 				updateSelectionOverlay: () => this.updateSelectionOverlay(),
 				setAutoScrollSelecting: (active) => {
 					if (active) {
-						const canUseNativeAssist =
-							this.isNativeSelectionConfigured() &&
-							!this.ceImeMode &&
-							!this.sourceModeEnabled &&
-							this.isPointerSelecting &&
-							!this.scrollbarSelectionHold;
-						if (canUseNativeAssist) {
+						if (shouldActivateOnAutoScrollStart({
+							ceImeMode: this.ceImeMode,
+							sourceModeEnabled: this.sourceModeEnabled,
+							isPointerSelecting: this.isPointerSelecting,
+							scrollbarSelectionHold: this.scrollbarSelectionHold,
+						})) {
 							this.nativeSelectionAssistByAutoScroll = true;
 							// 補助開始直後のレースで fast-scroll class が残るのを防ぐ。
 							this.autoScrollFast = false;
 							this.derivedRootEl?.classList.remove("tategaki-fast-scroll");
 							this.setNativeSelectionAssistActive(true, "autoscroll-start");
 						}
-					} else if (this.nativeSelectionAssistByAutoScroll) {
+					} else if (shouldDeactivateOnAutoScrollStop(this.nativeSelectionAssistByAutoScroll)) {
 						this.nativeSelectionAssistByAutoScroll = false;
 						this.setNativeSelectionAssistActive(false, "autoscroll-stop");
 					}
@@ -4885,43 +4895,40 @@ export class SoTWysiwygView extends ItemView {
 				this.derivedRootEl,
 				pointerEvent,
 			);
-			if (pointerEvent.button === 0) {
-				const canEvaluateNativeAssist =
-					this.isNativeSelectionConfigured() &&
-					!this.ceImeMode &&
-					!this.sourceModeEnabled;
-				if (!canEvaluateNativeAssist) {
-					this.debugNativeSelectionAssist("pointerdown-skipped", {
+			if (
+				pointerEvent.button === 0 &&
+				(this.ceImeMode || this.sourceModeEnabled)
+			) {
+				this.debugNativeSelectionAssist("pointerdown-skipped", {
+					button: pointerEvent.button,
+					onScrollbar,
+					reason: this.ceImeMode ? "ce-ime-mode" : "source-mode",
+				});
+			}
+			{
+				const targetStrategy = classifyPointerTarget(
+					pointerEvent.target as HTMLElement | null,
+				);
+				const decision = decideOnPointerDown({
+					ceImeMode: this.ceImeMode,
+					sourceModeEnabled: this.sourceModeEnabled,
+					button: pointerEvent.button,
+					onScrollbar,
+					targetStrategy,
+					selectionMode: this.plugin.settings.wysiwyg.sotSelectionMode ?? "fast-click",
+				});
+				if (decision.action !== "none") {
+					this.debugNativeSelectionAssist("pointerdown-evaluated", {
 						button: pointerEvent.button,
 						onScrollbar,
 						hugeDoc: this.isHugeDocSelection(),
-						reason: !this.isNativeSelectionConfigured()
-							? "not-configured"
-							: this.ceImeMode
-								? "ce-ime-mode"
-								: "source-mode",
+						useNativeAssist: decision.action === "activate",
 					});
+					this.setNativeSelectionAssistActive(
+						decision.action === "activate",
+						decision.reason,
+					);
 				}
-			}
-			if (
-				pointerEvent.button === 0 &&
-				this.isNativeSelectionConfigured() &&
-				!this.ceImeMode &&
-				!this.sourceModeEnabled
-			) {
-				// 通常クリックはカスタムポインタ処理を優先し、
-				// ネイティブ補助はスクロールバー操作時のみ有効化する。
-				const useNativeAssist = onScrollbar;
-				this.debugNativeSelectionAssist("pointerdown-evaluated", {
-					button: pointerEvent.button,
-					onScrollbar,
-					hugeDoc: this.isHugeDocSelection(),
-					useNativeAssist,
-				});
-				this.setNativeSelectionAssistActive(
-					useNativeAssist,
-					onScrollbar ? "pointerdown-scrollbar" : "pointerdown-content",
-				);
 			}
 			const domSelection =
 				this.derivedContentEl?.ownerDocument.getSelection() ?? null;
@@ -4969,9 +4976,15 @@ export class SoTWysiwygView extends ItemView {
 				pointerEvent.button === 0 &&
 				!onScrollbar
 			) {
-				const lineEl = (
+				let lineEl = (
 					pointerEvent.target as HTMLElement | null
 				)?.closest(".tategaki-sot-line") as HTMLElement | null;
+				if (!lineEl) {
+					lineEl =
+						this.pointerHandler?.resolveLineElementFromPointerEvent(
+							pointerEvent,
+						) ?? null;
+				}
 				if (lineEl) {
 					const lineIndex = Number.parseInt(
 						lineEl.dataset.line ?? "",
@@ -5056,7 +5069,7 @@ export class SoTWysiwygView extends ItemView {
 			);
 				this.maybeFocusOverlayAfterNativeSelectionPointerUp();
 				this.flushPendingNativeSelectionSync(true);
-				if ((event as PointerEvent).button === 0) {
+				if (shouldDeactivateOnPointerEnd((event as PointerEvent).button)) {
 					this.nativeSelectionAssistByAutoScroll = false;
 					this.setNativeSelectionAssistActive(false, "pointerup");
 				}
@@ -5084,7 +5097,7 @@ export class SoTWysiwygView extends ItemView {
 			);
 				this.maybeFocusOverlayAfterNativeSelectionPointerUp();
 				this.flushPendingNativeSelectionSync(true);
-				if ((event as PointerEvent).button === 0) {
+				if (shouldDeactivateOnPointerEnd((event as PointerEvent).button)) {
 					this.nativeSelectionAssistByAutoScroll = false;
 					this.setNativeSelectionAssistActive(false, "pointercancel");
 				}
@@ -5388,6 +5401,7 @@ export class SoTWysiwygView extends ItemView {
 		this.pendingSpacerEl = null;
 		this.loadingOverlayEl = null;
 		this.currentFile = null;
+		this.frontmatterSelectionBootstrapped = false;
 		this.pairedMarkdownLeaf = null;
 		this.pairedMarkdownView = null;
 		this.pairedMarkdownBadgeLeaf = null;
@@ -6602,7 +6616,16 @@ export class SoTWysiwygView extends ItemView {
 			selection.anchor,
 			selection.head,
 		);
-		this.setSelectionNormalized(nextSelection.anchor, nextSelection.head);
+		let finalSelection = nextSelection;
+		if (kind === "ordered" && !shouldRemove) {
+			finalSelection = this.applyOrderedListRenumberChanges(
+				startLine,
+				endLine,
+				nextSelection.anchor,
+				nextSelection.head,
+			);
+		}
+		this.setSelectionNormalized(finalSelection.anchor, finalSelection.head);
 		this.focusInputSurface(true);
 	}
 
@@ -6864,50 +6887,33 @@ export class SoTWysiwygView extends ItemView {
 		selectionFrom: number,
 		selectionTo: number,
 		lineText: string,
-	): { rangeFrom: number; rangeTo: number; baseText: string } | null {
-		const regex = createAozoraRubyRegExp();
-		for (const match of lineText.matchAll(regex)) {
-			const full = match[0] ?? "";
-			const start = match.index ?? -1;
-			if (!full || start < 0) continue;
-			const openIndex = full.indexOf("《");
-			const closeIndex = full.lastIndexOf("》");
-			if (openIndex < 0 || closeIndex <= openIndex) continue;
-
-			const hasDelimiter = full.startsWith("|") || full.startsWith("｜");
-			const baseStartRel = hasDelimiter ? 1 : 0;
-			const baseEndRel = openIndex;
-			const baseText = full.slice(baseStartRel, baseEndRel);
-			if (!baseText) continue;
-
-			const absBaseFrom = lineFrom + start + baseStartRel;
-			const absBaseTo = lineFrom + start + baseEndRel;
-			if (absBaseFrom >= absBaseTo) continue;
-			if (absBaseFrom < lineFrom || absBaseTo > lineTo) continue;
-
-			const intersects =
-				selectionTo > absBaseFrom && selectionFrom < absBaseTo;
-			if (!intersects) continue;
-
-			const rangeFrom = lineFrom + start;
-			const rangeTo = lineFrom + start + full.length;
-			return { rangeFrom, rangeTo, baseText };
-		}
-		return null;
+	): {
+		rangeFrom: number;
+		rangeTo: number;
+		baseText: string;
+		hasDelimiter: boolean;
+	} | null {
+		return findSoTAozoraRubyMatchForSelection(
+			lineFrom,
+			lineTo,
+			selectionFrom,
+			selectionTo,
+			lineText,
+		);
 	}
 
 	private buildAozoraRubyText(
 		baseText: string,
 		ruby: string,
 		isDot: boolean,
+		hasDelimiter = true,
 	): string {
-		if (isDot) {
-			const emphasisChar = ruby.trim() || "・";
-			return Array.from(baseText)
-				.map((char) => `｜${char}《${emphasisChar}》`)
-				.join("");
-		}
-		return `｜${baseText}《${ruby}》`;
+		return buildSoTAozoraRubyText(
+			baseText,
+			ruby,
+			isDot,
+			hasDelimiter,
+		);
 	}
 
 	private getCustomEmphasisChars(): string[] {
@@ -6948,7 +6954,7 @@ export class SoTWysiwygView extends ItemView {
 				},
 			});
 		} catch (error) {
-			console.error("[Tategaki SoT] Failed to save custom emphasis chars", error);
+			debugError("[Tategaki SoT] Failed to save custom emphasis chars", error);
 			new Notice(t("notice.customEmphasis.saveFailed"), 2500);
 		}
 	}
@@ -7030,6 +7036,7 @@ export class SoTWysiwygView extends ItemView {
 		let rangeTo = to;
 		let hasRubyNode = false;
 		let rubyBaseText = "";
+		let rubyHasDelimiter = true;
 
 		const lineIndex = this.findLineIndex(from);
 		const endLine = this.findLineIndex(to);
@@ -7049,9 +7056,10 @@ export class SoTWysiwygView extends ItemView {
 					rangeFrom = match.rangeFrom;
 					rangeTo = match.rangeTo;
 					rubyBaseText = match.baseText;
+					rubyHasDelimiter = match.hasDelimiter;
+				}
 				}
 			}
-		}
 
 		const displayText = hasRubyNode ? rubyBaseText : originalSelectedText;
 
@@ -7083,6 +7091,7 @@ export class SoTWysiwygView extends ItemView {
 					displayText,
 					result.ruby,
 					result.isDot,
+					hasRubyNode ? rubyHasDelimiter : true,
 				);
 				this.updatePendingText("", true);
 				this.immediateRender = true;
@@ -7142,7 +7151,7 @@ export class SoTWysiwygView extends ItemView {
 				1800,
 			);
 		} catch (error) {
-			console.error("[Tategaki SoT] Failed to toggle ruby", error);
+			debugError("[Tategaki SoT] Failed to toggle ruby", error);
 			new Notice(t("notice.ruby.toggleFailed"), 2500);
 		}
 	}
@@ -8094,13 +8103,20 @@ export class SoTWysiwygView extends ItemView {
 		this.nativeSelectionPendingClick = null;
 		if (pending.pointerId !== event.pointerId) return;
 		if (!pending.lineEl.isConnected) return;
+		const clickMoveThresholdPx = 6;
+		const dx = event.clientX - pending.clientX;
+		const dy = event.clientY - pending.clientY;
+		// ドラッグ時はネイティブ範囲選択を優先し、単クリック時のみ SoT 側で確定する。
+		if (dx * dx + dy * dy > clickMoveThresholdPx * clickMoveThresholdPx) {
+			return;
+		}
+		this.ensureLineRendered(pending.lineEl);
 
 		const contentEl = this.derivedContentEl;
 		if (!contentEl) return;
-		const selection = contentEl.ownerDocument.getSelection();
-		if (!selection) return;
-		if (!this.isSelectionInsideDerivedContent(selection)) return;
-		if (!selection.isCollapsed) return;
+		const selection = contentEl.ownerDocument.getSelection() ?? null;
+		const inside = this.isSelectionInsideDerivedContent(selection);
+		if (selection && inside && !selection.isCollapsed) return;
 
 		const lineFrom = Number.parseInt(
 			pending.lineEl.dataset.from ?? "0",
@@ -8111,12 +8127,11 @@ export class SoTWysiwygView extends ItemView {
 		const lineLength = Math.max(0, lineTo - lineFrom);
 		const localOffset = this.getLocalOffsetFromPoint(
 			pending.lineEl,
-			pending.clientX,
-			pending.clientY,
+			event.clientX,
+			event.clientY,
 			lineLength,
 		);
 		if (localOffset === null) return;
-		if (localOffset !== lineLength) return;
 
 		const absolute = lineFrom + localOffset;
 		this.setSelectionNormalized(absolute, absolute);
@@ -8790,6 +8805,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private attachSoTEditor(editor: SoTEditor): void {
+		this.frontmatterSelectionBootstrapped = false;
 		this.detachSoTListener?.();
 		this.detachSoTListener = null;
 		this.sotEditor?.destroy();
@@ -9299,6 +9315,7 @@ export class SoTWysiwygView extends ItemView {
 
 	private updateFastScrollPlaceholders(): void {
 		if (!this.derivedRootEl || !this.derivedContentEl) return;
+		if (this.collapsedHeadingLines.size > 0) return;
 		const rootEl = this.derivedRootEl;
 		const contentEl = this.derivedContentEl;
 		const total = this.lineRanges.length;
@@ -9407,23 +9424,120 @@ export class SoTWysiwygView extends ItemView {
 		this.pendingSelectionLineEnd = null;
 	}
 
-	private finalizeRender(scrollTop: number, scrollLeft: number): void {
+	private finalizeRender(
+		scrollTop: number,
+		scrollLeft: number,
+		scrollAnchor: SoTScrollAnchor | null,
+	): void {
 		if (this.pendingHold) {
 			this.pendingHold = false;
 			this.updatePendingText("", true);
 		}
 		this.updateSourceModeLineRange(true);
 		if (this.derivedRootEl) {
-			this.derivedRootEl.scrollTop = scrollTop;
-			this.derivedRootEl.scrollLeft = scrollLeft;
+			const suppressScrollRestore =
+				this.outlineJumpGuard.shouldSuppressScrollRestore();
+			// 見出しジャンプ中はスクロール位置の復元を抑制する
+			if (!suppressScrollRestore) {
+				this.derivedRootEl.scrollTop = scrollTop;
+				this.derivedRootEl.scrollLeft = scrollLeft;
+			}
+			const allowScrollAnchorAdjustment =
+				!this.isPointerSelecting && !this.autoScrollSelecting;
+			const adjustment = allowScrollAnchorAdjustment && scrollAnchor
+				? computeScrollAnchorAdjustmentFromLineElement({
+						anchor: scrollAnchor,
+						containerEl: this.derivedRootEl,
+						resolveLineElement: (lineIndex) =>
+							this.getLineElement(lineIndex),
+					})
+				: null;
+			if (
+				adjustment !== null &&
+				shouldApplyScrollAnchorAdjustment({
+					anchor: scrollAnchor,
+					adjustmentPx: adjustment,
+					suppressScrollRestore,
+				})
+			) {
+				this.derivedRootEl.scrollTop += adjustment;
+			}
 			this.syncNativeSelectionDataset();
 		}
+		this.maybeBootstrapInitialFrontmatterSelection();
 		this.outlinePanel?.refresh();
 		this.scheduleCaretUpdate(true);
 		this.updatePaneHeaderTitle();
 		if (this.loadingOverlayPending) {
 			this.hideLoadingOverlay();
 		}
+	}
+
+	/**
+	 * フロントマター付きファイルの初回描画時に、
+	 * フロントマター領域に乗っているカーソルを本文先頭へ移動させる。
+	 * これにより onUpdate(selectionChanged) → pendingCaretScroll → scrollCaretIntoView
+	 * の経路でスクロールが本文先頭に補正される（オーバースクロール修正）。
+	 */
+	private maybeBootstrapInitialFrontmatterSelection(): void {
+		// sotEditor 未接続 / ソースモード中は状態不定のため何もしない
+		if (!this.sotEditor || this.sourceModeEnabled) return;
+		// 既に実行済み（attachSoTEditor でリセット）
+		if (this.frontmatterSelectionBootstrapped) return;
+
+		if (!this.frontmatterDetected) {
+			this.frontmatterSelectionBootstrapped = true;
+			return;
+		}
+
+		const selection = this.sotEditor.getSelection();
+		// collapsed selection のみ補正対象（範囲選択は触らない）
+		if (selection.anchor !== selection.head) {
+			this.frontmatterSelectionBootstrapped = true;
+			return;
+		}
+
+		// フロントマター prefix 行数を数える
+		let frontmatterPrefixLineCount = 0;
+		for (const kind of this.lineBlockKinds) {
+			if (kind !== "frontmatter" && kind !== "frontmatter-fence") break;
+			frontmatterPrefixLineCount += 1;
+		}
+		if (frontmatterPrefixLineCount <= 0) {
+			this.frontmatterSelectionBootstrapped = true;
+			return;
+		}
+
+		// カーソルがフロントマター領域内かチェック
+		const selectionLineIndex = this.findLineIndex(selection.head);
+		if (
+			selectionLineIndex === null ||
+			selectionLineIndex < 0 ||
+			selectionLineIndex >= frontmatterPrefixLineCount
+		) {
+			// カーソルは既に本文にある — 補正不要
+			this.frontmatterSelectionBootstrapped = true;
+			return;
+		}
+
+		// 本文先頭オフセットを解決
+		const firstBodyOffset =
+			this.lineRanges[frontmatterPrefixLineCount]?.from ??
+			this.sotEditor.getDoc().length;
+		const docLength = this.sotEditor.getDoc().length;
+		const targetOffset = Math.max(
+			0,
+			Math.min(firstBodyOffset, docLength),
+		);
+		if (targetOffset === selection.head) {
+			this.frontmatterSelectionBootstrapped = true;
+			return;
+		}
+
+		this.frontmatterSelectionBootstrapped = true;
+		this.setSelectionNormalized(targetOffset, targetOffset, {
+			syncDom: false,
+		});
 	}
 
 	private scheduleRender(force = false): void {
@@ -9438,6 +9552,7 @@ export class SoTWysiwygView extends ItemView {
 		if (!this.derivedContentEl || !this.sotEditor) return false;
 		if (this.lineRanges.length === 0) return false;
 		if (changes.length === 0) return false;
+		if (this.collapsedHeadingLines.size > 0) return false;
 
 		if (this.canApplyChangesFast(changes)) {
 			const fastApplied = this.applyChangesFast(changes);
@@ -9519,6 +9634,7 @@ export class SoTWysiwygView extends ItemView {
 		}
 
 		this.lineRanges = newRanges;
+		this.rebuildChunkControllerSnapshot();
 		this.syncLineDatasets(Math.min(oldStart, newStart));
 		this.updateSourceModeLineRange(true);
 		this.pendingSpacerEl = null;
@@ -9610,6 +9726,7 @@ export class SoTWysiwygView extends ItemView {
 
 		if (!Number.isFinite(minLine)) return false;
 		this.lineRanges = updatedRanges;
+		this.rebuildChunkControllerSnapshot();
 
 		for (let i = minLine; i <= maxLine; i += 1) {
 			const lineRange = this.lineRanges[i];
@@ -9688,6 +9805,7 @@ export class SoTWysiwygView extends ItemView {
 			this.lineRanges = this.computeLineRangesFromLines(lines);
 		}
 		this.recomputeLineBlockKinds(lines);
+		this.rebuildChunkControllerSnapshot();
 		this.outlinePanel?.refresh();
 
 		const start = this.lineModelRecomputeStart;
@@ -9697,6 +9815,20 @@ export class SoTWysiwygView extends ItemView {
 		if (start === null || end === null) return;
 		if (this.pendingText.length > 0) return;
 		this.rerenderLineRange(start, end);
+	}
+
+	private rebuildChunkControllerSnapshot(): void {
+		try {
+			this.chunkController.rebuild({
+				lineRanges: this.lineRanges,
+				isLineHidden: (index) =>
+					this.lineHeadingHiddenBy[index] !== null &&
+					this.lineHeadingHiddenBy[index] !== undefined &&
+					!this.isLineInSourceMode(index),
+			});
+		} catch (error) {
+			debugLog("chunk controller rebuild skipped", error);
+		}
 	}
 
 	private syncLineDatasets(startIndex: number): void {
@@ -9756,10 +9888,9 @@ export class SoTWysiwygView extends ItemView {
 			this.plugin.settings,
 			effectiveCommon,
 		);
-		const preferNativeInCe =
-			this.plugin.settings.wysiwyg.ceUseNativeCaret ?? true;
+		// PR5: ceUseNativeCaret は削除済み（常時true相当）
 		const useNativeInCe =
-			this.ceImeMode && (preferNativeInCe || this.ceImeComposing);
+			this.ceImeMode;
 		if (this.derivedRootEl && this.ceImeMode) {
 			this.derivedRootEl.dataset.ceImeNativeCaret = useNativeInCe
 				? "1"
@@ -9843,12 +9974,16 @@ export class SoTWysiwygView extends ItemView {
 				rootRect.top +
 				this.derivedRootEl.scrollTop;
 		}
-		const lineStartRect = this.getCaretRectInLine(
-			lineEl,
-			0,
-			lineRange,
-			writingMode,
-		);
+			const visibleLineStartLocalOffset = this.getLineVisibleStartLocalOffset(
+				lineIndex,
+				lineRange,
+			);
+			const lineStartRect = this.getCaretRectInLine(
+				lineEl,
+				visibleLineStartLocalOffset,
+				lineRange,
+				writingMode,
+			);
 		let lineStartLeft = baseLeft;
 		let lineStartTop = baseTop;
 		if (!(lineLength === 0 && pendingStartRect)) {
@@ -9863,11 +9998,11 @@ export class SoTWysiwygView extends ItemView {
 					this.derivedRootEl.scrollTop;
 			}
 		}
-		const usePendingLineStart =
-			!!pendingStartRect &&
-			this.pendingText.length > 0 &&
-			this.pendingLineIndex === lineIndex &&
-			this.pendingLocalOffset === 0;
+			const usePendingLineStart =
+				!!pendingStartRect &&
+				this.pendingText.length > 0 &&
+				this.pendingLineIndex === lineIndex &&
+				this.pendingLocalOffset === visibleLineStartLocalOffset;
 		if (usePendingLineStart) {
 			lineStartLeft =
 				pendingStartRect.left -
@@ -9949,10 +10084,10 @@ export class SoTWysiwygView extends ItemView {
 				);
 			}
 		}
-		const isPendingLineStart =
-			this.pendingText.length > 0 &&
-			this.pendingLineIndex === lineIndex &&
-			this.pendingLocalOffset === 0;
+			const isPendingLineStart =
+				this.pendingText.length > 0 &&
+				this.pendingLineIndex === lineIndex &&
+				this.pendingLocalOffset === visibleLineStartLocalOffset;
 		let inlineIndent = isVertical
 			? Math.max(0, baseTop - lineStartTop)
 			: Math.max(0, baseLeft - lineStartLeft);
@@ -10228,6 +10363,108 @@ export class SoTWysiwygView extends ItemView {
 		if (text.includes("\n")) {
 			this.pendingCaretScroll = true;
 		}
+	}
+
+	private handleOverlayEnter(
+		shiftKey: boolean,
+		pendingText: string,
+	): boolean {
+		if (!this.sotEditor) return false;
+		if (pendingText.length > 0) {
+			this.replaceSelection(pendingText);
+		}
+		if (shiftKey) {
+			return this.handleOverlayHardBreakEnter();
+		}
+		return this.handleOverlayParagraphEnter();
+	}
+
+	private handleOverlayParagraphEnter(): boolean {
+		const edit =
+			this.resolveCurrentListContinuationEdit("enter") ??
+			this.resolveCurrentBlockquoteContinuationEdit("enter");
+		if (!edit) {
+			this.replaceSelection("\n");
+			return true;
+		}
+		this.applyListContinuationEdit(edit);
+		return true;
+	}
+
+	private handleOverlayHardBreakEnter(): boolean {
+		const edit =
+			this.resolveCurrentListContinuationEdit("hard-break") ??
+			this.resolveCurrentBlockquoteContinuationEdit("hard-break");
+		if (!edit) {
+			return true;
+		}
+		this.applyListContinuationEdit(edit);
+		return true;
+	}
+
+	private resolveCurrentListContinuationEdit(
+		mode: "enter" | "hard-break",
+	) {
+		if (!this.sotEditor) return null;
+		return resolveSoTListContinuationEdit({
+			doc: this.sotEditor.getDoc(),
+			lineRanges: this.lineRanges,
+			lineBlockKinds: this.lineBlockKinds,
+			selection: this.sotEditor.getSelection(),
+			mode,
+		});
+	}
+
+	private resolveCurrentBlockquoteContinuationEdit(
+		mode: "enter" | "hard-break",
+	) {
+		if (!this.sotEditor) return null;
+		return resolveSoTBlockquoteContinuationEdit({
+			doc: this.sotEditor.getDoc(),
+			lineRanges: this.lineRanges,
+			selection: this.sotEditor.getSelection(),
+			mode,
+		});
+	}
+
+	private applyListContinuationEdit(edit: {
+		from: number;
+		to: number;
+		insert: string;
+		nextCaret: number;
+		renumberStartLine: number;
+		renumberEndLine: number;
+	}): void {
+		if (!this.sotEditor) return;
+		this.updatePendingText("", true);
+		this.immediateRender = true;
+		this.sotEditor.replaceRange(edit.from, edit.to, edit.insert);
+		const nextSelection = this.applyOrderedListRenumberChanges(
+			edit.renumberStartLine,
+			edit.renumberEndLine,
+			edit.nextCaret,
+			edit.nextCaret,
+		);
+		this.setSelectionNormalized(nextSelection.anchor, nextSelection.head);
+		this.focusInputSurface(true);
+	}
+
+	private applyOrderedListRenumberChanges(
+		startLine: number,
+		endLine: number,
+		anchor: number,
+		head: number,
+	): { anchor: number; head: number } {
+		if (!this.sotEditor) return { anchor, head };
+		const changes = collectOrderedListRenumberChanges({
+			doc: this.sotEditor.getDoc(),
+			lineBlockKinds: this.lineBlockKinds,
+			startLine,
+			endLine,
+		});
+		if (changes.length === 0) return { anchor, head };
+		this.immediateRender = true;
+		return this.applyTextChangesWithSelection(changes, anchor, head);
 	}
 
 	private backspace(): void {
@@ -11216,10 +11453,21 @@ export class SoTWysiwygView extends ItemView {
 		);
 	}
 
+	/**
+	 * PR6R-0 互換契約参照:
+	 * `src/wysiwyg/sot/sot-line-element-contract.ts`
+	 *
+	 * - 実体化済み行は no-op
+	 * - virtual行は実体化を試みる
+	 * - 不要/失敗時は安全に return
+	 * - 複数回呼び出しに対して安全（idempotent）
+	 */
 	private ensureLineRendered(lineEl: HTMLElement): void {
-		if (lineEl.dataset.virtual !== "1") return;
-		const index = Number.parseInt(lineEl.dataset.line ?? "", 10);
-		if (!Number.isFinite(index)) return;
+		const index = resolveEnsureLineRenderedTargetIndex(
+			lineEl,
+			this.lineRanges,
+		);
+		if (index === null) return;
 		const range = this.lineRanges[index];
 		if (!range) return;
 		this.renderLine(lineEl, range, index);
@@ -11248,6 +11496,23 @@ export class SoTWysiwygView extends ItemView {
 			unloadChild(this.tableRenderChildren);
 			unloadChild(this.deflistRenderChildren);
 		}
+
+		// PR5.5: heading-hidden行はプレースホルダー化せず、
+		// display:none相当にしてスクロール距離に寄与させない
+		if (
+			Number.isFinite(lineIndex) &&
+			this.lineHeadingHiddenBy[lineIndex] !== null &&
+			this.lineHeadingHiddenBy[lineIndex] !== undefined &&
+			!this.isLineInSourceMode(lineIndex)
+		) {
+			lineEl.replaceChildren();
+			lineEl.className =
+				"tategaki-sot-line tategaki-sot-line-virtual tategaki-md-heading-hidden";
+			lineEl.dataset.virtual = "1";
+			lineEl.dataset.mdKind = "heading-hidden";
+			return;
+		}
+
 		// 軽量プレースホルダー: 最小限の属性のみ設定
 		// テキスト取得や装飾計算を行わず、メモリと処理負荷を大幅に削減
 		// サイズはCSSで固定値（line-height相当）を設定
@@ -11886,12 +12151,22 @@ export class SoTWysiwygView extends ItemView {
 		return offsets;
 	}
 
+	/**
+	 * PR6R-0 互換契約参照:
+	 * `src/wysiwyg/sot/sot-line-element-contract.ts`
+	 *
+	 * - 副作用なし（DOM/scroll/render を変更しない）
+	 * - 現在存在する line DOM があれば返す
+	 * - 要素不在時は null
+	 * - children[index + offset] は現行参照実装であり、契約では固定しない
+	 */
 	private getLineElement(index: number): HTMLElement | null {
 		const offset = this.getLineElementOffset();
-		const element = this.derivedContentEl?.children[index + offset] as
-			| HTMLElement
-			| undefined;
-		return element ?? null;
+		return resolveLineElementFromChildren(
+			this.derivedContentEl?.children,
+			index,
+			offset,
+		);
 	}
 
 	private getLineElementOffset(): number {

@@ -22,6 +22,7 @@ import {
 	createAozoraTcyRegExp,
 	isValidAozoraTcyBody,
 } from "../../shared/aozora-tcy";
+import { resolveTipTapRubySelection } from "./ruby-selection";
 
 export interface TipTapToolbarOptions {
 	app: App;
@@ -492,57 +493,18 @@ export class TipTapCompatToolbar {
 			).open();
 			return;
 		}
-		const { from, to } = this.editor.state.selection;
-		const originalSelectedText = this.editor.state.doc.textBetween(
-			from,
-			to,
-			"",
-		);
-
-		// テキストが選択されていない場合は何もしない
-		if (!originalSelectedText || originalSelectedText.trim() === "") {
+		const rubySelection = resolveTipTapRubySelection(this.editor);
+		if (!rubySelection) {
 			return;
 		}
-
-		// 選択範囲がaozoraRubyノード内にあるかチェックし、ある場合はノード全体を選択範囲に含める
-		let rangeFrom = from;
-		let rangeTo = to;
-		let hasRubyNode = false;
-		let rubyNodeText = "";
-		const $from = this.editor.state.doc.resolve(from);
-		const $to = this.editor.state.doc.resolve(to);
-
-		// 開始位置の親ノードを確認
-		for (let depth = $from.depth; depth > 0; depth--) {
-			const node = $from.node(depth);
-			if (node.type.name === "aozoraRuby") {
-				const nodePos = $from.before(depth);
-				rangeFrom = Math.min(rangeFrom, nodePos);
-				rangeTo = Math.max(rangeTo, nodePos + node.nodeSize);
-				rubyNodeText = node.textContent;
-				hasRubyNode = true;
-				break;
-			}
-		}
-
-		// 終了位置の親ノードを確認
-		for (let depth = $to.depth; depth > 0; depth--) {
-			const node = $to.node(depth);
-			if (node.type.name === "aozoraRuby") {
-				const nodePos = $to.before(depth);
-				rangeFrom = Math.min(rangeFrom, nodePos);
-				rangeTo = Math.max(rangeTo, nodePos + node.nodeSize);
-				rubyNodeText = node.textContent;
-				hasRubyNode = true;
-				break;
-			}
-		}
-
-		// モーダルに表示するテキスト（ルビノードのみの場合はそのテキスト、それ以外は元の選択範囲）
-		const displayText =
-			hasRubyNode && rubyNodeText === originalSelectedText
-				? rubyNodeText
-				: originalSelectedText;
+		const {
+			rangeFrom,
+			rangeTo,
+			displayText,
+			replacementText,
+			hasRubyNode,
+			hasDelimiter,
+		} = rubySelection;
 
 		new RubyInputModal(
 			this.app,
@@ -555,49 +517,54 @@ export class TipTapCompatToolbar {
 
 				const rubyEnabled = this.options.getRubyEnabled?.() ?? true;
 
-				// 空のルビの場合（ルビ除去）
-				if (!result.ruby || result.ruby.trim() === "") {
-					// aozoraRubyノードが選択されている場合のみ、ノードを削除してテキストのみ残す
-					if (hasRubyNode) {
-						// ルビノードを削除してテキストのみ残す（元の選択範囲のテキストで置き換え）
+					// 空のルビの場合（ルビ除去）
+					if (!result.ruby || result.ruby.trim() === "") {
+						// aozoraRubyノードが選択されている場合のみ、ノードを削除してテキストのみ残す
+						if (hasRubyNode) {
+							// 既存ルビの本文だけを戻し、前後の通常テキストは巻き込まない
+							this.editor
+								.chain()
+								.focus()
+								.deleteRange({ from: rangeFrom, to: rangeTo })
+								.setTextSelection(rangeFrom)
+								.insertContent(replacementText)
+								.run();
+						}
+						// ルビノードがない場合は何もしない
+						return;
+					}
+
+					// ルビOFFの場合は、青空形式を「テキストとして」挿入する（CE/Previewと同等）
+					if (!rubyEnabled) {
 						this.editor
 							.chain()
 							.focus()
 							.deleteRange({ from: rangeFrom, to: rangeTo })
-							.insertContent(originalSelectedText)
+							.setTextSelection(rangeFrom)
 							.run();
-					}
-					// ルビノードがない場合は何もしない
-					return;
-				}
 
-				// ルビOFFの場合は、青空形式を「テキストとして」挿入する（CE/Previewと同等）
-				if (!rubyEnabled) {
+						if (result.isDot) {
+							const rubyText = Array.from(displayText)
+								.map((char) => `｜${char}《${emphasisChar}》`)
+								.join("");
+							this.editor.chain().focus().insertContent(rubyText).run();
+						} else {
+							const delimiter =
+								hasRubyNode && !hasDelimiter ? "" : "｜";
+							const rubyText = `${delimiter}${displayText}《${result.ruby}》`;
+							this.editor.chain().focus().insertContent(rubyText).run();
+						}
+						this.updateButtonStates();
+						return;
+					}
+
+					// 拡張された選択範囲を削除してから、擬似ルビノードを挿入
 					this.editor
 						.chain()
 						.focus()
 						.deleteRange({ from: rangeFrom, to: rangeTo })
+						.setTextSelection(rangeFrom)
 						.run();
-
-					if (result.isDot) {
-						const rubyText = Array.from(displayText)
-							.map((char) => `｜${char}《${emphasisChar}》`)
-							.join("");
-						this.editor.chain().focus().insertContent(rubyText).run();
-					} else {
-						const rubyText = `｜${displayText}《${result.ruby}》`;
-						this.editor.chain().focus().insertContent(rubyText).run();
-					}
-					this.updateButtonStates();
-					return;
-				}
-
-				// 拡張された選択範囲を削除してから、擬似ルビノードを挿入
-				this.editor
-					.chain()
-					.focus()
-					.deleteRange({ from: rangeFrom, to: rangeTo })
-					.run();
 
 				if (result.isDot) {
 					Array.from(displayText).forEach((char) => {
@@ -619,26 +586,26 @@ export class TipTapCompatToolbar {
 							})
 							.run();
 					});
-				} else {
-					// 通常のルビの場合、aozoraRubyノードとして挿入
-					this.editor
-						.chain()
-						.focus()
-						.insertContent({
-							type: "aozoraRuby",
-							attrs: {
-								ruby: result.ruby,
-								hasDelimiter: true,
-							},
-							content: [
-								{
-									type: "text",
-									text: displayText,
+					} else {
+						// 通常のルビの場合、aozoraRubyノードとして挿入
+						this.editor
+							.chain()
+							.focus()
+							.insertContent({
+								type: "aozoraRuby",
+								attrs: {
+									ruby: result.ruby,
+									hasDelimiter: hasRubyNode ? hasDelimiter : true,
 								},
-							],
-						})
-						.run();
-				}
+								content: [
+									{
+										type: "text",
+										text: displayText,
+									},
+								],
+							})
+							.run();
+					}
 
 				this.updateButtonStates();
 			},

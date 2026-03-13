@@ -155,18 +155,11 @@ export class ModeManager {
 			this.openOnRightSide = result.openOnRightSide;
 			this.nextViewMode = result.mode;
 
-			// 配置設定を保存（resultから直接取得）
-			// 書籍モード以外の場合のみモード設定を保存、配置は常に保存
-			if (result.mode !== "reading") {
-				await this.plugin.updateSettings({
-					lastViewMode: result.mode,
-					lastViewOpenPlacement: result.placement,
-				});
-			} else {
-				await this.plugin.updateSettings({
-					lastViewOpenPlacement: result.placement,
-				});
-			}
+			// 配置設定とモード設定を保存
+			await this.plugin.updateSettings({
+				lastViewMode: result.mode,
+				lastViewOpenPlacement: result.placement,
+			});
 		} else {
 			this.openInNewWindow = storedPlacement === "window";
 			this.openOnRightSide = storedPlacement === "right";
@@ -675,8 +668,14 @@ export class ModeManager {
 
 		this.trackManagedLeaf(keepLeaf);
 
-		for (const leaf of leaves) {
-			if (leaf === keepLeaf) continue;
+		// 現在アクティブなleafが閉じられる場合のみ keepLeaf へリダイレクトする。
+		// ユーザーが別ノートを開いた場合（recentLeaf が Tategaki leaf でない）は
+		// フォーカスを奪わない。
+		const leavesToClose = leaves.filter(leaf => leaf !== keepLeaf);
+		const activeLeafIsBeingClosed =
+			recentLeaf !== null && leavesToClose.includes(recentLeaf);
+
+		for (const leaf of leavesToClose) {
 			this.managedLeaves.delete(leaf);
 			delete (leaf as any).__tategakiManaged;
 			delete (leaf as any).__tategakiPopout;
@@ -687,7 +686,7 @@ export class ModeManager {
 			}
 		}
 
-		if (this.getMostRecentLeaf() !== keepLeaf) {
+		if (activeLeafIsBeingClosed) {
 			this.app.workspace.setActiveLeaf(keepLeaf);
 		}
 	}

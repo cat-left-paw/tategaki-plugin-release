@@ -1,6 +1,7 @@
 import { Editor } from "@tiptap/core";
 import { Node } from "@tiptap/pm/model";
 import { SearchHighlightPluginKey } from "./extensions/search-highlight";
+import { debugError } from "../../shared/logger";
 
 export interface SearchOptions {
 	caseSensitive: boolean;
@@ -51,7 +52,7 @@ export class SearchEngine {
 			this.editor.view.dispatch(tr);
 			return true;
 		} catch (error) {
-			console.error("Tategaki TipTap: replace error", error);
+			debugError("Tategaki TipTap: replace error", error);
 			return false;
 		}
 	}
@@ -78,7 +79,7 @@ export class SearchEngine {
 			this.editor.view.dispatch(tr);
 			return replacedCount;
 		} catch (error) {
-			console.error("Tategaki TipTap: replace all error", error);
+			debugError("Tategaki TipTap: replace all error", error);
 			return 0;
 		}
 	}
@@ -124,7 +125,7 @@ export class SearchEngine {
 				behavior: "smooth",
 			});
 		} catch (error) {
-			console.error("Tategaki TipTap: scroll to match error", error);
+			debugError("Tategaki TipTap: scroll to match error", error);
 		}
 	}
 

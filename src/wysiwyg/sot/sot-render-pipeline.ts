@@ -2,6 +2,18 @@ import type { LineRange } from "./line-ranges";
 import type { SoTEditor } from "./sot-editor";
 import type { TategakiV2Settings, WritingMode } from "../../types/settings";
 import type { FrontmatterData } from "./sot-wysiwyg-view-frontmatter";
+import type { ChunkControllerSnapshot } from "./sot-chunk-controller";
+import type { SoTScrollAnchor } from "./sot-scroll-anchor";
+import {
+	buildCollapsedGapRanges,
+	resolveVisibleLineIndexAfterBudget,
+	type CollapsedGapRange,
+} from "./sot-collapsed-gap-ranges";
+import { createCollapsedGapElement } from "./sot-gap-dom";
+import {
+	probeChunkSnapshot,
+	type ChunkReadProbeResult,
+} from "./sot-chunk-read-probe";
 
 export type SoTRenderPipelineContext = {
 	getDerivedRootEl: () => HTMLElement | null;
@@ -33,8 +45,19 @@ export type SoTRenderPipelineContext = {
 		range: LineRange,
 		index: number
 	) => void;
+	captureScrollAnchor?: () => SoTScrollAnchor | null;
 	resetPendingRenderState: () => void;
-	finalizeRender: (scrollTop: number, scrollLeft: number) => void;
+	finalizeRender: (
+		scrollTop: number,
+		scrollLeft: number,
+		scrollAnchor: SoTScrollAnchor | null,
+	) => void;
+	/** PR5.5: heading-hidden行を仮想化対象から除外するための判定 */
+	isLineHidden?: (index: number) => boolean;
+	/** PR5.5b: 折りたたみ見出しがあるか（近似経路の抑制に使用） */
+	hasCollapsedHeadings?: () => boolean;
+	/** PR6c1: chunk snapshot の read-only 参照（描画切替には未使用） */
+	getChunkSnapshot?: () => ChunkControllerSnapshot;
 };
 
 export class SoTRenderPipeline {
@@ -58,6 +81,7 @@ export class SoTRenderPipeline {
 	private scrollHoldTimer: number | null = null;
 	private resumeAfterScrollRaf: number | null = null;
 	private selectionScrollRaf: number | null = null;
+	private lastChunkProbe: ChunkReadProbeResult | null = null;
 
 	constructor(context: SoTRenderPipelineContext) {
 		this.context = context;
@@ -128,6 +152,11 @@ export class SoTRenderPipeline {
 		return this.context.isSelectionActive?.() ?? false;
 	}
 
+	/** PR5.5b: 折りたたみ見出しがあり等間隔近似が不正確になるか */
+	private hasCollapsedHeadings(): boolean {
+		return this.context.hasCollapsedHeadings?.() ?? false;
+	}
+
 	notifyScrollActivity(isLargeScroll: boolean): void {
 		if (!this.virtualEnabled) return;
 		if (this.isSelectionActive()) {
@@ -191,6 +220,7 @@ export class SoTRenderPipeline {
 
 		const scrollTop = rootEl.scrollTop;
 		const scrollLeft = rootEl.scrollLeft;
+		const scrollAnchor = this.context.captureScrollAnchor?.() ?? null;
 
 		const doc = sotEditor.getDoc();
 		const lines = doc.split("\n");
@@ -198,6 +228,10 @@ export class SoTRenderPipeline {
 		this.context.setFrontmatterDetected(!!frontmatterInfo.frontmatter);
 		const lineRanges = this.context.computeLineRangesFromLines(lines);
 		this.context.setLineRanges(lineRanges);
+		const chunkSnapshot = this.context.getChunkSnapshot?.();
+		this.lastChunkProbe = chunkSnapshot
+			? probeChunkSnapshot(chunkSnapshot, lineRanges.length)
+			: null;
 		this.context.recomputeLineBlockKinds(lines);
 		this.virtualEnabled = this.shouldUseVirtualizedRender(
 			lineRanges.length,
@@ -206,7 +240,7 @@ export class SoTRenderPipeline {
 		this.resetVirtualQueue();
 		this.setupVirtualObserver(rootEl);
 		this.virtualInitialEnd = this.virtualEnabled
-			? this.getInitialFullRenderEnd(rootEl, lineRanges.length)
+			? this.getInitialFullRenderEnd(rootEl, lineRanges)
 			: -1;
 
 		if (this.shouldUseChunkedRender(lineRanges.length, doc.length)) {
@@ -214,7 +248,8 @@ export class SoTRenderPipeline {
 				generation,
 				frontmatterInfo.frontmatter ?? null,
 				scrollTop,
-				scrollLeft
+				scrollLeft,
+				scrollAnchor,
 			);
 			return;
 		}
@@ -236,20 +271,18 @@ export class SoTRenderPipeline {
 				fragment.appendChild(frontmatterEl);
 			}
 		}
-		for (let i = 0; i < lineRanges.length; i += 1) {
-			const range = lineRanges[i];
-			if (!range) continue;
-			const lineEl = document.createElement("div");
-			lineEl.className = "tategaki-sot-line";
-			lineEl.dataset.from = String(range.from);
-			lineEl.dataset.to = String(range.to);
-			lineEl.dataset.line = String(i);
-			this.renderLineWithVirtualization(lineEl, range, i);
-			fragment.appendChild(lineEl);
+		const collapsedGapsByStart = this.buildCollapsedGapMap(lineRanges);
+		for (let i = 0; i < lineRanges.length; ) {
+			i = this.appendRenderedEntry(
+				fragment,
+				lineRanges,
+				i,
+				collapsedGapsByStart,
+			);
 		}
 		contentEl.replaceChildren(fragment);
 		this.context.resetPendingRenderState();
-		this.context.finalizeRender(scrollTop, scrollLeft);
+		this.context.finalizeRender(scrollTop, scrollLeft, scrollAnchor);
 	}
 
 	private shouldUseChunkedRender(
@@ -257,6 +290,10 @@ export class SoTRenderPipeline {
 		docLength: number
 	): boolean {
 		return lineCount >= 800 || docLength >= 120_000;
+	}
+
+	getLastChunkProbe(): ChunkReadProbeResult | null {
+		return this.lastChunkProbe;
 	}
 
 	private shouldUseVirtualizedRender(
@@ -313,8 +350,10 @@ export class SoTRenderPipeline {
 
 	private getInitialFullRenderEnd(
 		rootEl: HTMLElement,
-		totalLines: number
+		lineRanges: LineRange[]
 	): number {
+		const totalLines = lineRanges.length;
+		if (totalLines === 0) return -1;
 		const computed = window.getComputedStyle(rootEl);
 		const fontSize = Number.parseFloat(computed.fontSize) || 16;
 		const lineHeight =
@@ -326,8 +365,57 @@ export class SoTRenderPipeline {
 		const approxLine = Math.max(lineHeight, fontSize);
 		const visibleCount = Math.ceil(viewportExtent / approxLine);
 		const buffer = 80;
-		const end = Math.min(totalLines - 1, visibleCount + buffer);
-		return Math.max(0, end);
+		const visibleLineBudget = visibleCount + buffer + 1;
+		const isLineHidden = this.context.isLineHidden;
+		if (!isLineHidden) {
+			const end = Math.min(totalLines - 1, visibleLineBudget - 1);
+			return Math.max(0, end);
+		}
+		const end = resolveVisibleLineIndexAfterBudget({
+			lineRanges,
+			isLineHidden,
+			visibleLineBudget,
+		});
+		if (end >= 0) return end;
+		return Math.max(0, Math.min(totalLines - 1, visibleLineBudget - 1));
+	}
+
+	private buildCollapsedGapMap(
+		lineRanges: LineRange[],
+	): Map<number, CollapsedGapRange> {
+		const isLineHidden = this.context.isLineHidden;
+		if (!isLineHidden) return new Map();
+		return new Map(
+			buildCollapsedGapRanges({
+				lineRanges,
+				isLineHidden,
+			}).map((range) => [range.startLine, range]),
+		);
+	}
+
+	private appendRenderedEntry(
+		fragment: DocumentFragment,
+		lineRanges: LineRange[],
+		index: number,
+		collapsedGapsByStart: ReadonlyMap<number, CollapsedGapRange>,
+	): number {
+		const gap = collapsedGapsByStart.get(index);
+		if (gap) {
+			fragment.appendChild(createCollapsedGapElement(gap));
+			return gap.endLine + 1;
+		}
+
+		const range = lineRanges[index];
+		if (!range) return index + 1;
+
+		const lineEl = document.createElement("div");
+		lineEl.className = "tategaki-sot-line";
+		lineEl.dataset.from = String(range.from);
+		lineEl.dataset.to = String(range.to);
+		lineEl.dataset.line = String(index);
+		this.renderLineWithVirtualization(lineEl, range, index);
+		fragment.appendChild(lineEl);
+		return index + 1;
 	}
 
 	private renderLineWithVirtualization(
@@ -378,6 +466,8 @@ export class SoTRenderPipeline {
 	private virtualizeDistantLines(allowDuringSelection = false): void {
 		if (!this.virtualEnabled) return;
 		if (!allowDuringSelection && this.isSelectionActive()) return;
+		// PR5.5b: 折りたたみ時は等間隔近似が不正確なため遠方light化を停止
+		if (this.hasCollapsedHeadings()) return;
 		const rootEl = this.context.getDerivedRootEl();
 		const contentEl = this.context.getDerivedContentEl();
 		if (!rootEl || !contentEl) return;
@@ -424,6 +514,8 @@ export class SoTRenderPipeline {
 			] as HTMLElement | null;
 			if (!element || !element.isConnected) continue;
 			if (element.dataset.virtual === "1") continue;
+			// PR5.5: hidden行（heading-hidden等）は仮想化対象外
+			if (this.context.isLineHidden?.(this.virtualizeIndex)) continue;
 			const range = lineRanges[this.virtualizeIndex];
 			if (!range) continue;
 			this.context.renderLineLight(
@@ -646,6 +738,16 @@ export class SoTRenderPipeline {
 			});
 			return;
 		}
+		// 停止直後に viewport 内の仮想行を同期で先行復帰（初回1回のみ）
+		this.renderVisibleVirtualLinesPrecise({
+			maxLines: 80,
+			budgetMs: 10,
+		});
+		// PR5.5b: 折りたたみ時は近似ベースの復帰をスキップし精密スキャンのみ
+		if (this.hasCollapsedHeadings()) {
+			this.schedulePreciseScan();
+			return;
+		}
 		this.scheduleResumeAfterScroll();
 		this.schedulePreciseScan();
 	}
@@ -655,6 +757,13 @@ export class SoTRenderPipeline {
 		options: { maxLines?: number; budgetMs?: number } = {}
 	): boolean {
 		if (!allowDuringSelection && this.isSelectionActive()) return false;
+		// PR5.5b: 折りたたみ時は近似ベースではなく精密スキャンに委譲
+		if (this.hasCollapsedHeadings()) {
+			return this.renderVisibleVirtualLinesPrecise({
+				maxLines: options.maxLines ?? 40,
+				budgetMs: options.budgetMs ?? 8,
+			});
+		}
 		const rootEl = this.context.getDerivedRootEl();
 		const contentEl = this.context.getDerivedContentEl();
 		if (!rootEl || !contentEl) return false;
@@ -731,7 +840,8 @@ export class SoTRenderPipeline {
 		generation: number,
 		frontmatter: FrontmatterData | null,
 		scrollTop: number,
-		scrollLeft: number
+		scrollLeft: number,
+		scrollAnchor: SoTScrollAnchor | null,
 	): void {
 		const rootEl = this.context.getDerivedRootEl();
 		const contentEl = this.context.getDerivedContentEl();
@@ -758,6 +868,7 @@ export class SoTRenderPipeline {
 
 		const lineRanges = this.context.getLineRanges();
 		const total = lineRanges.length;
+		const collapsedGapsByStart = this.buildCollapsedGapMap(lineRanges);
 		let index = 0;
 		const budgetMs = 12;
 
@@ -775,17 +886,12 @@ export class SoTRenderPipeline {
 			const startTime = performance.now();
 			const fragment = document.createDocumentFragment();
 			while (index < total && performance.now() - startTime < budgetMs) {
-				const range = lineRanges[index];
-				if (range) {
-					const lineEl = document.createElement("div");
-					lineEl.className = "tategaki-sot-line";
-					lineEl.dataset.from = String(range.from);
-					lineEl.dataset.to = String(range.to);
-					lineEl.dataset.line = String(index);
-					this.renderLineWithVirtualization(lineEl, range, index);
-					fragment.appendChild(lineEl);
-				}
-				index += 1;
+				index = this.appendRenderedEntry(
+					fragment,
+					lineRanges,
+					index,
+					collapsedGapsByStart,
+				);
 			}
 			nextContent.appendChild(fragment);
 			if (index < total) {
@@ -793,7 +899,7 @@ export class SoTRenderPipeline {
 				return;
 			}
 			this.renderChunkRaf = null;
-			this.context.finalizeRender(scrollTop, scrollLeft);
+			this.context.finalizeRender(scrollTop, scrollLeft, scrollAnchor);
 		};
 
 		this.renderChunkRaf = window.requestAnimationFrame(step);

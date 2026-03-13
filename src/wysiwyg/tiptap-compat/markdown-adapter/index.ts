@@ -9,6 +9,7 @@ import {
 	isValidAozoraTcyBody,
 } from "../../../shared/aozora-tcy";
 import type { TategakiV2Settings } from "../../../types/settings";
+import { COMPAT_HARD_BREAK_MARKDOWN } from "../line-break-policy";
 
 const BLANK_LINE_MARKER = "\u2060";
 type MarkdownItConstructor = typeof import("markdown-it");
@@ -813,7 +814,7 @@ function serializeInline(node: any): string {
 	}
 
 	if (node.type.name === "hardBreak") {
-		return "<br>";
+		return COMPAT_HARD_BREAK_MARKDOWN;
 	}
 
 	if (node.type.name === "wbr") {

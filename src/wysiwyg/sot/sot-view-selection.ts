@@ -41,10 +41,8 @@ export function updateCaretPosition(host: SoTSelectionHost): void {
 		host.plugin.settings,
 		effectiveCommon,
 	);
-	const preferNativeInCe =
-		host.plugin.settings.wysiwyg.ceUseNativeCaret ?? true;
-	const useNativeInCe =
-		host.ceImeMode && (preferNativeInCe || host.ceImeComposing);
+	// PR5: ceUseNativeCaret は削除済み（常時true相当）
+	const useNativeInCe = host.ceImeMode;
 	if (host.derivedRootEl && host.ceImeMode) {
 		host.derivedRootEl.dataset.ceImeNativeCaret = useNativeInCe
 			? "1"

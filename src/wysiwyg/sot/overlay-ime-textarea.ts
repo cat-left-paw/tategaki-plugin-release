@@ -1,5 +1,9 @@
 type OverlayCallbacks = {
 	replaceSelection: (text: string) => void;
+	handleEnter?: (params: {
+		shiftKey: boolean;
+		pendingText: string;
+	}) => boolean;
 	backspace: () => void;
 	del: () => void;
 	undo: () => void;
@@ -211,9 +215,23 @@ export class OverlayImeTextarea {
 				return;
 			}
 
-			if (event.key === "Enter" && !event.shiftKey) {
+			if (event.key === "Enter") {
 				event.preventDefault();
-				this.flushPending("\n");
+				const handled =
+					this.callbacks.handleEnter?.({
+						shiftKey: event.shiftKey,
+						pendingText: this.textarea.value,
+					}) ?? false;
+				if (handled) {
+					this.textarea.value = "";
+					this.callbacks.onPendingText?.("");
+					this.clearFlushTimer();
+					this.resetSize();
+					return;
+				}
+				if (!event.shiftKey) {
+					this.flushPending("\n");
+				}
 				return;
 			}
 

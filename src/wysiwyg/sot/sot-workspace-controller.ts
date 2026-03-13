@@ -12,6 +12,7 @@ import { t } from "../../shared/i18n";
 import { FileSwitchModal } from "../../shared/ui/file-switch-modal";
 import { NewNoteModal } from "../../shared/ui/new-note-modal";
 import { MarkdownViewSoTEditor } from "./markdownview-sot-editor";
+import { debugError } from "../../shared/logger";
 
 const PAIRED_MARKDOWN_BADGE_CLASS = "tategaki-paired-tab-badge";
 const PAIRED_MARKDOWN_BADGE_ICON_CLASS = "tategaki-paired-tab-badge-icon";
@@ -280,7 +281,7 @@ export class SoTWorkspaceController {
 				try {
 					await this.host.app.vault.createFolder(folderPath);
 				} catch (error) {
-					console.error(
+					debugError(
 						"[Tategaki SoT] Failed to create folder",
 						error
 					);
@@ -296,7 +297,7 @@ export class SoTWorkspaceController {
 			const file = await this.host.app.vault.create(filePath, "");
 			await this.switchToFile(file);
 		} catch (error) {
-			console.error("[Tategaki SoT] Failed to create note", error);
+			debugError("[Tategaki SoT] Failed to create note", error);
 			new Notice(t("notice.createNoteFailed"), 2500);
 		}
 	}
@@ -328,7 +329,7 @@ export class SoTWorkspaceController {
 			);
 		} catch (error) {
 			this.host.suppressPairCheck = false;
-			console.error("[Tategaki SoT] Failed to switch file", error);
+			debugError("[Tategaki SoT] Failed to switch file", error);
 			new Notice(t("notice.fileSwitchFailed"), 2500);
 		}
 	}

@@ -605,14 +605,10 @@ export class SoTPointerHandler {
 		return false;
 	}
 
-	private getOffsetFromPointerEvent(event: PointerEvent): number | null {
-		const rootEl = this.context.getDerivedRootEl();
-		if (!rootEl) return null;
-		const target = event.target as HTMLElement | null;
-		const widgetEl = target?.closest(
-			".tategaki-md-inline-widget",
-		) as HTMLElement | null;
-		let lineEl = target?.closest(
+	resolveLineElementFromPointerEvent(
+		event: PointerEvent,
+	): HTMLElement | null {
+		let lineEl = (event.target as HTMLElement | null)?.closest(
 			".tategaki-sot-line",
 		) as HTMLElement | null;
 		if (!lineEl) {
@@ -621,6 +617,23 @@ export class SoTPointerHandler {
 				event.clientY,
 			);
 		}
+		if (!lineEl) {
+			lineEl = this.findNearestLineElementFromPoint(
+				event.clientX,
+				event.clientY,
+			);
+		}
+		return lineEl;
+	}
+
+	private getOffsetFromPointerEvent(event: PointerEvent): number | null {
+		const rootEl = this.context.getDerivedRootEl();
+		if (!rootEl) return null;
+		const target = event.target as HTMLElement | null;
+		const widgetEl = target?.closest(
+			".tategaki-md-inline-widget",
+		) as HTMLElement | null;
+		const lineEl = this.resolveLineElementFromPointerEvent(event);
 		if (!lineEl) return null;
 		this.context.ensureLineRendered(lineEl);
 		const from = Number.parseInt(lineEl.dataset.from ?? "0", 10);

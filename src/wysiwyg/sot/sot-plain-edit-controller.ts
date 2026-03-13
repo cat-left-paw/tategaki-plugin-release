@@ -64,8 +64,9 @@ export class SoTPlainEditController {
 	private overlayInputIdleTimer: number | null = null;
 	private overlayPositionNeedsRefine = false;
 	private overlayPositionRefineRaf: number | null = null;
-	private readonly fixedOverlaySize = true;
+	private readonly fixedOverlaySize = false;
 	private overlayFixedExpandRaf: number | null = null;
+	private shiftedElements: HTMLElement[] = [];
 
 	constructor(host: PlainEditHost) {
 		this.host = host;
@@ -144,6 +145,7 @@ export class SoTPlainEditController {
 				event.stopPropagation();
 			});
 			overlay.addEventListener("input", () => {
+				this.adjustOverlaySize();
 				this.markOverlayInputActive();
 			});
 			this.host.plainEditOverlayEl = overlay;
@@ -152,6 +154,7 @@ export class SoTPlainEditController {
 	}
 
 	destroyOverlay(): void {
+		this.clearShiftedElements();
 		if (this.host.plainEditOverlayEl) {
 			this.host.plainEditOverlayEl.remove();
 			this.host.plainEditOverlayEl = null;
@@ -306,6 +309,61 @@ export class SoTPlainEditController {
 			this.host.plainEditOverlayEl.style.left = `${base.left}px`;
 		}
 		this.host.plainEditOverlayEl.style.top = `${base.top}px`;
+
+		/* 後続行要素を拡張分だけシフト */
+		const overflowX = nextWidth - baseWidth;
+		const overflowY = nextHeight - baseHeight;
+		this.shiftSiblingLines(writingMode, overflowX, overflowY);
+	}
+
+	private shiftSiblingLines(
+		writingMode: string,
+		overflowX: number,
+		overflowY: number
+	): void {
+		/* シフト不要ならリセットして終了 */
+		const isVertical = writingMode.startsWith("vertical");
+		const shift = isVertical ? overflowX : overflowY;
+		if (shift <= 0) {
+			this.clearShiftedElements();
+			return;
+		}
+
+		/* 対象範囲の末尾行の後続兄弟を取得 */
+		if (!this.host.plainEditRange) {
+			this.clearShiftedElements();
+			return;
+		}
+		const endLineEl = this.host.getLineElement(
+			this.host.plainEditRange.endLine
+		);
+		if (!endLineEl) {
+			this.clearShiftedElements();
+			return;
+		}
+
+		/* 既にシフト中の要素をリセット */
+		this.clearShiftedElements();
+
+		/* transform を適用 */
+		const transform = isVertical
+			? writingMode === "vertical-rl"
+				? `translateX(-${shift}px)`
+				: `translateX(${shift}px)`
+			: `translateY(${shift}px)`;
+		let sibling = endLineEl.nextElementSibling as HTMLElement | null;
+		while (sibling) {
+			sibling.style.transform = transform;
+			this.shiftedElements.push(sibling);
+			sibling = sibling.nextElementSibling as HTMLElement | null;
+		}
+	}
+
+	clearShiftedElements(): void {
+		for (const el of this.shiftedElements) {
+			el.style.transform = "";
+		}
+		this.shiftedElements = [];
 	}
 
 	private getWritingMode():
@@ -527,6 +585,7 @@ export class SoTPlainEditController {
 	}
 
 	clearTargets(): void {
+		this.clearShiftedElements();
 		if (!this.host.plainEditRange) return;
 		for (
 			let i = this.host.plainEditRange.startLine;
@@ -750,6 +809,7 @@ export class SoTPlainEditController {
 		this.host.plainEditOverlayEl.style.width = `${width}px`;
 		this.host.plainEditOverlayEl.style.height = `${height}px`;
 		this.host.plainEditOverlayBaseRect = { left, top, width, height };
+		this.adjustOverlaySize();
 	}
 
 	startFromSelection(): void {
@@ -804,6 +864,7 @@ export class SoTPlainEditController {
 		this.applyTargets(next);
 		this.overlayPositionNeedsRefine = true;
 		this.updateOverlayPositionInternal(next, { refine: false });
+		this.adjustOverlaySize();
 	}
 
 	commit(save: boolean, updateSelection: boolean): void {

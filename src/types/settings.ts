@@ -7,7 +7,8 @@ export type EditorMode = "tiptap";
 export type SyncMode = "manual" | "auto";
 export type ThemeMode = "obsidian-base" | "custom";
 export type AppCloseAction = "save" | "discard";
-export type ViewModePreference = "edit" | "preview" | "compat";
+export type SoTSelectionMode = "fast-click" | "native-drag";
+export type ViewModePreference = "edit" | "preview" | "compat" | "reading";
 export type HeaderFooterContent = "none" | "title" | "pageNumber";
 export type HeaderFooterAlign = "left" | "center" | "right";
 export type PageNumberFormat = "current" | "currentTotal";
@@ -16,6 +17,28 @@ export type PageTransitionEffect =
 	| "fade"
 	| "slide"
 	| "blur";
+
+export type HeadingAlign = "start" | "center" | "end";
+
+// 書籍モード：フロントマター表示方式
+export type BookFrontmatterDisplayMode = "inline" | "separate-page";
+// 書籍モード：独立ページのレイアウト
+export type BookFrontmatterPageLayout = "normal" | "center";
+// 書籍モード：独立ページの文字方向
+export type BookFrontmatterPageWritingMode = "inherit" | "horizontal-tb" | "vertical-rl";
+// 書籍モード：見出しのページ扱い
+export type BookHeadingPaginationMode = "none" | "page-break" | "title-page";
+// 書籍モード：見出しレベル
+export type BookHeadingLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface HeadingDividerLevels {
+	h1: boolean;
+	h2: boolean;
+	h3: boolean;
+	h4: boolean;
+	h5: boolean;
+	h6: boolean;
+}
 
 /**
  * ビューを開く場所
@@ -37,6 +60,9 @@ export interface ThemePreset {
 		letterSpacing?: number; // 文字間（オプショナル：後方互換性のため）
 		rubySize?: number; // ルビサイズ（オプショナル：後方互換性のため）
 		headingFontFamily?: string; // 見出しフォント（オプショナル：後方互換性のため）
+		headingMarginAfter?: number; // 見出し後マージン（オプショナル：後方互換性のため）
+		headingDividerLevels?: HeadingDividerLevels; // 見出し区切り線（オプショナル：後方互換性のため）
+		headingAlign?: HeadingAlign; // 見出し位置（オプショナル：後方互換性のため）
 		colors: {
 			text: string;
 			background: string;
@@ -78,6 +104,9 @@ export interface CommonSettings {
 	rubyHorizontalGap: number; // 横書き時のルビの上下距離（em）
 	headingFontFamily: string; // 見出しフォント（空の場合は本文と同じ）
 	headingTextColor: string; // 見出し文字色（空の場合は本文と同じ）
+	headingMarginAfter: number; // 見出し後マージン (em)
+	headingDividerLevels: HeadingDividerLevels; // 見出し区切り線
+	headingAlign: HeadingAlign; // 見出しの位置
 	debugLogging?: boolean; // デバッグログ出力
 }
 
@@ -108,6 +137,14 @@ export interface PreviewSettings {
 	pageTransitionEffect?: PageTransitionEffect; // ページ遷移効果（書籍モード用）
 	bookPaddingTop?: number; // 書籍モードの上余白（px）
 	bookPaddingBottom?: number; // 書籍モードの下余白（px）
+	bookFrontmatterAsCoverPage?: boolean; // [旧] フロントマターを表紙ページとして独立させる（後方互換用）
+	bookPageBreakBeforeHeadingLevel?: 0 | 1 | 2 | 3 | 4 | 5 | 6; // [旧] 見出し前改ページのレベル（後方互換用）
+	// 新設定
+	bookFrontmatterDisplayMode?: BookFrontmatterDisplayMode; // フロントマター表示方式
+	bookFrontmatterSeparatePageLayout?: BookFrontmatterPageLayout; // 独立ページのレイアウト
+	bookFrontmatterSeparatePageWritingMode?: BookFrontmatterPageWritingMode; // 独立ページの文字方向
+	bookHeadingPaginationMode?: BookHeadingPaginationMode; // 見出しのページ扱い
+	bookHeadingPaginationLevel?: BookHeadingLevel; // 見出しレベル
 }
 
 /**
@@ -130,8 +167,8 @@ export interface WysiwygSettings {
 	caretColorMode?: CaretColorMode;
 	caretCustomColor?: string;
 	caretWidthPx?: number;
-	ceUseNativeCaret?: boolean;
-	useNativeSelection?: boolean; // SoTビューの選択操作をネイティブ選択に寄せる
+	// ceUseNativeCaret / useNativeSelection: PR5で削除。旧データは正規化時に無視される。
+	sotSelectionMode?: SoTSelectionMode; // SoT選択モード
 	sotPaddingTop?: number; // SoTビューの上余白（px）
 	sotPaddingBottom?: number; // SoTビューの下余白（px）
 }
@@ -184,6 +221,9 @@ export interface TategakiV2Settings {
 		rubyHorizontalGap?: number;
 		headingFontFamily?: string;
 		headingTextColor?: string;
+		headingMarginAfter?: number;
+		headingDividerLevels?: HeadingDividerLevels;
+		headingAlign?: HeadingAlign;
 	};
 
 	// コントロールパネル設定
@@ -239,6 +279,9 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 			rubyHorizontalGap: 0,
 			headingFontFamily: "", // 空の場合は本文と同じ
 		headingTextColor: "", // 空の場合は本文と同じ
+		headingMarginAfter: 0.45,
+		headingDividerLevels: { h1: true, h2: true, h3: false, h4: false, h5: false, h6: false },
+		headingAlign: "start",
 		debugLogging: false,
 	},
 
@@ -267,6 +310,13 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		pageTransitionEffect: "fade", // デフォルトはフェード効果（最も軽量で安定）
 		bookPaddingTop: 44,
 		bookPaddingBottom: 32,
+		bookFrontmatterAsCoverPage: false,
+		bookPageBreakBeforeHeadingLevel: 0,
+		bookFrontmatterDisplayMode: "inline",
+		bookFrontmatterSeparatePageLayout: "normal",
+		bookFrontmatterSeparatePageWritingMode: "inherit",
+		bookHeadingPaginationMode: "none",
+		bookHeadingPaginationLevel: 0,
 	},
 
 	// WYSIWYG設定
@@ -287,8 +337,7 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		caretColorMode: "accent",
 		caretCustomColor: "#1e90ff",
 		caretWidthPx: 3,
-		ceUseNativeCaret: true,
-		useNativeSelection: false,
+		sotSelectionMode: "fast-click",
 		sotPaddingTop: 32,
 		sotPaddingBottom: 16,
 	},
@@ -467,7 +516,8 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 		if (
 			settings.lastViewMode === "edit" ||
 			settings.lastViewMode === "preview" ||
-			settings.lastViewMode === "compat"
+			settings.lastViewMode === "compat" ||
+			settings.lastViewMode === "reading"
 		) {
 			validated.lastViewMode = settings.lastViewMode;
 		}
@@ -516,6 +566,32 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 				mergedCommon.debugLogging =
 					DEFAULT_V2_SETTINGS.common.debugLogging;
 			}
+			// headingMarginAfter
+			const headingMarginAfter = Number(mergedCommon.headingMarginAfter);
+			mergedCommon.headingMarginAfter = Number.isFinite(headingMarginAfter)
+				? Math.max(0, Math.min(1.5, headingMarginAfter))
+				: DEFAULT_V2_SETTINGS.common.headingMarginAfter;
+			// headingDividerLevels
+			const rawDividers: unknown = mergedCommon.headingDividerLevels;
+			if (!rawDividers || typeof rawDividers !== "object") {
+				mergedCommon.headingDividerLevels = { ...DEFAULT_V2_SETTINGS.common.headingDividerLevels };
+			} else {
+				const d = rawDividers as Record<string, unknown>;
+				const def = DEFAULT_V2_SETTINGS.common.headingDividerLevels;
+				mergedCommon.headingDividerLevels = {
+					h1: typeof d["h1"] === "boolean" ? d["h1"] : def.h1,
+					h2: typeof d["h2"] === "boolean" ? d["h2"] : def.h2,
+					h3: typeof d["h3"] === "boolean" ? d["h3"] : def.h3,
+					h4: typeof d["h4"] === "boolean" ? d["h4"] : def.h4,
+					h5: typeof d["h5"] === "boolean" ? d["h5"] : def.h5,
+					h6: typeof d["h6"] === "boolean" ? d["h6"] : def.h6,
+				};
+			}
+			// headingAlign
+			const rawAlign: unknown = mergedCommon.headingAlign;
+			if (rawAlign !== "start" && rawAlign !== "center" && rawAlign !== "end") {
+				mergedCommon.headingAlign = DEFAULT_V2_SETTINGS.common.headingAlign;
+			}
 			validated.common = mergedCommon;
 		} else {
 			validated.common = {
@@ -545,6 +621,60 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 		validated.preview.bookPaddingBottom = Number.isFinite(bookPaddingBottom)
 			? Math.max(0, Math.min(200, bookPaddingBottom))
 			: DEFAULT_V2_SETTINGS.preview.bookPaddingBottom ?? 32;
+
+		// 旧設定→新設定へのマイグレーション
+		// bookFrontmatterAsCoverPage → bookFrontmatterDisplayMode
+		if (
+			validated.preview.bookFrontmatterDisplayMode === undefined ||
+			(validated.preview.bookFrontmatterDisplayMode as string) === ""
+		) {
+			validated.preview.bookFrontmatterDisplayMode =
+				validated.preview.bookFrontmatterAsCoverPage
+					? "separate-page"
+					: "inline";
+		}
+		// bookPageBreakBeforeHeadingLevel → bookHeadingPaginationMode + Level
+		if (
+			validated.preview.bookHeadingPaginationMode === undefined ||
+			(validated.preview.bookHeadingPaginationMode as string) === ""
+		) {
+			const oldLevel = validated.preview.bookPageBreakBeforeHeadingLevel ?? 0;
+			if (oldLevel > 0) {
+				validated.preview.bookHeadingPaginationMode = "page-break";
+				validated.preview.bookHeadingPaginationLevel = oldLevel as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+			} else {
+				validated.preview.bookHeadingPaginationMode = "none";
+				validated.preview.bookHeadingPaginationLevel = 0;
+			}
+		}
+		// 新設定のバリデーション
+		const fmMode = validated.preview.bookFrontmatterDisplayMode;
+		if (fmMode !== "inline" && fmMode !== "separate-page") {
+			validated.preview.bookFrontmatterDisplayMode = "inline";
+		}
+		const fmLayout = validated.preview.bookFrontmatterSeparatePageLayout;
+		if (fmLayout !== "normal" && fmLayout !== "center") {
+			validated.preview.bookFrontmatterSeparatePageLayout = "normal";
+		}
+		const fmWm = validated.preview.bookFrontmatterSeparatePageWritingMode;
+		if (fmWm !== "inherit" && fmWm !== "horizontal-tb" && fmWm !== "vertical-rl") {
+			validated.preview.bookFrontmatterSeparatePageWritingMode = "inherit";
+		}
+		const hpMode = validated.preview.bookHeadingPaginationMode;
+		if (hpMode !== "none" && hpMode !== "page-break" && hpMode !== "title-page") {
+			validated.preview.bookHeadingPaginationMode = "none";
+		}
+		const hpLevel = Number(validated.preview.bookHeadingPaginationLevel);
+		if (!Number.isFinite(hpLevel) || hpLevel < 0 || hpLevel > 6) {
+			validated.preview.bookHeadingPaginationLevel = 0;
+		}
+		// 旧設定を新設定と同期（旧設定を参照するコードの後方互換）
+		validated.preview.bookFrontmatterAsCoverPage =
+			validated.preview.bookFrontmatterDisplayMode === "separate-page";
+		validated.preview.bookPageBreakBeforeHeadingLevel =
+			(validated.preview.bookHeadingPaginationMode !== "none"
+				? validated.preview.bookHeadingPaginationLevel
+				: 0) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 		if (settings.wysiwyg && typeof settings.wysiwyg === "object") {
 			validated.wysiwyg = { ...validated.wysiwyg, ...settings.wysiwyg };
@@ -600,15 +730,15 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 				validated.wysiwyg.caretCustomColor =
 					DEFAULT_V2_SETTINGS.wysiwyg.caretCustomColor;
 			}
-			if (typeof (validated.wysiwyg as any).ceUseNativeCaret !== "boolean") {
-				validated.wysiwyg.ceUseNativeCaret =
-					DEFAULT_V2_SETTINGS.wysiwyg.ceUseNativeCaret;
-			}
-			if (
-				typeof (validated.wysiwyg as any).useNativeSelection !== "boolean"
-			) {
-				validated.wysiwyg.useNativeSelection =
-					DEFAULT_V2_SETTINGS.wysiwyg.useNativeSelection;
+			// PR5: ceUseNativeCaret / useNativeSelection は削除済み。
+			// 旧データに残っていても無視（delete で除去）。
+			delete (validated.wysiwyg as any).ceUseNativeCaret;
+			delete (validated.wysiwyg as any).useNativeSelection;
+			// sotSelectionMode のバリデーション
+			const sotSelMode = (validated.wysiwyg as any).sotSelectionMode;
+			if (sotSelMode !== "fast-click" && sotSelMode !== "native-drag") {
+				validated.wysiwyg.sotSelectionMode =
+					DEFAULT_V2_SETTINGS.wysiwyg.sotSelectionMode;
 			}
 			// SoT余白のバリデーション
 			const sotPaddingTop = Number((validated.wysiwyg as any).sotPaddingTop);
@@ -725,8 +855,7 @@ const RUBY_SIZE_MIN = 0.2;
 const RUBY_SIZE_MAX = 1.0;
 const RUBY_GAP_MIN = -5;
 const RUBY_GAP_MAX = 5;
-const IME_OFFSET_MIN = -1;
-const IME_OFFSET_MAX = 1;
+const IME_OFFSET_RELATIVE_RANGE = 1;
 const CARET_WIDTH_MIN = 1;
 const CARET_WIDTH_MAX = 8;
 const MAX_CUSTOM_EMPHASIS_COUNT = 20;
@@ -751,13 +880,19 @@ function normalizeRubyGap(value: unknown, fallback: number): number {
 	return num;
 }
 
-function normalizeImeOffset(value: unknown, fallback: number): number {
+function normalizeImeOffset(
+	value: unknown,
+	fallback: number,
+	relativeRange = IME_OFFSET_RELATIVE_RANGE,
+): number {
 	const num = Number(value);
 	if (!Number.isFinite(num)) {
 		return fallback;
 	}
-	if (num < IME_OFFSET_MIN) return IME_OFFSET_MIN;
-	if (num > IME_OFFSET_MAX) return IME_OFFSET_MAX;
+	const min = fallback - relativeRange;
+	const max = fallback + relativeRange;
+	if (num < min) return min;
+	if (num > max) return max;
 	return num;
 }
 

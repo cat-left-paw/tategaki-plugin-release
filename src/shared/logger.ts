@@ -13,3 +13,7 @@ export function debugWarn(...args: unknown[]): void {
 	if (!debugLoggingEnabled) return;
 	console.warn(...args);
 }
+
+export function debugError(...args: unknown[]): void {
+	console.error(...args);
+}

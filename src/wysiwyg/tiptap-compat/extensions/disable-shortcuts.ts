@@ -1,4 +1,5 @@
 import { Extension } from "@tiptap/core";
+import { canUseCompatHardBreak } from "../line-break-policy";
 
 /**
  * TipTap標準のショートカットを無効化して、Obsidianコマンド側で処理する
@@ -21,9 +22,12 @@ export const DisableShortcuts = Extension.create({
 				// 通常の段落分割
 				return editor.commands.splitBlock();
 			},
-			// Shift+Enter: HardBreak（<br>）を挿入
+			// Shift+Enter: listItem / blockquote 内のみ HardBreak を許可
 			"Shift-Enter": ({ editor }) => {
 				if (!editor.isEditable) {
+					return true;
+				}
+				if (!canUseCompatHardBreak(editor)) {
 					return true;
 				}
 				return editor.commands.setHardBreak();

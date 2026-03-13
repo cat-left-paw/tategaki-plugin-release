@@ -24,7 +24,7 @@ import {
 	CommonSettings,
 	WritingMode,
 } from "../types/settings";
-import { debugWarn } from "../shared/logger";
+import { debugWarn, debugError } from "../shared/logger";
 import { BlockContentSyncManager } from "./contenteditable-block";
 import type { MarkdownApplyDecision } from "./contenteditable-block/block-sync-manager";
 import { UnsavedChangesModal } from "./contenteditable-block/unsaved-changes-modal";
@@ -43,6 +43,7 @@ import { PlainEditMode } from "./tiptap-compat/plain-edit-mode";
 		protectIndentation,
 		extractFrontmatterBlock,
 	} from "./tiptap-compat/markdown-adapter";
+import { canUseCompatHardBreak } from "./tiptap-compat/line-break-policy";
 	import { writeSyncBackupPair } from "../shared/sync-backup";
 import { UnsupportedHtmlModal } from "../shared/ui/unsupported-html-modal";
 import { PagedReadingMode } from "./reading-mode/paged-reading-mode";
@@ -50,6 +51,7 @@ import { FileSwitchModal } from "../shared/ui/file-switch-modal";
 import { NewNoteModal } from "../shared/ui/new-note-modal";
 import { isPhoneLikeMobile } from "./shared/device-profile";
 import { t } from "../shared/i18n";
+import { parseFrontmatterBlock } from "../shared/frontmatter";
 
 export const TIPTAP_COMPAT_VIEW_TYPE = "tategaki-tiptap-compat-view";
 export const TIPTAP_COMPAT_VIEW_TYPE_LEGACY = "tategaki-tiptap-dev-view";
@@ -375,7 +377,7 @@ export class TipTapCompatView extends ItemView {
 				try {
 					await this.app.vault.createFolder(folderPath);
 				} catch (error) {
-					console.error("[Tategaki TipTap] Failed to create folder", error);
+					debugError("[Tategaki TipTap] Failed to create folder", error);
 					new Notice(t("notice.createFolderFailed"), 2500);
 					return;
 				}
@@ -388,7 +390,7 @@ export class TipTapCompatView extends ItemView {
 			const file = await this.app.vault.create(filePath, "");
 			await this.switchToFile(file);
 		} catch (error) {
-			console.error("[Tategaki TipTap] Failed to create note", error);
+			debugError("[Tategaki TipTap] Failed to create note", error);
 			new Notice(t("notice.createNoteFailed"), 2500);
 		}
 	}
@@ -1121,7 +1123,7 @@ export class TipTapCompatView extends ItemView {
 			await this.updateSettings(this.plugin.settings);
 			return true;
 		} catch (error) {
-			console.error(
+			debugError(
 				"[Tategaki TipTap] Failed to toggle auxiliary panel",
 				error
 			);
@@ -1183,7 +1185,7 @@ export class TipTapCompatView extends ItemView {
 				2000
 			);
 		} catch (error) {
-			console.error(
+			debugError(
 				"[Tategaki TipTap] Failed to toggle sync mode",
 				error
 			);
@@ -1217,7 +1219,7 @@ export class TipTapCompatView extends ItemView {
 				1800
 			);
 		} catch (error) {
-			console.error("[Tategaki TipTap] Failed to toggle ruby", error);
+			debugError("[Tategaki TipTap] Failed to toggle ruby", error);
 			new Notice(t("notice.ruby.toggleFailed"), 2500);
 		} finally {
 			this.formattingToolbar?.refreshRubyToggle();
@@ -1258,7 +1260,7 @@ export class TipTapCompatView extends ItemView {
 				},
 			});
 		} catch (error) {
-			console.error(
+			debugError(
 				"[Tategaki TipTap] Failed to save custom emphasis chars",
 				error,
 			);
@@ -1342,7 +1344,7 @@ export class TipTapCompatView extends ItemView {
 			});
 			await this.updateSettings(this.plugin.settings);
 		} catch (error) {
-			console.error(
+			debugError(
 				"[Tategaki TipTap] Failed to toggle auxiliary panel",
 				error
 			);
@@ -1889,9 +1891,7 @@ export class TipTapCompatView extends ItemView {
 		try {
 			// フォーカスせずにコマンドを実行（段落区切りの改行を優先）
 			if (payload === "\n" || payload === "") {
-				if (!this.editor.commands.splitBlock()) {
-					this.editor.commands.setHardBreak();
-				}
+				this.runInsertParagraphCommand();
 			} else {
 				const lines = payload.replace(/\r\n?/g, "\n").split("\n");
 				for (let index = 0; index < lines.length; index++) {
@@ -1900,9 +1900,7 @@ export class TipTapCompatView extends ItemView {
 						this.editor.commands.insertContent(line);
 					}
 					if (index < lines.length - 1) {
-						if (!this.editor.commands.splitBlock()) {
-							this.editor.commands.setHardBreak();
-						}
+						this.runInsertParagraphCommand();
 					}
 				}
 			}
@@ -2513,10 +2511,12 @@ export class TipTapCompatView extends ItemView {
 			const type = (event as any).inputType as string | undefined;
 			if (type === "insertParagraph") {
 				event.preventDefault();
-				this.consumeShiftEnterFlag();
+				const useHardBreak = this.consumeShiftEnterFlag();
 				try {
-					if (!this.runInsertParagraphCommand()) {
-						this.editor?.commands.setHardBreak();
+					if (useHardBreak) {
+						this.runInsertHardBreakCommand();
+					} else {
+						this.runInsertParagraphCommand();
 					}
 				} catch (_error) {
 					// beforeinput由来の例外は無視（編集体験を優先）
@@ -2528,9 +2528,9 @@ export class TipTapCompatView extends ItemView {
 				const useHardBreak = this.consumeShiftEnterFlag();
 				try {
 					if (useHardBreak) {
-						this.editor?.commands.setHardBreak();
-					} else if (!this.runInsertParagraphCommand()) {
-						this.editor?.commands.setHardBreak();
+						this.runInsertHardBreakCommand();
+					} else {
+						this.runInsertParagraphCommand();
 					}
 				} catch (_error) {
 					// beforeinput由来の例外は無視（編集体験を優先）
@@ -2591,6 +2591,14 @@ export class TipTapCompatView extends ItemView {
 			return this.editor.commands.splitListItem("listItem");
 		}
 		return this.editor.commands.splitBlock();
+	}
+
+	private runInsertHardBreakCommand(): boolean {
+		if (!this.editor?.isEditable) return false;
+		if (!canUseCompatHardBreak(this.editor)) {
+			return false;
+		}
+		return this.editor.commands.setHardBreak();
 	}
 
 	private setupCompositionGuards(): void {
@@ -3137,7 +3145,7 @@ export class TipTapCompatView extends ItemView {
 				},
 			});
 		} catch (error) {
-				console.error("[Tategaki] Failed to start reading mode", error);
+				debugError("[Tategaki] Failed to start reading mode", error);
 				try {
 					this.readingModePager?.destroy();
 				} catch (_) {
@@ -3362,7 +3370,7 @@ export class TipTapCompatView extends ItemView {
 				await this.syncManager.handleExternalChange(file);
 				await this.updateFrontmatterDisplay();
 			} catch (error) {
-				console.error(
+				debugError(
 					"Tategaki TipTap: failed to process external modification",
 					error
 				);
@@ -3384,7 +3392,7 @@ export class TipTapCompatView extends ItemView {
 						await this.updateFrontmatterDisplay();
 					}
 				} catch (error) {
-					console.error(
+					debugError(
 						"Tategaki TipTap: failed to process external modification",
 						error
 					);
@@ -3933,6 +3941,18 @@ export class TipTapCompatView extends ItemView {
 			"--tategaki-heading-text-color",
 			headingColor
 		);
+		targetEl.style.setProperty(
+			"--tategaki-heading-margin-after",
+			`${effectiveCommon.headingMarginAfter ?? 0.45}em`
+		);
+		targetEl.style.setProperty(
+			"--tategaki-heading-align",
+			effectiveCommon.headingAlign ?? "start"
+		);
+		const dividers = effectiveCommon.headingDividerLevels ?? { h1: true, h2: true, h3: false, h4: false, h5: false, h6: false };
+		for (const level of ["h1", "h2", "h3", "h4", "h5", "h6"] as const) {
+			targetEl.classList.toggle(`tategaki-heading-divider-${level}`, Boolean(dividers[level]));
+		}
 
 		this.editorHostEl.setAttribute(
 			"data-writing-mode",
@@ -4106,6 +4126,8 @@ export class TipTapCompatView extends ItemView {
 				}
 
 				// 見出しと本文の色と行間を設定するスタイルを追加
+				const headingColorInj =
+					effectiveCommon.headingTextColor || effectiveCommon.textColor;
 				const styleEl = document.createElement("style");
 				styleEl.setAttribute("data-tategaki-heading-style", "true");
 				styleEl.textContent = `
@@ -4114,7 +4136,10 @@ export class TipTapCompatView extends ItemView {
 					.ProseMirror h3,
 					.ProseMirror h4,
 					.ProseMirror h5,
-					.ProseMirror h6,
+					.ProseMirror h6 {
+						color: ${headingColorInj} !important;
+						line-height: ${effectiveCommon.lineHeight} !important;
+					}
 					.ProseMirror p {
 						color: ${effectiveCommon.textColor} !important;
 						line-height: ${effectiveCommon.lineHeight} !important;
@@ -4193,7 +4218,7 @@ export class TipTapCompatView extends ItemView {
 				}
 			}
 		} catch (error) {
-			console.error(
+			debugError(
 				"[Tategaki] Failed to update frontmatter display:",
 				error
 			);
@@ -4215,118 +4240,7 @@ export class TipTapCompatView extends ItemView {
 		frontmatter: FrontmatterData | null;
 		contentWithoutFrontmatter: string;
 	} {
-		// フロントマターは --- で始まり --- で終わる
-		const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n/;
-		const match = content.match(frontmatterRegex);
-
-		if (!match) {
-			return {
-				frontmatter: null,
-				contentWithoutFrontmatter: content,
-			};
-		}
-
-		const yamlContent = match[1];
-		const contentWithoutFrontmatter = content.slice(match[0].length);
-
-		// 簡易的なYAMLパーサー（基本的なキー: 値形式のみ対応）
-		const frontmatter: FrontmatterData = {};
-		const lines = yamlContent.split("\n");
-
-		let currentKey = "";
-		let currentArray: string[] = [];
-		let isInArray = false;
-
-		for (const line of lines) {
-			const trimmedLine = line.trim();
-			if (!trimmedLine || trimmedLine.startsWith("#")) continue;
-
-			// 配列項目
-			if (trimmedLine.startsWith("- ")) {
-				if (isInArray) {
-					currentArray.push(trimmedLine.slice(2).trim());
-				}
-				continue;
-			}
-
-			// 配列終了時に保存
-			if (isInArray && !trimmedLine.startsWith("- ")) {
-				if (currentKey === "co_authors") {
-					frontmatter.co_authors = currentArray;
-				} else if (currentKey === "co_translators") {
-					frontmatter.co_translators = currentArray;
-				}
-				isInArray = false;
-				currentArray = [];
-			}
-
-			// キー: 値形式
-			const colonIndex = trimmedLine.indexOf(":");
-			if (colonIndex !== -1) {
-				const key = trimmedLine.slice(0, colonIndex).trim();
-				const value = trimmedLine.slice(colonIndex + 1).trim();
-
-				switch (key) {
-					case "title":
-						frontmatter.title = value;
-						currentKey = key;
-						break;
-					case "subtitle":
-						frontmatter.subtitle = value;
-						currentKey = key;
-						break;
-					case "original_title":
-						frontmatter.original_title = value;
-						currentKey = key;
-						break;
-					case "author":
-						frontmatter.author = value;
-						currentKey = key;
-						break;
-					case "translator":
-						frontmatter.translator = value;
-						currentKey = key;
-						break;
-					case "co_authors":
-						if (!value) {
-							// 次の行から配列が始まる
-							isInArray = true;
-							currentKey = key;
-							currentArray = [];
-						} else {
-							// インライン値
-							frontmatter.co_authors = [value];
-						}
-						break;
-					case "co_translators":
-						if (!value) {
-							// 次の行から配列が始まる
-							isInArray = true;
-							currentKey = key;
-							currentArray = [];
-						} else {
-							// インライン値
-							frontmatter.co_translators = [value];
-						}
-						break;
-				}
-			}
-		}
-
-		// 最後の配列を保存
-		if (isInArray) {
-			if (currentKey === "co_authors") {
-				frontmatter.co_authors = currentArray;
-			} else if (currentKey === "co_translators") {
-				frontmatter.co_translators = currentArray;
-			}
-		}
-
-		return {
-			frontmatter:
-				Object.keys(frontmatter).length > 0 ? frontmatter : null,
-			contentWithoutFrontmatter,
-		};
+		return parseFrontmatterBlock(content);
 	}
 
 	private renderFrontmatter(

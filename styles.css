@@ -97,7 +97,8 @@
 	border-radius: 0;
 	line-break: strict;
 	word-break: normal;
-	hanging-punctuation: allow-end;
+	hanging-punctuation: first allow-end;
+	text-wrap: pretty;
 }
 
 .tategaki-wysiwyg-editor .ProseMirror,
@@ -105,7 +106,8 @@
 .tategaki-preview div.markdown-preview-section > div {
 	line-break: strict;
 	word-break: normal;
-	hanging-punctuation: allow-end;
+	hanging-punctuation: first allow-end;
+	text-wrap: pretty;
 }
 
 /* エディタ本体 */
@@ -158,7 +160,7 @@
 	max-width: 100%;
 	text-align: justify;
 	text-align-last: auto;
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 }
 
 /* 縦書きモード: コンテンツ幅に合わせる */
@@ -167,7 +169,7 @@
 	height: 100%;
 	text-align: justify;
 	text-align-last: auto;
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 }
 
 .tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] .ProseMirror {
@@ -175,7 +177,7 @@
 	height: 100%;
 	text-align: justify;
 	text-align-last: auto;
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 }
 
 .tategaki-wysiwyg-editor .ProseMirror p,
@@ -273,6 +275,58 @@
 		--tategaki-heading-text-color,
 		var(--tategaki-text-color, inherit)
 	);
+	margin-block-end: var(--tategaki-heading-margin-after, 0.45em);
+	text-align: var(--tategaki-heading-align, start);
+}
+
+/* 見出し区切り線（TipTap ProseMirror / preview） */
+.tategaki-heading-divider-h1 .ProseMirror h1,
+.tategaki-heading-divider-h1 .tategaki-preview h1 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em;
+}
+.tategaki-heading-divider-h2 .ProseMirror h2,
+.tategaki-heading-divider-h2 .tategaki-preview h2 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em;
+}
+.tategaki-heading-divider-h3 .ProseMirror h3,
+.tategaki-heading-divider-h3 .tategaki-preview h3 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em;
+}
+.tategaki-heading-divider-h4 .ProseMirror h4,
+.tategaki-heading-divider-h4 .tategaki-preview h4 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em;
+}
+.tategaki-heading-divider-h5 .ProseMirror h5,
+.tategaki-heading-divider-h5 .tategaki-preview h5 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em;
+}
+.tategaki-heading-divider-h6 .ProseMirror h6,
+.tategaki-heading-divider-h6 .tategaki-preview h6 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em;
 }
 
 .tategaki-wysiwyg-editor .ProseMirror blockquote {
@@ -302,15 +356,15 @@
 .tategaki-wysiwyg-editor.text-justify-enabled {
 	text-align: justify;
 	text-align-last: auto;
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 }
 
 .tategaki-wysiwyg-editor.text-justify-enabled[data-writing-mode="vertical-rl"] {
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 }
 
 .tategaki-wysiwyg-editor.text-justify-enabled[data-writing-mode="horizontal-tb"] {
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 }
 
 .tategaki-wysiwyg-editor.text-justify-enabled .ProseMirror {
@@ -969,7 +1023,7 @@
 }
 
 .tategaki-preview.page-mode[style*="horizontal-tb"] .page .page-content {
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 }
 
 .tategaki-preview.page-mode .page .tategaki-continued-start {
@@ -1189,13 +1243,13 @@
 /* 縦書き時の行末そろえ */
 .tategaki-preview.text-justify-enabled[style*="vertical-rl"] {
 	text-align: justify;
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 }
 
 /* 横書き時の行末そろえ */
 .tategaki-preview.text-justify-enabled[style*="horizontal-tb"] {
 	text-align: justify;
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 }
 
 /* 段落要素での行末そろえ適用 */
@@ -1211,7 +1265,7 @@
 	div.markdown-preview-section
 	> div {
 	text-align: justify;
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 	text-align-last: auto;
 }
 
@@ -1221,7 +1275,7 @@
 	div.markdown-preview-section
 	> div {
 	text-align: justify;
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 	text-align-last: auto;
 }
 
@@ -1659,15 +1713,15 @@ ruby {
 .tategaki-block-editor-root.text-justify-enabled {
 	text-align: justify;
 	text-align-last: auto;
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 }
 
 .tategaki-block-editor-root.text-justify-enabled[data-writing-mode="vertical-rl"] {
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 }
 
 .tategaki-block-editor-root.text-justify-enabled[data-writing-mode="horizontal-tb"] {
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
 }
 
 .tategaki-block-editor-root.text-justify-enabled .tategaki-block {
@@ -2327,6 +2381,32 @@ ruby {
 	max-height: 60vh;
 	overflow-y: auto;
 	padding-right: 10px;
+}
+
+.tategaki-settings-plugin-footer {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-top: 12px;
+}
+
+.tategaki-settings-plugin-footer-hint {
+	font-size: 0.78em;
+	color: var(--text-muted);
+}
+
+.tategaki-heading-divider-checks {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 10px;
+}
+
+.tategaki-heading-divider-label {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 0.9em;
+	cursor: pointer;
 }
 
 .tategaki-settings-section {
@@ -3796,6 +3876,15 @@ ruby {
 	flex-direction: column;
 }
 
+.tategaki-reading-paged-pages-container-staging {
+	position: absolute;
+	inset: 0;
+	visibility: hidden;
+	pointer-events: none;
+	overflow: hidden;
+	z-index: 0;
+}
+
 /* 個別ページ */
 .tategaki-page {
 	width: 100%;
@@ -3834,7 +3923,9 @@ ruby {
 .tategaki-page[data-writing-mode="vertical-rl"] {
 	text-align: justify;
 	text-align-last: start;
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
+	hanging-punctuation: first allow-end;
+	text-wrap: pretty;
 }
 
 /* 横書きモードのページ */
@@ -3843,7 +3934,9 @@ ruby {
 	text-orientation: initial;
 	text-align: justify;
 	text-align-last: start;
-	text-justify: inter-ideograph;
+	text-justify: inter-character;
+	hanging-punctuation: first allow-end;
+	text-wrap: pretty;
 }
 
 /* ProseMirror統合 */
@@ -3884,8 +3977,8 @@ ruby {
 .tategaki-page h4,
 .tategaki-page h5,
 .tategaki-page h6 {
-	text-align: start;
-	text-align-last: start;
+	text-align: var(--tategaki-heading-align, start);
+	text-align-last: auto;
 }
 
 .tategaki-page .page-content p,
@@ -4084,6 +4177,114 @@ ruby {
 	padding: 0 !important;
 }
 
+/* 書籍モード：見出し後マージンを復元（段落マージンリセットより後に配置） */
+.tategaki-page .ProseMirror h1,
+.tategaki-page h1,
+.tategaki-page .ProseMirror h2,
+.tategaki-page h2,
+.tategaki-page .ProseMirror h3,
+.tategaki-page h3,
+.tategaki-page .ProseMirror h4,
+.tategaki-page h4,
+.tategaki-page .ProseMirror h5,
+.tategaki-page h5,
+.tategaki-page .ProseMirror h6,
+.tategaki-page h6 {
+	margin-block-end: var(--tategaki-heading-margin-after, 0.45em) !important;
+	text-align: var(--tategaki-heading-align, start) !important;
+	text-align-last: auto !important;
+}
+
+/* 書籍モード：フロントマターは見出し配置・マージン設定の影響を受けない */
+.tategaki-page .tategaki-frontmatter-title,
+.tategaki-page .tategaki-frontmatter-subtitle,
+.tategaki-page .tategaki-frontmatter-original-title {
+	text-align: start !important;
+	text-align-last: start !important;
+	margin-block-end: unset !important;
+}
+.tategaki-page .tategaki-frontmatter-author,
+.tategaki-page .tategaki-frontmatter-co-author,
+.tategaki-page .tategaki-frontmatter-translator,
+.tategaki-page .tategaki-frontmatter-co-translator {
+	text-align: end !important;
+	text-align-last: end !important;
+	margin-block-end: unset !important;
+}
+/* 中央配置レイアウト時は書籍モードのtext-alignを上書きしない */
+.tategaki-page .tategaki-frontmatter-layout-center .tategaki-frontmatter-title,
+.tategaki-page .tategaki-frontmatter-layout-center .tategaki-frontmatter-subtitle,
+.tategaki-page .tategaki-frontmatter-layout-center .tategaki-frontmatter-original-title,
+.tategaki-page .tategaki-frontmatter-layout-center .tategaki-frontmatter-author,
+.tategaki-page .tategaki-frontmatter-layout-center .tategaki-frontmatter-co-author,
+.tategaki-page .tategaki-frontmatter-layout-center .tategaki-frontmatter-translator,
+.tategaki-page .tategaki-frontmatter-layout-center .tategaki-frontmatter-co-translator {
+	text-align: center !important;
+	text-align-last: center !important;
+}
+
+/* 書籍モード：見出し区切り線 */
+.tategaki-reading-paged-container.tategaki-heading-divider-h1 .tategaki-page h1,
+.tategaki-reading-paged-container.tategaki-heading-divider-h1 .tategaki-page .ProseMirror h1 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em !important;
+}
+.tategaki-reading-paged-container.tategaki-heading-divider-h2 .tategaki-page h2,
+.tategaki-reading-paged-container.tategaki-heading-divider-h2 .tategaki-page .ProseMirror h2 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em !important;
+}
+.tategaki-reading-paged-container.tategaki-heading-divider-h3 .tategaki-page h3,
+.tategaki-reading-paged-container.tategaki-heading-divider-h3 .tategaki-page .ProseMirror h3 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em !important;
+}
+.tategaki-reading-paged-container.tategaki-heading-divider-h4 .tategaki-page h4,
+.tategaki-reading-paged-container.tategaki-heading-divider-h4 .tategaki-page .ProseMirror h4 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em !important;
+}
+.tategaki-reading-paged-container.tategaki-heading-divider-h5 .tategaki-page h5,
+.tategaki-reading-paged-container.tategaki-heading-divider-h5 .tategaki-page .ProseMirror h5 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em !important;
+}
+.tategaki-reading-paged-container.tategaki-heading-divider-h6 .tategaki-page h6,
+.tategaki-reading-paged-container.tategaki-heading-divider-h6 .tategaki-page .ProseMirror h6 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em !important;
+}
+
+/* 書籍モード：フロントマターには区切り線を付加しない */
+.tategaki-page .tategaki-frontmatter-title,
+.tategaki-page .tategaki-frontmatter-subtitle,
+.tategaki-page .tategaki-frontmatter-original-title,
+.tategaki-page .tategaki-frontmatter-author,
+.tategaki-page .tategaki-frontmatter-co-author,
+.tategaki-page .tategaki-frontmatter-translator,
+.tategaki-page .tategaki-frontmatter-co-translator {
+	border-block-end: none !important;
+	padding-block-end: 0 !important;
+}
+
 /* 書籍モード内のフロントマター余白を復元 */
 .tategaki-page .tategaki-frontmatter {
 	margin-bottom: 3em !important;
@@ -4123,6 +4324,8 @@ ruby {
 	text-orientation: mixed;
 	word-break: break-word;
 	overflow-wrap: anywhere;
+	hanging-punctuation: first allow-end;
+	text-wrap: pretty;
 }
 
 .tategaki-sot-loading-overlay {
@@ -4563,6 +4766,20 @@ ruby {
 	width: 100%;
 }
 
+.tategaki-sot-collapsed-gap {
+	display: block;
+	inline-size: 0;
+	block-size: 0;
+	min-inline-size: 0;
+	min-block-size: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	pointer-events: none;
+	user-select: none;
+}
+
 .tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
 	.tategaki-sot-line {
 	width: fit-content;
@@ -4581,6 +4798,22 @@ ruby {
 		var(--tategaki-text-color, inherit)
 	);
 	overflow: visible;
+	margin-block-end: var(--tategaki-heading-margin-after, 0.45em);
+	text-align: var(--tategaki-heading-align, start);
+}
+
+/* 見出し区切り線（SoT） */
+.tategaki-heading-divider-h1 .tategaki-sot-line.tategaki-md-heading-1,
+.tategaki-heading-divider-h2 .tategaki-sot-line.tategaki-md-heading-2,
+.tategaki-heading-divider-h3 .tategaki-sot-line.tategaki-md-heading-3,
+.tategaki-heading-divider-h4 .tategaki-sot-line.tategaki-md-heading-4,
+.tategaki-heading-divider-h5 .tategaki-sot-line.tategaki-md-heading-5,
+.tategaki-heading-divider-h6 .tategaki-sot-line.tategaki-md-heading-6 {
+	border-block-end: 1px solid var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, currentColor)
+	);
+	padding-block-end: 0.15em;
 }
 
 .tategaki-sot-line.tategaki-md-heading-hidden {
@@ -5546,6 +5779,17 @@ ruby {
 	width: auto;
 }
 
+/* 縦書き時の禁則改行を厳密化（実験的）— revert: このブロックを削除 */
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"]),
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"]) .tategaki-sot-run,
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"]) .tategaki-sot-text,
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"]) .tategaki-sot-pending-spacer,
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"]) .tategaki-sot-overlay-textarea {
+	line-break: strict;
+	word-break: normal;
+	overflow-wrap: break-word;
+}
+
 .tategaki-sot-derived-root.tategaki-fast-scroll .tategaki-sot-line {
 	position: relative;
 }
@@ -5701,4 +5945,127 @@ ruby {
 
 .tategaki-search-replace-option-checkbox {
 	margin-right: 4px;
+}
+
+/* ====================
+   フロントマター独立ページ：中央配置レイアウト
+   ==================== */
+
+/* ベース（横書きコンテキスト）：
+   flex-direction: column で縦軸中央 + 横軸中央 */
+.tategaki-frontmatter-layout-center {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	height: 100%;
+	width: 100%;
+	text-align: center;
+}
+
+.tategaki-frontmatter-layout-center .tategaki-frontmatter-top,
+.tategaki-frontmatter-layout-center .tategaki-frontmatter-bottom {
+	text-align: center !important;
+	text-align-last: center !important;
+}
+
+.tategaki-frontmatter-layout-center .tategaki-frontmatter-title,
+.tategaki-frontmatter-layout-center .tategaki-frontmatter-subtitle,
+.tategaki-frontmatter-layout-center .tategaki-frontmatter-original-title,
+.tategaki-frontmatter-layout-center .tategaki-frontmatter-author,
+.tategaki-frontmatter-layout-center .tategaki-frontmatter-co-author,
+.tategaki-frontmatter-layout-center .tategaki-frontmatter-translator,
+.tategaki-frontmatter-layout-center .tategaki-frontmatter-co-translator {
+	text-align: center !important;
+	text-align-last: center !important;
+}
+
+/* 縦書きコンテキストの中央配置：
+   vertical-rl では flex 軸が回転するため flex-direction: row を使う。
+   主軸 = inline方向（上→下）→ space-between でタイトル上付き・著者下付き
+   交差軸 = block方向（右→左）→ center で横軸中央 */
+
+/* ケース1: ページが縦書き＋文字方向オーバーライドなし（inherit） */
+.tategaki-page[data-writing-mode="vertical-rl"]
+	.tategaki-frontmatter-layout-center:not(.tategaki-frontmatter-horizontal):not(.tategaki-frontmatter-vertical),
+/* ケース2: 明示的に縦書き指定 */
+.tategaki-frontmatter-layout-center.tategaki-frontmatter-vertical {
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+}
+
+/* フロントマター独立ページ：文字方向オーバーライド */
+.tategaki-frontmatter-writing-override {
+	text-orientation: mixed;
+}
+
+.tategaki-frontmatter-horizontal {
+	writing-mode: horizontal-tb !important;
+}
+
+.tategaki-frontmatter-horizontal .tategaki-frontmatter-top,
+.tategaki-frontmatter-horizontal .tategaki-frontmatter-bottom {
+	writing-mode: horizontal-tb;
+}
+
+.tategaki-frontmatter-vertical {
+	writing-mode: vertical-rl !important;
+}
+
+.tategaki-frontmatter-vertical .tategaki-frontmatter-top,
+.tategaki-frontmatter-vertical .tategaki-frontmatter-bottom {
+	writing-mode: vertical-rl;
+}
+
+/* 縦書きページ内の横書きフロントマター：余白調整 */
+.tategaki-page[data-writing-mode="vertical-rl"] .tategaki-frontmatter-horizontal {
+	margin-left: 0;
+	margin-right: 0;
+	margin-bottom: 0;
+}
+
+/* ====================
+   章扉ページ
+   ==================== */
+.tategaki-title-page .tategaki-title-page-content {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	height: 100%;
+}
+
+.tategaki-title-page-heading {
+	font-weight: bold;
+	text-align: center;
+	margin: 0;
+	padding: 0;
+	border: none !important;
+	border-block-end: none !important;
+	padding-block-end: 0 !important;
+}
+
+/* 章扉ページの見出しサイズ */
+.tategaki-title-page-heading:is(h1) {
+	font-size: 2em;
+}
+
+.tategaki-title-page-heading:is(h2) {
+	font-size: 1.75em;
+}
+
+.tategaki-title-page-heading:is(h3) {
+	font-size: 1.5em;
+}
+
+.tategaki-title-page-heading:is(h4) {
+	font-size: 1.25em;
+}
+
+.tategaki-title-page-heading:is(h5) {
+	font-size: 1.125em;
+}
+
+.tategaki-title-page-heading:is(h6) {
+	font-size: 1em;
 }

@@ -21,9 +21,14 @@ import {
 	moveSyncBackupsToTrash,
 	SYNC_BACKUP_ROOT,
 } from "../shared/sync-backup";
-import { debugWarn, setDebugLogging } from "../shared/logger";
+import { debugWarn, debugError, setDebugLogging } from "../shared/logger";
 import { showConfirmModal } from "../shared/ui/confirm-modal";
 import { t } from "../shared/i18n";
+
+type ObsidianSettingApi = {
+	open?: () => void;
+	openTabById?: (tabId: string) => void;
+};
 
 /**
  * Tategaki Plugin v2.0 - メインプラグインクラス
@@ -258,7 +263,7 @@ export default class TategakiV2Plugin extends Plugin {
 				new Notice(t("plugin.notice.syncBackup.movedDotTrash"), 3500);
 			}
 		} catch (error) {
-			console.error(
+			debugError(
 				"Tategaki: failed to move sync backups to trash",
 				error,
 			);
@@ -396,6 +401,21 @@ export default class TategakiV2Plugin extends Plugin {
 		// ビューを閉じて次回起動時の自動復元を防ぐ
 		for (const leaf of leaves) {
 			leaf.detach();
+		}
+	}
+
+	/**
+	 * Obsidian のプラグイン設定タブを開く（内部 API 経由）
+	 */
+	openPluginSettings(): void {
+		const setting = (
+			this.app as typeof this.app & { setting?: ObsidianSettingApi }
+		).setting;
+		if (typeof setting?.open === "function") {
+			setting.open();
+		}
+		if (typeof setting?.openTabById === "function") {
+			setting.openTabById(this.manifest.id);
 		}
 	}
 
@@ -668,7 +688,7 @@ export default class TategakiV2Plugin extends Plugin {
 
 		const theme = this.settings.themes.find((t) => t.id === themeId);
 		if (!theme) {
-			console.error(`テーマが見つかりません: ${themeId}`);
+			debugError(`テーマが見つかりません: ${themeId}`);
 			return;
 		}
 
@@ -693,6 +713,15 @@ export default class TategakiV2Plugin extends Plugin {
 				accentColor: theme.settings.colors.accent,
 				headingTextColor: theme.settings.colors?.headingText ?? "",
 				headingSpacing: theme.settings.spacing.headingSpacing,
+				headingMarginAfter:
+					theme.settings.headingMarginAfter ??
+					this.settings.common.headingMarginAfter,
+				headingDividerLevels:
+					theme.settings.headingDividerLevels ??
+					this.settings.common.headingDividerLevels,
+				headingAlign:
+					theme.settings.headingAlign ??
+					this.settings.common.headingAlign,
 			},
 			// temporaryOverridesをクリア
 			temporaryOverrides: {},
@@ -719,7 +748,7 @@ export default class TategakiV2Plugin extends Plugin {
 	async deleteTheme(themeId: string): Promise<void> {
 		// obsidian-baseは削除できない
 		if (themeId === "obsidian-base") {
-			console.error("Obsidianベーステーマは削除できません");
+			debugError("Obsidianベーステーマは削除できません");
 			return;
 		}
 
@@ -761,6 +790,9 @@ export default class TategakiV2Plugin extends Plugin {
 				letterSpacing: effectiveSettings.letterSpacing,
 				rubySize: effectiveSettings.rubySize,
 				headingFontFamily: effectiveSettings.headingFontFamily,
+				headingMarginAfter: effectiveSettings.headingMarginAfter,
+				headingDividerLevels: { ...effectiveSettings.headingDividerLevels },
+				headingAlign: effectiveSettings.headingAlign,
 				colors: {
 					text: effectiveSettings.textColor,
 					background: effectiveSettings.backgroundColor,
@@ -831,6 +863,15 @@ export default class TategakiV2Plugin extends Plugin {
 			}),
 			...(overrides.headingTextColor !== undefined && {
 				headingTextColor: overrides.headingTextColor,
+			}),
+			...(overrides.headingMarginAfter !== undefined && {
+				headingMarginAfter: overrides.headingMarginAfter,
+			}),
+			...(overrides.headingDividerLevels !== undefined && {
+				headingDividerLevels: overrides.headingDividerLevels,
+			}),
+			...(overrides.headingAlign !== undefined && {
+				headingAlign: overrides.headingAlign,
 			}),
 		};
 	}

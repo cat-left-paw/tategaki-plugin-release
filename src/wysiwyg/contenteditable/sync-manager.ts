@@ -10,7 +10,7 @@ import {
 	areMarkdownContentsEquivalent,
 	writeSyncBackupPair,
 } from "../../shared/sync-backup";
-import { debugWarn } from "../../shared/logger";
+import { debugWarn, debugError } from "../../shared/logger";
 import { t } from "../../shared/i18n";
 
 export type SyncMode = "auto" | "manual";
@@ -306,7 +306,7 @@ export class ContentEditableSyncManager {
 		try {
 			diskMarkdownBefore = await this.app.vault.read(this.currentFile);
 		} catch (error) {
-			console.error("Failed to read file before save:", error);
+			debugError("Failed to read file before save:", error);
 			new Notice(t("notice.sync.readBeforeSaveFailed"), 3000);
 			this.updateState({
 				lastSyncResult: "error",
@@ -326,7 +326,7 @@ export class ContentEditableSyncManager {
 					markdown
 				);
 			} catch (error) {
-				console.error("Failed to write sync backup:", error);
+				debugError("Failed to write sync backup:", error);
 				new Notice(
 					t("notice.sync.backupCreateFailedContinue"),
 					3500
@@ -347,7 +347,7 @@ export class ContentEditableSyncManager {
 			try {
 				readBack = await this.app.vault.read(this.currentFile);
 			} catch (error) {
-				console.error("Failed to read file after save:", error);
+				debugError("Failed to read file after save:", error);
 				new Notice(
 					t("notice.sync.readBackFailedBackedUp"),
 					4000
@@ -365,7 +365,7 @@ export class ContentEditableSyncManager {
 			}
 
 			if (!areMarkdownContentsEquivalent(markdown, readBack)) {
-				console.error("Read-back verification mismatch after save", {
+				debugError("Read-back verification mismatch after save", {
 					file: this.currentFile.path,
 				});
 				new Notice(
@@ -380,7 +380,7 @@ export class ContentEditableSyncManager {
 						4500
 					);
 				} catch (rollbackError) {
-					console.error("Rollback failed:", rollbackError);
+					debugError("Rollback failed:", rollbackError);
 					new Notice(
 						t("notice.sync.rollbackFailedRestore"),
 						6000
@@ -408,7 +408,7 @@ export class ContentEditableSyncManager {
 				lastSyncMessage: null,
 			});
 		} catch (error) {
-			console.error("Failed to save file:", error);
+			debugError("Failed to save file:", error);
 			new Notice(t("notice.sync.saveFailed"), 3000);
 			this.updateState({
 				saving: false,
@@ -450,7 +450,7 @@ export class ContentEditableSyncManager {
 				lastSyncMessage: null,
 			});
 		} catch (error) {
-			console.error("Failed to load file:", error);
+			debugError("Failed to load file:", error);
 			new Notice(t("notice.sync.loadFailed"), 2000);
 		}
 	}
