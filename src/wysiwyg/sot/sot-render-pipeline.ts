@@ -82,6 +82,7 @@ export class SoTRenderPipeline {
 	private resumeAfterScrollRaf: number | null = null;
 	private selectionScrollRaf: number | null = null;
 	private lastChunkProbe: ChunkReadProbeResult | null = null;
+	private chunkedExtentHoldClearRaf: number | null = null;
 
 	constructor(context: SoTRenderPipelineContext) {
 		this.context = context;
@@ -212,6 +213,7 @@ export class SoTRenderPipeline {
 		const contentEl = this.context.getDerivedContentEl();
 		const sotEditor = this.context.getSotEditor();
 		if (!rootEl || !contentEl || !sotEditor) return;
+		this.clearChunkedExtentHold(contentEl);
 		const generation = this.renderGeneration + 1;
 		this.renderGeneration = generation;
 		this.cancelChunkedRender();
@@ -834,6 +836,25 @@ export class SoTRenderPipeline {
 			window.cancelAnimationFrame(this.renderChunkRaf);
 			this.renderChunkRaf = null;
 		}
+		if (this.chunkedExtentHoldClearRaf !== null) {
+			window.cancelAnimationFrame(this.chunkedExtentHoldClearRaf);
+			this.chunkedExtentHoldClearRaf = null;
+		}
+	}
+
+	private clearChunkedExtentHold(contentEl: HTMLElement): void {
+		contentEl.style.minWidth = "";
+		contentEl.style.minHeight = "";
+	}
+
+	private applyChunkedExtentHold(
+		rootEl: HTMLElement,
+		contentEl: HTMLElement,
+	): void {
+		const minWidth = Math.max(contentEl.scrollWidth, rootEl.clientWidth);
+		const minHeight = Math.max(contentEl.scrollHeight, rootEl.clientHeight);
+		contentEl.style.minWidth = `${Math.ceil(minWidth)}px`;
+		contentEl.style.minHeight = `${Math.ceil(minHeight)}px`;
 	}
 
 	private renderChunked(
@@ -847,6 +868,7 @@ export class SoTRenderPipeline {
 		const contentEl = this.context.getDerivedContentEl();
 		if (!rootEl || !contentEl) return;
 		this.cancelChunkedRender();
+		this.applyChunkedExtentHold(rootEl, contentEl);
 		contentEl.replaceChildren();
 		const settings = this.context.getPluginSettings();
 		const hideFrontmatter = this.context.getHideFrontmatter();
@@ -900,6 +922,14 @@ export class SoTRenderPipeline {
 			}
 			this.renderChunkRaf = null;
 			this.context.finalizeRender(scrollTop, scrollLeft, scrollAnchor);
+			if (this.chunkedExtentHoldClearRaf !== null) {
+				window.cancelAnimationFrame(this.chunkedExtentHoldClearRaf);
+			}
+			this.chunkedExtentHoldClearRaf = window.requestAnimationFrame(() => {
+				this.chunkedExtentHoldClearRaf = null;
+				if (generation !== this.renderGeneration) return;
+				this.clearChunkedExtentHold(nextContent);
+			});
 		};
 
 		this.renderChunkRaf = window.requestAnimationFrame(step);

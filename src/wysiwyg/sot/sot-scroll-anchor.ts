@@ -1,12 +1,14 @@
 export type SoTScrollAnchor = {
 	lineIndex: number;
 	topOffsetPx: number;
+	leftOffsetPx: number;
 };
 
 export type SoTScrollAnchorCandidate = {
 	lineIndex: number;
 	top: number;
 	bottom: number;
+	left: number;
 };
 
 export type SoTScrollAnchorViewportProbeOptions = {
@@ -19,6 +21,7 @@ export type SoTScrollAnchorViewportProbeOptions = {
 export function captureScrollAnchor(params: {
 	containerTop: number;
 	containerBottom: number;
+	containerLeft: number;
 	candidates: Iterable<SoTScrollAnchorCandidate>;
 }): SoTScrollAnchor | null {
 	let best: SoTScrollAnchorCandidate | null = null;
@@ -40,6 +43,7 @@ export function captureScrollAnchor(params: {
 	return {
 		lineIndex: best.lineIndex,
 		topOffsetPx: best.top - params.containerTop,
+		leftOffsetPx: best.left - params.containerLeft,
 	};
 }
 
@@ -61,12 +65,14 @@ export function captureScrollAnchorFromLineElements(params: {
 			lineIndex,
 			top: rect.top,
 			bottom: rect.bottom,
+			left: rect.left,
 		});
 	}
 
 	return captureScrollAnchor({
 		containerTop: containerRect.top,
 		containerBottom: containerRect.bottom,
+		containerLeft: containerRect.left,
 		candidates,
 	});
 }
@@ -122,6 +128,7 @@ export function captureScrollAnchorFromViewport(params: {
 					lineIndex,
 					top: rect.top,
 					bottom: rect.bottom,
+					left: rect.left,
 				});
 				break;
 			}
@@ -130,6 +137,7 @@ export function captureScrollAnchorFromViewport(params: {
 		const anchor = captureScrollAnchor({
 			containerTop: containerRect.top,
 			containerBottom: containerRect.bottom,
+			containerLeft: containerRect.left,
 			candidates,
 		});
 		if (anchor) return anchor;
@@ -212,16 +220,23 @@ function resolveLineElementCandidate(
 export function computeScrollAnchorAdjustment(params: {
 	anchor: SoTScrollAnchor;
 	containerTop: number;
-	resolveLineTop: (lineIndex: number) => number | null;
+	containerLeft: number;
+	resolveLineRect: (lineIndex: number) => { top: number; left: number } | null;
 	minAbsDeltaPx?: number;
-}): number | null {
-	const nextTop = params.resolveLineTop(params.anchor.lineIndex);
-	if (nextTop === null || !Number.isFinite(nextTop)) return null;
-	const nextOffset = nextTop - params.containerTop;
-	const delta = nextOffset - params.anchor.topOffsetPx;
+}): { topPx: number | null; leftPx: number | null } {
+	const nextRect = params.resolveLineRect(params.anchor.lineIndex);
+	if (!nextRect) {
+		return { topPx: null, leftPx: null };
+	}
+	const nextTopOffset = nextRect.top - params.containerTop;
+	const nextLeftOffset = nextRect.left - params.containerLeft;
+	const topDelta = nextTopOffset - params.anchor.topOffsetPx;
+	const leftDelta = nextLeftOffset - params.anchor.leftOffsetPx;
 	const threshold = params.minAbsDeltaPx ?? 0.5;
-	if (Math.abs(delta) < threshold) return null;
-	return delta;
+	return {
+		topPx: Math.abs(topDelta) < threshold ? null : topDelta,
+		leftPx: Math.abs(leftDelta) < threshold ? null : leftDelta,
+	};
 }
 
 export function computeScrollAnchorAdjustmentFromLineElement(params: {
@@ -229,18 +244,19 @@ export function computeScrollAnchorAdjustmentFromLineElement(params: {
 	containerEl: HTMLElement;
 	resolveLineElement: (lineIndex: number) => HTMLElement | null;
 	minAbsDeltaPx?: number;
-}): number | null {
+}): { topPx: number | null; leftPx: number | null } {
 	const containerRect = params.containerEl.getBoundingClientRect();
 	return computeScrollAnchorAdjustment({
 		anchor: params.anchor,
 		containerTop: containerRect.top,
+		containerLeft: containerRect.left,
 		minAbsDeltaPx: params.minAbsDeltaPx,
-		resolveLineTop: (lineIndex) => {
+		resolveLineRect: (lineIndex) => {
 			const lineEl = params.resolveLineElement(lineIndex);
 			if (!lineEl || !lineEl.isConnected) return null;
 			const rect = lineEl.getBoundingClientRect();
 			if (rect.width + rect.height <= 0) return null;
-			return rect.top;
+			return { top: rect.top, left: rect.left };
 		},
 	});
 }

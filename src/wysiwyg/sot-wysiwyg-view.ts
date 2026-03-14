@@ -125,6 +125,15 @@ import {
 	resolveLineElementFromChildren,
 } from "./sot/sot-line-element-contract";
 import {
+	createCollapsedGapElement,
+} from "./sot/sot-gap-dom";
+import { buildCollapsedGapRanges } from "./sot/sot-collapsed-gap-ranges";
+import {
+	computeCollapsedDiffRebuildRange,
+	shiftCollapsedHeadingLines,
+	couldLineChangeBlockStructure,
+} from "./sot/sot-collapsed-diff";
+import {
 	shouldActivateOnAutoScrollStart,
 	shouldDeactivateOnAutoScrollStop,
 	decideOnPointerDown,
@@ -582,7 +591,18 @@ export class SoTWysiwygView extends ItemView {
 		const lineHeight =
 			Number.parseFloat(computed.lineHeight) || fontSize * 1.8;
 		const extent = Math.max(lineHeight, fontSize);
-		const approx = Math.max(0, lineIndex) * extent;
+		// 非表示行を除いた可視行数で概算位置を計算する。
+		// lineIndex までの隠れ行をカウントし、その分を差し引く。
+		let visibleCount = 0;
+		for (let i = 0; i < Math.max(0, lineIndex); i += 1) {
+			if (
+				this.lineHeadingHiddenBy[i] === null ||
+				this.lineHeadingHiddenBy[i] === undefined
+			) {
+				visibleCount += 1;
+			}
+		}
+		const approx = visibleCount * extent;
 		const isVertical = computed.writingMode !== "horizontal-tb";
 		if (isVertical) {
 			const sign = rootEl.scrollLeft < 0 ? -1 : 1;
@@ -9439,28 +9459,50 @@ export class SoTWysiwygView extends ItemView {
 				this.outlineJumpGuard.shouldSuppressScrollRestore();
 			// 見出しジャンプ中はスクロール位置の復元を抑制する
 			if (!suppressScrollRestore) {
-				this.derivedRootEl.scrollTop = scrollTop;
-				this.derivedRootEl.scrollLeft = scrollLeft;
-			}
-			const allowScrollAnchorAdjustment =
-				!this.isPointerSelecting && !this.autoScrollSelecting;
-			const adjustment = allowScrollAnchorAdjustment && scrollAnchor
-				? computeScrollAnchorAdjustmentFromLineElement({
-						anchor: scrollAnchor,
-						containerEl: this.derivedRootEl,
-						resolveLineElement: (lineIndex) =>
-							this.getLineElement(lineIndex),
-					})
-				: null;
-			if (
-				adjustment !== null &&
-				shouldApplyScrollAnchorAdjustment({
-					anchor: scrollAnchor,
-					adjustmentPx: adjustment,
-					suppressScrollRestore,
-				})
-			) {
-				this.derivedRootEl.scrollTop += adjustment;
+				// スクロールアンカー補正を先に計算し、直接復元と統合して
+				// 1回のスクロール設定にまとめる（二重スクロールによる揺れを防止）
+				const allowScrollAnchorAdjustment =
+					!this.isPointerSelecting && !this.autoScrollSelecting;
+				const adjustment =
+					allowScrollAnchorAdjustment && scrollAnchor
+						? computeScrollAnchorAdjustmentFromLineElement({
+								anchor: scrollAnchor,
+								containerEl: this.derivedRootEl,
+								resolveLineElement: (lineIndex) =>
+									this.getLineElement(lineIndex),
+							})
+						: null;
+
+				let finalTop = scrollTop;
+				let finalLeft = scrollLeft;
+
+				if (adjustment !== null) {
+					if (
+						shouldApplyScrollAnchorAdjustment({
+							anchor: scrollAnchor,
+							adjustmentPx: adjustment.topPx,
+							suppressScrollRestore: false,
+						})
+					) {
+						finalTop += adjustment.topPx ?? 0;
+					}
+					const writingMode = window.getComputedStyle(
+						this.derivedRootEl,
+					).writingMode;
+					if (
+						writingMode.startsWith("vertical") &&
+						shouldApplyScrollAnchorAdjustment({
+							anchor: scrollAnchor,
+							adjustmentPx: adjustment.leftPx,
+							suppressScrollRestore: false,
+						})
+					) {
+						finalLeft += adjustment.leftPx ?? 0;
+					}
+				}
+
+				this.derivedRootEl.scrollTop = finalTop;
+				this.derivedRootEl.scrollLeft = finalLeft;
 			}
 			this.syncNativeSelectionDataset();
 		}
@@ -9548,11 +9590,423 @@ export class SoTWysiwygView extends ItemView {
 		this.renderPipeline?.renderNow();
 	}
 
+	/**
+	 * 折りたたみ見出しが存在する場合の差分更新パス。
+	 * syncLineDatasets の代わりに getLineElement (binary search) で
+	 * gap要素をスキップしつつ変更行のみDOMを更新する。
+	 *
+	 * 高速パス（単一行内変更）と改行挿入パスの両方に対応。
+	 */
+	private applyChangesWithCollapsedHeadings(
+		changes: SoTChange[],
+	): boolean {
+		if (!this.derivedContentEl || !this.sotEditor) return false;
+
+		if (this.canApplyChangesFast(changes)) {
+			const doc = this.sotEditor.getDoc();
+			const lines = doc.split("\n");
+			let structureUnsafe = false;
+			for (const change of changes) {
+				const lineIdx = this.findLineIndexInRanges(
+					this.lineRanges,
+					change.from,
+				);
+				if (lineIdx === null) { structureUnsafe = true; break; }
+				const newText = lines[lineIdx] ?? "";
+				const oldKind = this.lineBlockKinds[lineIdx] ?? "normal";
+				const wasHeading =
+					this.lineHeadingSectionEnd[lineIdx] != null;
+				if (couldLineChangeBlockStructure(newText, oldKind, wasHeading)) {
+					structureUnsafe = true;
+					break;
+				}
+			}
+			if (!structureUnsafe) {
+				return this.applyChangesFastWithGaps(changes);
+			}
+		}
+
+		return this.applyNewlineWithGaps(changes);
+	}
+
+	/** 折りたたみ時の高速パス（単一行内変更）。 */
+	private applyChangesFastWithGaps(changes: SoTChange[]): boolean {
+		if (!this.derivedContentEl || !this.sotEditor) return false;
+
+		const originalRanges = this.lineRanges.slice();
+		const updatedRanges = this.lineRanges.map((range) => ({
+			from: range.from,
+			to: range.to,
+		}));
+		const ordered = changes
+			.slice()
+			.sort((a, b) => a.from - b.from || a.to - b.to);
+
+		let minLine = Number.POSITIVE_INFINITY;
+		let maxLine = -1;
+
+		for (const change of ordered) {
+			const lineIndex = this.findLineIndexInRanges(
+				originalRanges,
+				change.from,
+			);
+			const lineEnd = this.findLineIndexInRanges(
+				originalRanges,
+				change.to,
+			);
+			if (
+				lineIndex === null ||
+				lineEnd === null ||
+				lineIndex !== lineEnd
+			) {
+				return false;
+			}
+			minLine = Math.min(minLine, lineIndex);
+			maxLine = Math.max(maxLine, lineIndex);
+
+			const delta = change.insert.length - (change.to - change.from);
+			if (delta === 0) continue;
+			const target = updatedRanges[lineIndex];
+			if (!target) return false;
+			target.to += delta;
+			for (let i = lineIndex + 1; i < updatedRanges.length; i += 1) {
+				const range = updatedRanges[i];
+				if (!range) continue;
+				range.from += delta;
+				range.to += delta;
+			}
+		}
+
+		if (!Number.isFinite(minLine)) return false;
+		this.lineRanges = updatedRanges;
+		this.rebuildChunkControllerSnapshot();
+
+		for (let i = minLine; i <= maxLine; i += 1) {
+			const lineRange = this.lineRanges[i];
+			const lineEl = this.getLineElement(i);
+			if (!lineRange || !lineEl) continue;
+			lineEl.replaceChildren();
+			this.renderLine(lineEl, lineRange, i);
+			lineEl.dataset.from = String(lineRange.from);
+			lineEl.dataset.to = String(lineRange.to);
+		}
+
+		// 変更行以降の可視行のみfrom/toデータセットを更新。
+		// getLineElement (binary search) で gap 要素をスキップする。
+		for (let i = maxLine + 1; i < this.lineRanges.length; i += 1) {
+			const range = this.lineRanges[i];
+			if (!range) continue;
+			if (
+				this.lineHeadingHiddenBy[i] !== null &&
+				this.lineHeadingHiddenBy[i] !== undefined
+			) {
+				continue;
+			}
+			const lineEl = this.getLineElement(i);
+			if (!lineEl) continue;
+			lineEl.dataset.from = String(range.from);
+			lineEl.dataset.to = String(range.to);
+		}
+
+		this.updateSourceModeLineRange(true);
+		this.pendingSpacerEl = null;
+		this.pendingLineIndex = null;
+		this.pendingLocalOffset = null;
+		if (this.pendingHold) {
+			this.pendingHold = false;
+			this.updatePendingText("", true);
+		}
+		this.outlinePanel?.refresh();
+		this.scheduleCaretUpdate(true);
+		if (this.loadingOverlayPending) {
+			this.hideLoadingOverlay();
+		}
+		this.scheduleLineModelRecompute(minLine, maxLine);
+		return true;
+	}
+
+	/**
+	 * 折りたたみ時の差分パス（行数変更・構造変更を含む）。
+	 *
+	 * Model-first アプローチ:
+	 *  1. 旧モデルから折りたたみセクション情報を収集
+	 *  2. collapsedHeadingLines をシフト（> oldEnd のみ）
+	 *  3. lineRanges / lineBlockKinds 等を新モデルへ更新
+	 *  4. 新 gap / セクション情報を構築
+	 *  5. 旧 DOM から gap 範囲を抽出
+	 *  6. computeCollapsedDiffRebuildRange で再構築範囲を拡張
+	 *  7. 拡張済み旧範囲で DOM 要素を収集
+	 *  8. 拡張済み新範囲で fragment を構築
+	 *  9. 後続 sibling の属性をシフト / gap を再構築
+	 * 10. Atomic DOM swap
+	 */
+	private applyNewlineWithGaps(changes: SoTChange[]): boolean {
+		if (!this.derivedContentEl || !this.sotEditor) return false;
+
+		const doc = this.sotEditor.getDoc();
+		const lines = doc.split("\n");
+		const newRanges = this.computeLineRangesFromLines(lines);
+		const oldLineCount = this.lineRanges.length;
+
+		// --- 変更範囲を旧/新の両方で特定 ---
+		let oldStart = Number.POSITIVE_INFINITY;
+		let oldEnd = -1;
+		let newStart = Number.POSITIVE_INFINITY;
+		let newEnd = -1;
+
+		for (const change of changes) {
+			const oldStartLine = this.findLineIndexInRanges(
+				this.lineRanges,
+				change.from,
+			);
+			const oldEndLine = this.findLineIndexInRanges(
+				this.lineRanges,
+				change.to,
+			);
+			const newStartLine = this.findLineIndexInRanges(
+				newRanges,
+				change.fromB,
+			);
+			const newEndLine = this.findLineIndexInRanges(
+				newRanges,
+				change.toB,
+			);
+			if (
+				oldStartLine === null ||
+				oldEndLine === null ||
+				newStartLine === null ||
+				newEndLine === null
+			) {
+				return false;
+			}
+			oldStart = Math.min(oldStart, oldStartLine);
+			oldEnd = Math.max(oldEnd, oldEndLine);
+			newStart = Math.min(newStart, newStartLine);
+			newEnd = Math.max(newEnd, newEndLine);
+		}
+
+		if (!Number.isFinite(oldStart) || !Number.isFinite(newStart)) {
+			return false;
+		}
+
+		const lineDelta = (newEnd - newStart) - (oldEnd - oldStart);
+
+		// === Step 1: 旧モデルから折りたたみセクション情報を収集 ===
+		const oldCollapsedSections: { headingLine: number; sectionEnd: number }[] = [];
+		for (const h of this.collapsedHeadingLines) {
+			const se = this.lineHeadingSectionEnd[h];
+			if (se != null) {
+				oldCollapsedSections.push({ headingLine: h, sectionEnd: se });
+			}
+		}
+
+		// === Step 2: collapsedHeadingLines をシフト（> oldEnd のみ） ===
+		this.collapsedHeadingLines = shiftCollapsedHeadingLines(
+			this.collapsedHeadingLines,
+			oldEnd,
+			lineDelta,
+		);
+
+		// === Step 3: lineRanges 更新 & lineBlockKinds 再計算 ===
+		this.lineRanges = newRanges;
+		this.recomputeLineBlockKinds(lines);
+
+		// === Step 4: 新しい gap / セクション情報を構築 ===
+		const isLineHidden = (index: number): boolean =>
+			this.lineHeadingHiddenBy[index] !== null &&
+			this.lineHeadingHiddenBy[index] !== undefined &&
+			!this.isLineInSourceMode(index);
+
+		const newGapRanges = buildCollapsedGapRanges({
+			lineRanges: newRanges,
+			isLineHidden,
+		});
+		const newGapsByStart = new Map(
+			newGapRanges.map((g) => [g.startLine, g]),
+		);
+
+		const newCollapsedSections: { headingLine: number; sectionEnd: number }[] = [];
+		for (const h of this.collapsedHeadingLines) {
+			const se = this.lineHeadingSectionEnd[h];
+			if (se != null) {
+				newCollapsedSections.push({ headingLine: h, sectionEnd: se });
+			}
+		}
+
+		// === Step 5: 旧 DOM から gap 範囲を抽出 ===
+		const contentChildren = this.derivedContentEl.children;
+		const fmOffset = this.getLineElementOffset();
+		const oldGapRanges: { startLine: number; endLine: number; lineCount: number }[] = [];
+		for (let ci = fmOffset; ci < contentChildren.length; ci++) {
+			const el = contentChildren[ci] as HTMLElement;
+			if (!el || el.dataset.gapKind !== "collapsed") continue;
+			const gs = Number.parseInt(el.dataset.startLine ?? "", 10);
+			const ge = Number.parseInt(el.dataset.endLine ?? "", 10);
+			if (Number.isFinite(gs) && Number.isFinite(ge)) {
+				oldGapRanges.push({ startLine: gs, endLine: ge, lineCount: ge - gs + 1 });
+			}
+		}
+
+		// === Step 6: 再構築範囲を計算（gap / セクション境界まで拡張） ===
+		const {
+			rebuildStart,
+			rebuildEnd: rawRebuildEnd,
+			oldRemoveStart,
+			oldRemoveEnd: rawOldRemoveEnd,
+		} = computeCollapsedDiffRebuildRange({
+			oldStart,
+			oldEnd,
+			newStart,
+			newEnd,
+			lineDelta,
+			newGapRanges,
+			oldGapRanges,
+			oldCollapsedSections,
+			newCollapsedSections,
+		});
+		const rebuildEnd = Math.min(rawRebuildEnd, newRanges.length - 1);
+		const oldRemoveEnd = Math.min(rawOldRemoveEnd, oldLineCount - 1);
+
+		// === Step 7: DOM 変更前に旧行要素・旧gap要素を収集 ===
+		const elementsToRemove: HTMLElement[] = [];
+		for (let ci = fmOffset; ci < contentChildren.length; ci++) {
+			const el = contentChildren[ci] as HTMLElement;
+			if (!el) continue;
+
+			if (el.dataset.gapKind === "collapsed") {
+				const gs = Number.parseInt(el.dataset.startLine ?? "", 10);
+				const ge = Number.parseInt(el.dataset.endLine ?? "", 10);
+				if (Number.isFinite(gs) && Number.isFinite(ge)) {
+					if (ge >= oldRemoveStart && gs <= oldRemoveEnd) {
+						elementsToRemove.push(el);
+					}
+				}
+				continue;
+			}
+
+			const lineStr = el.dataset.line;
+			if (lineStr === undefined) continue;
+			const lineIdx = Number.parseInt(lineStr, 10);
+			if (!Number.isFinite(lineIdx)) continue;
+			if (lineIdx >= oldRemoveStart && lineIdx <= oldRemoveEnd) {
+				elementsToRemove.push(el);
+			}
+		}
+
+		if (elementsToRemove.length === 0) return false;
+
+		const lastOldEl = elementsToRemove[elementsToRemove.length - 1];
+		const anchorEl = lastOldEl.nextElementSibling;
+
+		// === Step 8: fragment に新行 + gap 要素を構築（モデル更新済み） ===
+		const fragment = document.createDocumentFragment();
+		let idx = rebuildStart;
+		while (idx <= rebuildEnd) {
+			const gap = newGapsByStart.get(idx);
+			if (gap && gap.endLine <= rebuildEnd) {
+				fragment.appendChild(createCollapsedGapElement(gap));
+				idx = gap.endLine + 1;
+				continue;
+			}
+			if (isLineHidden(idx)) {
+				idx += 1;
+				continue;
+			}
+			const range = newRanges[idx];
+			if (!range) {
+				idx += 1;
+				continue;
+			}
+			const lineEl = document.createElement("div");
+			lineEl.className = "tategaki-sot-line";
+			lineEl.dataset.from = String(range.from);
+			lineEl.dataset.to = String(range.to);
+			lineEl.dataset.line = String(idx);
+			this.renderLine(lineEl, range, idx);
+			fragment.appendChild(lineEl);
+			idx += 1;
+		}
+
+		// === Step 9: 後続 sibling の属性更新 + gap 再構築 ===
+		{
+			let sibling: Element | null = anchorEl ?? null;
+			while (sibling) {
+				const nextSibling = sibling.nextElementSibling;
+				if (sibling instanceof HTMLElement) {
+					if (sibling.dataset.gapKind === "collapsed") {
+						const oldGs = Number.parseInt(
+							sibling.dataset.startLine ?? "", 10,
+						);
+						if (Number.isFinite(oldGs)) {
+							const shiftedStart = oldGs + lineDelta;
+							const newGap = newGapsByStart.get(shiftedStart);
+							if (newGap) {
+								sibling.dataset.startLine = String(newGap.startLine);
+								sibling.dataset.endLine = String(newGap.endLine);
+								sibling.dataset.lineCount = String(newGap.lineCount);
+							} else {
+								sibling.remove();
+							}
+						}
+					} else {
+						const oldLineStr = sibling.dataset.line;
+						if (oldLineStr !== undefined) {
+							const oldLine = Number.parseInt(oldLineStr, 10);
+							if (Number.isFinite(oldLine)) {
+								const newLine = oldLine + lineDelta;
+								sibling.dataset.line = String(newLine);
+								const range = newRanges[newLine];
+								if (range) {
+									sibling.dataset.from = String(range.from);
+									sibling.dataset.to = String(range.to);
+								}
+							}
+						}
+					}
+				}
+				sibling = nextSibling;
+			}
+		}
+
+		// === Step 10: Atomic DOM swap — 旧要素除去 + 新要素挿入 ===
+		for (const el of elementsToRemove) {
+			el.remove();
+		}
+		if (anchorEl && anchorEl.parentNode === this.derivedContentEl) {
+			this.derivedContentEl.insertBefore(fragment, anchorEl);
+		} else {
+			this.derivedContentEl.appendChild(fragment);
+		}
+
+		// === 後処理 ===
+		this.rebuildChunkControllerSnapshot();
+		this.updateSourceModeLineRange(true);
+		this.pendingSpacerEl = null;
+		this.pendingLineIndex = null;
+		this.pendingLocalOffset = null;
+		if (this.pendingHold) {
+			this.pendingHold = false;
+			this.updatePendingText("", true);
+		}
+		this.outlinePanel?.refresh();
+		this.scheduleCaretUpdate(true);
+		if (this.loadingOverlayPending) {
+			this.hideLoadingOverlay();
+		}
+		this.scheduleLineModelRecompute(
+			Math.min(oldStart, newStart),
+			Math.max(oldEnd, newEnd),
+		);
+		return true;
+	}
+
 	private applyChanges(changes: SoTChange[]): boolean {
 		if (!this.derivedContentEl || !this.sotEditor) return false;
 		if (this.lineRanges.length === 0) return false;
 		if (changes.length === 0) return false;
-		if (this.collapsedHeadingLines.size > 0) return false;
+		if (this.collapsedHeadingLines.size > 0) {
+			return this.applyChangesWithCollapsedHeadings(changes);
+		}
 
 		if (this.canApplyChangesFast(changes)) {
 			const fastApplied = this.applyChangesFast(changes);

@@ -69,6 +69,11 @@ import {
 	getCollapsedGapRangeFromElement,
 } from "./wysiwyg/sot/sot-gap-dom";
 import {
+	computeCollapsedDiffRebuildRange,
+	shiftCollapsedHeadingLines,
+	couldLineChangeBlockStructure,
+} from "./wysiwyg/sot/sot-collapsed-diff";
+import {
 	captureScrollAnchor,
 	captureScrollAnchorFromLineElements,
 	captureScrollAnchorFromViewport,
@@ -153,6 +158,8 @@ export class TategakiTestSuite {
 					await this.testSoTDisplayChunksModel();
 				await this.testSoTCollapsedGapRanges();
 				await this.testSoTCollapsedGapDom();
+				await this.testSoTCollapsedGapNewlineIntegrity();
+				await this.testSoTCollapsedDiffHelpers();
 				await this.testSoTScrollAnchor();
 				await this.testSoTChunkController();
 				await this.testSoTChunkReadProbe();
@@ -1193,6 +1200,213 @@ export class TategakiTestSuite {
 		}
 	}
 
+	private async testSoTCollapsedGapNewlineIntegrity(): Promise<void> {
+		const testName = "SoT派生ビュー: 折りたたみ見出し+改行挿入のgap整合性";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const makeRanges = (count: number) =>
+				Array.from({ length: count }, (_, index) => ({
+					from: index * 10,
+					to: index * 10 + 5,
+				}));
+
+			// シナリオ: 10行の文書、行2が折りたたみ見出しで行3-4がhidden
+			// 行7で改行を挿入 → 11行になり、旧行3-4は新行4-5にシフト
+			const oldLineCount = 10;
+			const hiddenLines = new Set([3, 4]);
+
+			const oldGaps = buildCollapsedGapRanges({
+				lineRanges: makeRanges(oldLineCount),
+				isLineHidden: (i) => hiddenLines.has(i),
+			});
+			assert(
+				oldGaps.length === 1 &&
+					oldGaps[0]?.startLine === 3 &&
+					oldGaps[0]?.endLine === 4 &&
+					oldGaps[0]?.lineCount === 2,
+				"改行前のgapが正しくない",
+			);
+
+			// 改行挿入: 行7の後に1行追加 → 全11行
+			// collapsedHeadingLines のシフト: 行2は変更点(7)より前なのでそのまま
+			// hidden行もシフト不要（変更点より前）
+			const newLineCount = 11;
+			const lineDelta = 1;
+			const insertionPoint = 7;
+
+			// シフト後のhidden判定
+			const shiftedHidden = new Set<number>();
+			for (const h of hiddenLines) {
+				shiftedHidden.add(h >= insertionPoint ? h + lineDelta : h);
+			}
+
+			const newGaps = buildCollapsedGapRanges({
+				lineRanges: makeRanges(newLineCount),
+				isLineHidden: (i) => shiftedHidden.has(i),
+			});
+			assert(
+				newGaps.length === 1 &&
+					newGaps[0]?.startLine === 3 &&
+					newGaps[0]?.endLine === 4 &&
+					newGaps[0]?.lineCount === 2,
+				"改行後のgapが変更点より前で変わらないはず",
+			);
+
+			// シナリオ2: 折りたたみ見出しの直前で改行挿入
+			// 行1で改行 → 全11行、hidden行は3→4, 4→5にシフト
+			const shiftedHidden2 = new Set<number>();
+			const insertionPoint2 = 1;
+			for (const h of hiddenLines) {
+				shiftedHidden2.add(h >= insertionPoint2 ? h + lineDelta : h);
+			}
+
+			const newGaps2 = buildCollapsedGapRanges({
+				lineRanges: makeRanges(newLineCount),
+				isLineHidden: (i) => shiftedHidden2.has(i),
+			});
+			assert(
+				newGaps2.length === 1 &&
+					newGaps2[0]?.startLine === 4 &&
+					newGaps2[0]?.endLine === 5 &&
+					newGaps2[0]?.lineCount === 2,
+				"折りたたみ前の改行でgapがシフトされない",
+			);
+
+			// シナリオ3: hidden run内部で改行 → hidden行が分断されないことを確認
+			// 行3(hidden)内で改行 → 行3,4 → 行3,4,5 (全11行)
+			// ただしhidden判定はrecomputeLineBlockKindsの結果に依存するので、
+			// ここでは純関数レベルでhidden setが正しくシフトされた場合をテスト
+			const shiftedHidden3 = new Set([3, 4, 5]); // 行3で改行→行3,4,5がhidden
+			const newGaps3 = buildCollapsedGapRanges({
+				lineRanges: makeRanges(newLineCount),
+				isLineHidden: (i) => shiftedHidden3.has(i),
+			});
+			assert(
+				newGaps3.length === 1 &&
+					newGaps3[0]?.startLine === 3 &&
+					newGaps3[0]?.endLine === 5 &&
+					newGaps3[0]?.lineCount === 3,
+				"hidden run内の改行でgapが拡大されない",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"改行後gap整合: 変更前保持・シフト・hidden run拡大を確認",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `折りたたみ+改行gap整合エラー: ${(error as Error).message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTCollapsedDiffHelpers(): Promise<void> {
+		const testName = "SoT派生ビュー: 折りたたみ差分ヘルパー関数群";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			// --- shiftCollapsedHeadingLines ---
+			// 見出し行そのもの(oldEnd以内)はシフトしない
+			const s1 = shiftCollapsedHeadingLines(new Set([3, 7]), 3, 1);
+			assert(s1.has(3), "heading at oldEnd should NOT shift");
+			assert(s1.has(8), "heading after oldEnd should shift");
+			assert(!s1.has(7), "old index 7 should be removed");
+
+			// lineDelta=0 → コピーのみ
+			const s2 = shiftCollapsedHeadingLines(new Set([2, 5]), 2, 0);
+			assert(s2.has(2) && s2.has(5), "lineDelta=0 preserves all");
+
+			// --- couldLineChangeBlockStructure ---
+			assert(
+				couldLineChangeBlockStructure("# Heading", "normal", false),
+				"normal→heading should detect",
+			);
+			assert(
+				couldLineChangeBlockStructure("plain text", "normal", true),
+				"heading→normal should detect",
+			);
+			assert(
+				!couldLineChangeBlockStructure("plain text", "normal", false),
+				"normal→normal should not trigger",
+			);
+			assert(
+				couldLineChangeBlockStructure("```js", "normal", false),
+				"normal→code-fence should detect",
+			);
+
+			// --- computeCollapsedDiffRebuildRange ---
+			// gap が編集範囲をまたぐケース: gap [1,4] が [2,3] にまたがる
+			const r1 = computeCollapsedDiffRebuildRange({
+				oldStart: 2, oldEnd: 2,
+				newStart: 2, newEnd: 3,
+				lineDelta: 1,
+				newGapRanges: [{ startLine: 1, endLine: 5, lineCount: 5 }],
+				oldGapRanges: [{ startLine: 1, endLine: 3, lineCount: 3 }],
+				oldCollapsedSections: [],
+				newCollapsedSections: [],
+			});
+			assert(
+				r1.rebuildStart <= 1 && r1.rebuildEnd >= 5,
+				`gap spanning edit should expand new: [${r1.rebuildStart},${r1.rebuildEnd}]`,
+			);
+			assert(
+				r1.oldRemoveStart <= 1 && r1.oldRemoveEnd >= 3,
+				`gap spanning edit should expand old: [${r1.oldRemoveStart},${r1.oldRemoveEnd}]`,
+			);
+
+			// collapsed heading section が編集行の直後に始まるケース
+			const r2 = computeCollapsedDiffRebuildRange({
+				oldStart: 5, oldEnd: 5,
+				newStart: 5, newEnd: 5,
+				lineDelta: 0,
+				newGapRanges: [],
+				oldGapRanges: [{ startLine: 6, endLine: 10, lineCount: 5 }],
+				oldCollapsedSections: [{ headingLine: 5, sectionEnd: 10 }],
+				newCollapsedSections: [],
+			});
+			assert(
+				r2.oldRemoveEnd >= 10,
+				`heading section at edit line should expand old: oldRemoveEnd=${r2.oldRemoveEnd}`,
+			);
+			assert(
+				r2.rebuildEnd >= 10,
+				`heading section at edit line should expand new: rebuildEnd=${r2.rebuildEnd}`,
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "shiftCollapsedHeadingLines / couldLineChangeBlockStructure / computeCollapsedDiffRebuildRange 検証OK",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `折りたたみ差分ヘルパーエラー: ${(error as Error).message}`,
+				duration,
+			});
+		}
+	}
+
 	private async testSoTScrollAnchor(): Promise<void> {
 		const testName = "SoT派生ビュー: scroll anchor補正 helper";
 		const startTime = performance.now();
@@ -1222,7 +1436,7 @@ export class TategakiTestSuite {
 				});
 			};
 
-			setRect(rootEl, { top: 100, height: 200, width: 200 });
+			setRect(rootEl, { left: 20, top: 100, height: 200, width: 200 });
 
 			const contentEl = document.createElement("div");
 			const gapEl = createCollapsedGapElement({
@@ -1239,20 +1453,33 @@ export class TategakiTestSuite {
 			contentEl.append(gapEl, firstLineEl, secondLineEl);
 			rootEl.appendChild(contentEl);
 				document.body.appendChild(rootEl);
-				setRect(gapEl, { top: 98, height: 0, width: 0 });
-				setRect(firstLineEl, { top: 90, height: 60, width: 100 });
-				setRect(secondLineEl, { top: 102, height: 24, width: 100 });
+				setRect(gapEl, { left: 20, top: 98, height: 0, width: 0 });
+				setRect(firstLineEl, {
+					left: 80,
+					top: 90,
+					height: 60,
+					width: 100,
+				});
+				setRect(secondLineEl, {
+					left: 140,
+					top: 102,
+					height: 24,
+					width: 100,
+				});
 
 				const topmostAnchor = captureScrollAnchor({
 					containerTop: 100,
 					containerBottom: 300,
+					containerLeft: 20,
 					candidates: [
-						{ lineIndex: 4, top: 90, bottom: 150 },
-						{ lineIndex: 5, top: 102, bottom: 126 },
+						{ lineIndex: 4, top: 90, bottom: 150, left: 80 },
+						{ lineIndex: 5, top: 102, bottom: 126, left: 140 },
 					],
 				});
 				assert(
-					topmostAnchor?.lineIndex === 4 && topmostAnchor.topOffsetPx === -10,
+					topmostAnchor?.lineIndex === 4 &&
+						topmostAnchor.topOffsetPx === -10 &&
+						topmostAnchor.leftOffsetPx === 60,
 					"captureScrollAnchor: 最上端の可視lineではなく近いlineを選んでいる",
 				);
 
@@ -1276,7 +1503,8 @@ export class TategakiTestSuite {
 				});
 				assert(
 					viewportAnchor?.lineIndex === 4 &&
-						viewportAnchor.topOffsetPx === -10,
+						viewportAnchor.topOffsetPx === -10 &&
+						viewportAnchor.leftOffsetPx === 60,
 					"captureScrollAnchorFromViewport: viewport上端に最も近い可視lineを取れない",
 				);
 				assert(
@@ -1284,51 +1512,62 @@ export class TategakiTestSuite {
 					"captureScrollAnchorFromViewport: viewport probeが先頭近傍だけで完結しない",
 				);
 
-				setRect(firstLineEl, { top: 96, height: 24, width: 100 });
-				setRect(secondLineEl, { top: 138, height: 24, width: 100 });
+				setRect(firstLineEl, { left: 78, top: 96, height: 24, width: 100 });
+				setRect(secondLineEl, { left: 140, top: 138, height: 24, width: 100 });
 
 				const anchor = captureScrollAnchorFromLineElements({
 					containerEl: rootEl,
 					lineElements: contentEl.querySelectorAll(".tategaki-sot-line"),
 				});
 			assert(
-				anchor?.lineIndex === 4 && anchor.topOffsetPx === -4,
+				anchor?.lineIndex === 4 &&
+					anchor.topOffsetPx === -4 &&
+					anchor.leftOffsetPx === 58,
 				"captureScrollAnchor: 可視lineのアンカーを取得できない",
 			);
 
-			setRect(firstLineEl, { top: 128, height: 24, width: 100 });
+			setRect(firstLineEl, { left: 90, top: 128, height: 24, width: 100 });
 			const adjustment = computeScrollAnchorAdjustmentFromLineElement({
 				anchor: {
 					lineIndex: 4,
 					topOffsetPx: -4,
+					leftOffsetPx: 58,
 				},
 				containerEl: rootEl,
 				resolveLineElement: (lineIndex) =>
 					lineIndex === 4 ? firstLineEl : null,
 			});
 			assert(
-				adjustment === 32,
-				"computeScrollAnchorAdjustment: render後のtop差分を返さない",
+				adjustment.topPx === 32 && adjustment.leftPx === 12,
+				"computeScrollAnchorAdjustment: render後の差分を両軸で返さない",
 			);
 
 			const missingAdjustment = computeScrollAnchorAdjustmentFromLineElement({
 				anchor: {
 					lineIndex: 9,
 					topOffsetPx: 0,
+					leftOffsetPx: 0,
 				},
 				containerEl: rootEl,
 				resolveLineElement: () => null,
 			});
 			assert(
-				missingAdjustment === null,
+				missingAdjustment.topPx === null &&
+					missingAdjustment.leftPx === null,
 				"computeScrollAnchorAdjustment: line解決失敗でnullにならない",
 			);
 
-			setRect(firstLineEl, { top: 96.2, height: 24, width: 100 });
+			setRect(firstLineEl, {
+				left: 78.2,
+				top: 96.2,
+				height: 24,
+				width: 100,
+			});
 			const tinyAdjustment = computeScrollAnchorAdjustmentFromLineElement({
 				anchor: {
 					lineIndex: 4,
 					topOffsetPx: -4,
+					leftOffsetPx: 58,
 				},
 				containerEl: rootEl,
 				resolveLineElement: (lineIndex) =>
@@ -1336,14 +1575,14 @@ export class TategakiTestSuite {
 				minAbsDeltaPx: 0.5,
 			});
 			assert(
-				tinyAdjustment === null,
+				tinyAdjustment.topPx === null && tinyAdjustment.leftPx === null,
 				"computeScrollAnchorAdjustment: 微小差分で補正不要判定にならない",
 			);
 
 			assert(
 				shouldApplyScrollAnchorAdjustment({
 					anchor,
-					adjustmentPx: adjustment,
+					adjustmentPx: adjustment.topPx,
 					suppressScrollRestore: false,
 				}),
 				"scroll anchor補正条件: 通常時に適用可と判定されない",
@@ -1351,7 +1590,7 @@ export class TategakiTestSuite {
 			assert(
 				!shouldApplyScrollAnchorAdjustment({
 					anchor,
-					adjustmentPx: adjustment,
+					adjustmentPx: adjustment.topPx,
 					suppressScrollRestore: true,
 				}),
 				"scroll anchor補正条件: outline jump抑制中でも適用される",
