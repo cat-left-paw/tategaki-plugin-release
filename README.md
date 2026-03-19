@@ -1,4 +1,4 @@
-# Tategaki Plugin (vertical writing editor for Obsidian)
+# Tategaki (vertical writing editor for Obsidian)
 
 [English](README.md) | [日本語](README.ja.md)
 
@@ -17,7 +17,7 @@ Status:
   - Ruby (furigana) support (Aozora Bunko style), e.g. `｜漢字《かんじ》`
   - Images (standard Markdown images and Obsidian embeds)
   - Outline navigation and heading folding
-  - Selection mode options for SoT (`fast-click` / `native-drag`)
+  - Selection mode options for Writing & Reference mode (`fast-click` / `native-drag`)
   - Outliner-style list editing: move items, change nesting with `Tab` / `Shift+Tab`, and keep ordered lists renumbered
   - Improved `Enter` / `Shift+Enter` behavior in list items and blockquotes
     - `Enter` continues or exits naturally, and `Shift+Enter` can be used for in-item line breaks and continuing blank lines
@@ -59,6 +59,13 @@ If you are updating from older versions, Obsidian may treat this as a different 
   - to `.obsidian/plugins/tategaki/data.json`
 - Re-check custom hotkeys for plugin commands
 - After confirming everything works, remove old folder `tategaki-plugin`
+
+## Reviewer Notes
+
+- **Platform**: Desktop only (Windows / macOS / Linux). Mobile is not supported.
+- **Telemetry**: No telemetry or analytics of any kind.
+- **Network access**: The only outbound request is the manual update check (Settings → "Check for updates" button). No automatic network calls occur.
+- **Local storage**: Compatibility mode writes sync backups to `<vault config folder>/tategaki-sync-backups/` (typically `.obsidian/tategaki-sync-backups/`). Writing & Reference mode does not create backup files.
 
 ## Documentation
 

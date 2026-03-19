@@ -11,6 +11,7 @@ import {
 	setIcon,
 } from "obsidian";
 import { Editor } from "@tiptap/core";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import {
 	Selection as PMSelection,
 	TextSelection as PMTextSelection,
@@ -73,6 +74,20 @@ type ScrollMarginValue =
 	| number
 	| { top: number; right: number; bottom: number; left: number };
 
+type ManagedCompatLeaf = WorkspaceLeaf & {
+	updateHeader?: () => void;
+	[key: string]: unknown;
+};
+
+type AppPluginManagerLike = {
+	enabledPlugins?: Set<string> | { has: (id: string) => boolean };
+	plugins?: Record<string, unknown>;
+};
+
+type AppWithPluginManager = typeof ItemView.prototype.app & {
+	plugins?: AppPluginManagerLike;
+};
+
 interface FrontmatterData {
 	title?: string;
 	subtitle?: string;
@@ -101,6 +116,10 @@ function getOffsetFromPos(
 	}
 	offset += Math.min(ch, lines[line]?.length ?? 0);
 	return Math.max(0, Math.min(offset, content.length));
+}
+
+function getManagedCompatLeaf(leaf: WorkspaceLeaf): ManagedCompatLeaf {
+	return leaf as ManagedCompatLeaf;
 }
 
 export class TipTapCompatView extends ItemView {
@@ -164,7 +183,7 @@ export class TipTapCompatView extends ItemView {
 	private modeBadgeEl: HTMLElement | null = null;
 	private initialScrollApplied = false;
 	private frontmatterUpdateToken = 0;
-	private beforeInputHandler: ((event: InputEvent) => void) | null = null;
+	private beforeInputHandler: EventListener | null = null;
 	private beforeInputKeydownHandler:
 		| ((event: KeyboardEvent) => void)
 		| null = null;
@@ -440,7 +459,7 @@ export class TipTapCompatView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
-		const initialFile = (this.leaf as any)[INITIAL_FILE_PROP] as
+		const initialFile = getManagedCompatLeaf(this.leaf)[INITIAL_FILE_PROP] as
 			| TFile
 			| undefined;
 		if (!initialFile) {
@@ -454,12 +473,12 @@ export class TipTapCompatView extends ItemView {
 				}, 0);
 				return;
 			}
-		delete (this.leaf as any)[INITIAL_FILE_PROP];
+		delete getManagedCompatLeaf(this.leaf)[INITIAL_FILE_PROP];
 
 		// ファイル情報を保持
 		this.currentFile = initialFile;
 		// TipTap は互換モードとして扱い、参照は SoT/書籍モードに集約する。
-		delete (this.leaf as any)[INITIAL_VIEW_MODE_PROP];
+		delete getManagedCompatLeaf(this.leaf)[INITIAL_VIEW_MODE_PROP];
 
 		const container = this.containerEl.children[1] as HTMLElement;
 		this.viewRootEl = container;
@@ -1304,7 +1323,7 @@ export class TipTapCompatView extends ItemView {
 	}
 
 	private isJapaneseNovelRubyActive(): boolean {
-		const pluginManager = (this.app as any)?.plugins;
+		const pluginManager = (this.app as AppWithPluginManager)?.plugins;
 		if (!pluginManager) {
 			return false;
 		}
@@ -2188,7 +2207,7 @@ export class TipTapCompatView extends ItemView {
 
 		const items: Array<{ level: number; text: string; pos: number }> = [];
 		try {
-			this.editor.state.doc.descendants((node: any, pos: number) => {
+			this.editor.state.doc.descendants((node: PMNode, pos: number) => {
 				if (node.type?.name === "heading") {
 					const level = Number(node.attrs?.level ?? 1);
 					const text = node.textContent ?? "";
@@ -2229,12 +2248,9 @@ export class TipTapCompatView extends ItemView {
 		}
 
 	private registerEditorChangeWatchers(): void {
-		const leafRef = (this.app.workspace as any).on(
-			"active-leaf-change",
-			() => {
-				this.handleWorkspaceFocusChange();
-			}
-		);
+		const leafRef = this.app.workspace.on("active-leaf-change", () => {
+			this.handleWorkspaceFocusChange();
+		});
 		this.registerEvent(leafRef);
 	}
 
@@ -2502,13 +2518,16 @@ export class TipTapCompatView extends ItemView {
 			this.lastEnterKeydownAt = Date.now();
 			this.lastEnterKeydownShift = event.shiftKey;
 		};
-		const handler = (event: InputEvent) => {
+		const handler: EventListener = (event) => {
+			if (!(event instanceof InputEvent)) {
+				return;
+			}
 			// 一部モバイル環境で Enter が改行にならない（insertParagraph/insertLineBreakが期待通り反映されない）ため、
 			// beforeinputで捕捉して明示的に段落分割/HardBreakを挿入する。
 			if (this.isEditorReadOnly()) {
 				return;
 			}
-			const type = (event as any).inputType as string | undefined;
+			const type = event.inputType;
 			if (type === "insertParagraph") {
 				event.preventDefault();
 				const useHardBreak = this.consumeShiftEnterFlag();
@@ -2539,7 +2558,7 @@ export class TipTapCompatView extends ItemView {
 		};
 		this.beforeInputHandler = handler;
 		this.beforeInputKeydownHandler = keydownHandler;
-		dom.addEventListener("beforeinput", handler as any);
+		dom.addEventListener("beforeinput", handler);
 		dom.addEventListener("keydown", keydownHandler, true);
 	}
 
@@ -2557,10 +2576,7 @@ export class TipTapCompatView extends ItemView {
 		try {
 			const dom = this.editor.view.dom as HTMLElement;
 			if (this.beforeInputHandler) {
-				dom.removeEventListener(
-					"beforeinput",
-					this.beforeInputHandler as any
-				);
+				dom.removeEventListener("beforeinput", this.beforeInputHandler);
 			}
 			if (this.beforeInputKeydownHandler) {
 				dom.removeEventListener(
@@ -3031,10 +3047,7 @@ export class TipTapCompatView extends ItemView {
 	}
 
 	private getEffectiveCommonSettings(settings: TategakiV2Settings) {
-		return typeof (this.plugin as any).getEffectiveCommonSettings ===
-			"function"
-			? (this.plugin as any).getEffectiveCommonSettings()
-			: settings.common;
+		return this.plugin.getEffectiveCommonSettings() ?? settings.common;
 	}
 
 	private getCurrentBorderScale(settings: TategakiV2Settings): number {
@@ -3619,10 +3632,10 @@ export class TipTapCompatView extends ItemView {
 		}
 	}
 
-	private findCursorMarkerPos(doc: any): number | null {
+	private findCursorMarkerPos(doc: PMNode): number | null {
 		let found: number | null = null;
 		try {
-			doc.descendants((node: any, pos: number) => {
+			doc.descendants((node: PMNode, pos: number) => {
 				if (found != null) {
 					return false;
 				}
@@ -3862,10 +3875,7 @@ export class TipTapCompatView extends ItemView {
 	private applySettingsToEditor(settings: TategakiV2Settings): void {
 		if (!this.editorHostEl || !this.editor || !this.editorAreaEl) return;
 		const effectiveCommon =
-			typeof (this.plugin as any).getEffectiveCommonSettings ===
-			"function"
-				? (this.plugin as any).getEffectiveCommonSettings()
-				: settings.common;
+			this.plugin.getEffectiveCommonSettings() ?? settings.common;
 
 		this.applyPageLayout(settings);
 
@@ -4000,10 +4010,7 @@ export class TipTapCompatView extends ItemView {
 
 	private applyPageLayout(settings: TategakiV2Settings): void {
 		const effectiveCommon =
-			typeof (this.plugin as any).getEffectiveCommonSettings ===
-			"function"
-				? (this.plugin as any).getEffectiveCommonSettings()
-				: settings.common;
+			this.plugin.getEffectiveCommonSettings() ?? settings.common;
 
 		const rawScale = Number(effectiveCommon.pageScale ?? 1);
 		const fillMode = rawScale > 1;
@@ -4113,41 +4120,6 @@ export class TipTapCompatView extends ItemView {
 			);
 		}
 
-		// 見出しと本文のスタイルをプラグイン設定で統一（Obsidianテーマの色を上書き）
-		if (this.editorHostEl) {
-			const proseMirror = this.editorHostEl.querySelector(".ProseMirror");
-			if (proseMirror) {
-				// 既存のスタイル要素を削除
-				const existingStyle = proseMirror.querySelector(
-					"style[data-tategaki-heading-style]"
-				);
-				if (existingStyle) {
-					existingStyle.remove();
-				}
-
-				// 見出しと本文の色と行間を設定するスタイルを追加
-				const headingColorInj =
-					effectiveCommon.headingTextColor || effectiveCommon.textColor;
-				const styleEl = document.createElement("style");
-				styleEl.setAttribute("data-tategaki-heading-style", "true");
-				styleEl.textContent = `
-					.ProseMirror h1,
-					.ProseMirror h2,
-					.ProseMirror h3,
-					.ProseMirror h4,
-					.ProseMirror h5,
-					.ProseMirror h6 {
-						color: ${headingColorInj} !important;
-						line-height: ${effectiveCommon.lineHeight} !important;
-					}
-					.ProseMirror p {
-						color: ${effectiveCommon.textColor} !important;
-						line-height: ${effectiveCommon.lineHeight} !important;
-					}
-				`;
-				proseMirror.appendChild(styleEl);
-			}
-		}
 	}
 
 	private applyScrollbarVisibility(writingMode: WritingMode): void {
@@ -4226,8 +4198,9 @@ export class TipTapCompatView extends ItemView {
 
 		// タブヘッダーを更新（frontmatterのtitleが変更された可能性があるため）
 		// updateHeader()は内部APIのため型アサーションを使用
-		if (typeof (this.leaf as any).updateHeader === "function") {
-			(this.leaf as any).updateHeader();
+		const managedLeaf = getManagedCompatLeaf(this.leaf);
+		if (typeof managedLeaf.updateHeader === "function") {
+			managedLeaf.updateHeader();
 		}
 		this.updatePaneHeaderTitle();
 

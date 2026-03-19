@@ -10,6 +10,10 @@ import {
 	areMarkdownContentsEquivalent,
 	writeSyncBackupPair,
 } from "../../shared/sync-backup";
+import {
+	overwriteFileContentsWithProcess,
+	replaceFileContentsWithProcess,
+} from "../../shared/vault-process-write";
 import { debugWarn, debugError } from "../../shared/logger";
 import { t } from "../../shared/i18n";
 
@@ -247,9 +251,14 @@ export class ContentEditableSyncManager {
 	 */
 	private resolveSyncMode(settings?: TategakiV2Settings): SyncMode {
 		const activeSettings = settings ?? this.getSettings();
+		const legacySettings = activeSettings as TategakiV2Settings & {
+			contenteditable?: {
+				syncMode?: SyncMode;
+			};
+		};
 		// ContentEditable版の設定から同期モードを取得
 		// デフォルトは"manual"に変更（パフォーマンス改善のため）
-		const contentEditableSettings = (activeSettings as any).contenteditable;
+		const contentEditableSettings = legacySettings.contenteditable;
 		return contentEditableSettings?.syncMode || "manual";
 	}
 
@@ -341,7 +350,12 @@ export class ContentEditableSyncManager {
 			lastSyncMessage: null,
 		});
 		try {
-			await this.app.vault.modify(this.currentFile, markdown);
+			await replaceFileContentsWithProcess(
+				this.app,
+				this.currentFile,
+				diskMarkdownBefore,
+				markdown
+			);
 
 			let readBack: string;
 			try {
@@ -374,7 +388,11 @@ export class ContentEditableSyncManager {
 				);
 
 				try {
-					await this.app.vault.modify(this.currentFile, diskMarkdownBefore);
+					await overwriteFileContentsWithProcess(
+						this.app,
+						this.currentFile,
+						diskMarkdownBefore
+					);
 					new Notice(
 						t("notice.sync.rollbackDone"),
 						4500

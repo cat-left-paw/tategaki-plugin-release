@@ -2,7 +2,12 @@
  * 回帰テストとバリデーション機能
  */
 
-import { DEFAULT_V2_SETTINGS, validateV2Settings } from "./types/settings";
+import {
+	DEFAULT_V2_SETTINGS,
+	resolveEffectiveBookHeadingPagination,
+	resolveEffectiveBookFrontmatterDisplayMode,
+	validateV2Settings,
+} from "./types/settings";
 import {
 	documentToHtml,
 	documentToMarkdown,
@@ -141,10 +146,11 @@ export class TategakiTestSuite {
 				await this.testPagedReadingModeQueuedNavigationDuringPagination();
 				await this.testBookModeConsecutiveTitlePages();
 				await this.testBookModeMarkdownBlankLineMarkersBetweenTitlePages();
-				await this.testBookModeConsecutiveTitlePageNormalization();
-				await this.testBookModeNestedTitlePagesPruneEmptyBodies();
-				await this.testBookModeVisibleContentClassification();
-				await this.testMeasuredPaginationVisibleOnlyPages();
+					await this.testBookModeConsecutiveTitlePageNormalization();
+					await this.testBookModeNestedTitlePagesPruneEmptyBodies();
+					await this.testBookModeVisibleContentClassification();
+					await this.testMeasuredPaginationPrunesNestedPageBreakHeadingGhost();
+					await this.testMeasuredPaginationVisibleOnlyPages();
 				await this.testSoTLineRanges();
 				await this.testSoTListContinuationEnter();
 				await this.testSoTListHardBreakContinuation();
@@ -2823,6 +2829,83 @@ export class TategakiTestSuite {
 		}
 	}
 
+	private async testMeasuredPaginationPrunesNestedPageBreakHeadingGhost(): Promise<void> {
+		const testName =
+			"書籍モード: frontmatter 後ろの入れ子改ページ見出しゴーストを除去する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) {
+					throw new Error(message);
+				}
+			};
+
+			const window = this.createHappyDomWindow();
+			const doc = window.document as unknown as globalThis.Document;
+			const container = doc.createElement("div") as unknown as HTMLElement;
+			doc.body.appendChild(container);
+
+			const pagination = new MeasuredPagination({
+				container,
+				contentHtml: "",
+				writingMode: "vertical-rl",
+				pageWidth: 800,
+				pageHeight: 600,
+				paddingTop: 0,
+				paddingBottom: 0,
+				paddingLeft: 0,
+				paddingRight: 0,
+			});
+
+			const wrapper = doc.createElement("div");
+			wrapper.innerHTML = [
+				'<div class="tategaki-reading-view-snapshot">',
+				'<div class="tategaki-frontmatter">',
+				'<h1 class="tategaki-frontmatter-title">表題</h1>',
+				"</div>",
+				'<div class="tiptap ProseMirror">',
+				'<h1 data-tategaki-page-break-before="true"></h1>',
+				"</div>",
+				"</div>",
+			].join("");
+
+			(
+				pagination as unknown as {
+					pruneTrailingEmptyPageBreakHeadings: (
+						element: HTMLElement,
+					) => void;
+				}
+			).pruneTrailingEmptyPageBreakHeadings(wrapper);
+
+			const html = wrapper.innerHTML;
+			assert(
+				html.includes("tategaki-frontmatter-title"),
+				`frontmatter が失われています: ${html}`,
+			);
+			assert(
+				!html.includes("data-tategaki-page-break-before"),
+				`改ページ見出しゴーストが残っています: ${html}`,
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "入れ子になった空の改ページ見出しゴーストを除去できる",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `改ページ見出しゴースト除去テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
 	private async testMeasuredPaginationVisibleOnlyPages(): Promise<void> {
 		const testName = "書籍モード: paginator が空ページを落とし画像-only を保持する";
 		const startTime = performance.now();
@@ -2960,8 +3043,8 @@ export class TategakiTestSuite {
 			const invalidMode = validateV2Settings({
 				wysiwyg: { sotSelectionMode: "invalid-value" as any },
 			});
-			if (invalidMode.wysiwyg.sotSelectionMode !== "fast-click") {
-				throw new Error("sotSelectionModeの不正値がfast-clickにフォールバックしない");
+			if (invalidMode.wysiwyg.sotSelectionMode !== "native-drag") {
+				throw new Error("sotSelectionModeの不正値がnative-dragにフォールバックしない");
 			}
 			// sotSelectionMode バリデーション: 有効値は保持
 			const validMode = validateV2Settings({
@@ -2969,6 +3052,47 @@ export class TategakiTestSuite {
 			});
 			if (validMode.wysiwyg.sotSelectionMode !== "native-drag") {
 				throw new Error("sotSelectionModeの有効値native-dragが保持されない");
+			}
+
+			const forcedFrontmatterMode =
+				resolveEffectiveBookFrontmatterDisplayMode({
+					bookFrontmatterDisplayMode: "inline",
+					bookHeadingPaginationMode: "title-page",
+					bookHeadingPaginationLevel: 2,
+					bookPageBreakBeforeHeadingLevel: 0,
+					syncCursor: true,
+					updateInterval: 300,
+				});
+			if (forcedFrontmatterMode !== "separate-page") {
+				throw new Error("章扉モード時にフロントマター表示方式が独立ページへ強制されない");
+			}
+
+			const normalFrontmatterMode =
+				resolveEffectiveBookFrontmatterDisplayMode({
+					bookFrontmatterDisplayMode: "inline",
+					bookHeadingPaginationMode: "page-break",
+					bookHeadingPaginationLevel: 2,
+					bookPageBreakBeforeHeadingLevel: 0,
+					syncCursor: true,
+					updateInterval: 300,
+				});
+			if (normalFrontmatterMode !== "inline") {
+				throw new Error("章扉でない場合にフロントマター表示方式がinlineのまま保持されない");
+			}
+
+			const disabledHeadingPagination =
+				resolveEffectiveBookHeadingPagination({
+					bookHeadingPaginationMode: "none",
+					bookHeadingPaginationLevel: 2,
+					bookPageBreakBeforeHeadingLevel: 2,
+					syncCursor: true,
+					updateInterval: 300,
+				});
+			if (
+				disabledHeadingPagination.mode !== "none" ||
+				disabledHeadingPagination.level !== 0
+			) {
+				throw new Error("見出しのページ扱いでnoneを明示しても改ページが無効にならない");
 			}
 			
 			const duration = performance.now() - startTime;
@@ -3014,8 +3138,8 @@ export class TategakiTestSuite {
 			if (!defaults.themes.length) {
 				throw new Error("テーマリストが空");
 			}
-			if (defaults.wysiwyg.sotSelectionMode !== "fast-click") {
-				throw new Error("sotSelectionModeのデフォルトがfast-clickでない");
+			if (defaults.wysiwyg.sotSelectionMode !== "native-drag") {
+				throw new Error("sotSelectionModeのデフォルトがnative-dragでない");
 			}
 			
 			const duration = performance.now() - startTime;

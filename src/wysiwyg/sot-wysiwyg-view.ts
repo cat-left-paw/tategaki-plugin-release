@@ -71,6 +71,16 @@ import {
 } from "./sot/sot-plain-edit-controller";
 import { SoTWorkspaceController } from "./sot/sot-workspace-controller";
 import {
+	cancelIdleCallbackCompat,
+	clearSoTInitialFile,
+	deleteDatasetKeys,
+	focusElementPreventScroll,
+	getSoTInitialFile,
+	requestIdleCallbackCompat,
+	setDatasetEntries,
+	updateSoTLeafHeader,
+} from "./sot/sot-wysiwyg-view-internals";
+import {
 	computeLineRangesFromLines as computeLineRangesFromLinesModel,
 	recomputeLineBlockKinds as recomputeLineBlockKindsModel,
 } from "./sot/sot-line-model";
@@ -156,7 +166,29 @@ import {
 } from "./shared/device-profile";
 
 export const TATEGAKI_SOT_WYSIWYG_VIEW_TYPE = "tategaki-sot-wysiwyg-view";
-const INITIAL_FILE_PROP = "__tategakiInitialFile";
+const LINE_DATASET_KEYS = [
+	"mdKind",
+	"mdLevel",
+	"mdDepth",
+	"headingCollapsed",
+	"headingFoldable",
+	"listMarker",
+	"taskChecked",
+	"listDepth",
+	"listBullet",
+	"codeInfo",
+	"calloutType",
+	"calloutRange",
+	"footnoteId",
+	"tableHeader",
+	"tableRange",
+	"deflistRange",
+	"imageSrc",
+	"imageAlt",
+	"imageWidth",
+	"embedTarget",
+	"mathRange",
+] as const;
 
 type SoTViewState = {
 	filePath?: string;
@@ -209,6 +241,13 @@ type RenderSegment = {
 	classNames: string[];
 	href?: string;
 	ruby?: string;
+};
+
+type HighlightNode = {
+	type: string;
+	value?: unknown;
+	properties?: Record<string, unknown>;
+	children?: HighlightNode[];
 };
 
 type ClearableSpan = {
@@ -669,10 +708,7 @@ export class SoTWysiwygView extends ItemView {
 			this.lineModelRecomputeTimer = null;
 		}
 		if (this.lineModelRecomputeIdle !== null) {
-			const cancelIdle = (window as any).cancelIdleCallback as
-				| ((handle: number) => void)
-				| undefined;
-			cancelIdle?.(this.lineModelRecomputeIdle);
+			cancelIdleCallbackCompat(this.lineModelRecomputeIdle);
 			this.lineModelRecomputeIdle = null;
 		}
 	}
@@ -985,10 +1021,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private getEffectiveCommonSettings(settings: TategakiV2Settings) {
-		return typeof (this.plugin as any).getEffectiveCommonSettings ===
-			"function"
-			? (this.plugin as any).getEffectiveCommonSettings()
-			: settings.common;
+		return this.plugin.getEffectiveCommonSettings() ?? settings.common;
 	}
 
 	private applySettingsToView(settings: TategakiV2Settings): void {
@@ -3348,7 +3381,7 @@ export class SoTWysiwygView extends ItemView {
 				if (number !== undefined) {
 					dataset.footnoteNumber = String(number);
 				} else {
-					delete (dataset as any).footnoteNumber;
+					delete dataset.footnoteNumber;
 				}
 			}
 		}
@@ -4111,7 +4144,7 @@ export class SoTWysiwygView extends ItemView {
 		];
 		const language = lang?.trim() ? lang.trim() : null;
 
-		let root: any;
+		let root: HighlightNode;
 		try {
 			if (language && lowlight.registered(language)) {
 				root = lowlight.highlight(language, lineText);
@@ -4144,7 +4177,10 @@ export class SoTWysiwygView extends ItemView {
 			cursor = to;
 		};
 
-		const walk = (node: any, classStack: string[]) => {
+		const walk = (
+			node: HighlightNode | null | undefined,
+			classStack: string[],
+		) => {
 			if (!node) return;
 			const type = node.type;
 			if (type === "text") {
@@ -4362,10 +4398,14 @@ export class SoTWysiwygView extends ItemView {
 		this.scope = new Scope(this.app.scope);
 		this.chunkController.setEnabled(false);
 		this.plainEditController = new SoTPlainEditController(
-			this as unknown as any,
+			this as unknown as ConstructorParameters<
+				typeof SoTPlainEditController
+			>[0],
 		);
 		this.workspaceController = new SoTWorkspaceController(
-			this as unknown as any,
+			this as unknown as ConstructorParameters<
+				typeof SoTWorkspaceController
+			>[0],
 		);
 	}
 
@@ -4398,9 +4438,7 @@ export class SoTWysiwygView extends ItemView {
 		if (headerTitle) {
 			headerTitle.textContent = title;
 		}
-		if (typeof (this.leaf as any).updateHeader === "function") {
-			(this.leaf as any).updateHeader();
-		}
+		updateSoTLeafHeader(this.leaf);
 	}
 
 	getCurrentFilePath(): string | null {
@@ -4441,9 +4479,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
-		const initialFile = (this.leaf as any)[INITIAL_FILE_PROP] as
-			| TFile
-			| undefined;
+		const initialFile = getSoTInitialFile(this.leaf);
 		if (!initialFile) {
 			window.setTimeout(() => {
 				try {
@@ -4454,7 +4490,7 @@ export class SoTWysiwygView extends ItemView {
 			}, 0);
 			return;
 		}
-		delete (this.leaf as any)[INITIAL_FILE_PROP];
+		clearSoTInitialFile(this.leaf);
 
 		const container = this.containerEl.children[1] as HTMLElement;
 		this.viewRootEl = container;
@@ -4935,7 +4971,9 @@ export class SoTWysiwygView extends ItemView {
 					button: pointerEvent.button,
 					onScrollbar,
 					targetStrategy,
-					selectionMode: this.plugin.settings.wysiwyg.sotSelectionMode ?? "fast-click",
+					selectionMode:
+						this.plugin.settings.wysiwyg.sotSelectionMode ??
+						"native-drag",
 				});
 				if (decision.action !== "none") {
 					this.debugNativeSelectionAssist("pointerdown-evaluated", {
@@ -5342,10 +5380,7 @@ export class SoTWysiwygView extends ItemView {
 			this.lineModelRecomputeTimer = null;
 		}
 		if (this.lineModelRecomputeIdle !== null) {
-			const cancelIdle = (window as any).cancelIdleCallback as
-				| ((handle: number) => void)
-				| undefined;
-			cancelIdle?.(this.lineModelRecomputeIdle);
+			cancelIdleCallbackCompat(this.lineModelRecomputeIdle);
 			this.lineModelRecomputeIdle = null;
 		}
 		if (this.finishRenderMathTimer !== null) {
@@ -7955,10 +7990,7 @@ export class SoTWysiwygView extends ItemView {
 				this.lineModelRecomputeTimer = null;
 			}
 			if (this.lineModelRecomputeIdle !== null) {
-				const cancelIdle = (window as any).cancelIdleCallback as
-					| ((handle: number) => void)
-					| undefined;
-				cancelIdle?.(this.lineModelRecomputeIdle);
+				cancelIdleCallbackCompat(this.lineModelRecomputeIdle);
 				this.lineModelRecomputeIdle = null;
 			}
 		} else if (
@@ -8066,7 +8098,7 @@ export class SoTWysiwygView extends ItemView {
 			if (!this.derivedContentEl) return;
 			if (!this.isLeafActive()) return;
 			try {
-				(this.derivedContentEl as any).focus({ preventScroll });
+				focusElementPreventScroll(this.derivedContentEl);
 			} catch (_) {
 				this.derivedContentEl.focus();
 			}
@@ -10237,13 +10269,9 @@ export class SoTWysiwygView extends ItemView {
 
 		const run = () => this.runLineModelRecompute();
 
-		const requestIdle = (window as any).requestIdleCallback as
-			| ((cb: () => void, opts?: { timeout?: number }) => number)
-			| undefined;
-		if (requestIdle) {
-			this.lineModelRecomputeIdle = requestIdle(run, {
-				timeout: 800,
-			});
+		const idleHandle = requestIdleCallbackCompat(run, 800);
+		if (idleHandle !== null) {
+			this.lineModelRecomputeIdle = idleHandle;
 			return;
 		}
 		this.lineModelRecomputeTimer = window.setTimeout(run, 180);
@@ -11765,27 +11793,7 @@ export class SoTWysiwygView extends ItemView {
 
 		// datasetの残骸をクリア
 		lineEl.removeAttribute("data-virtual");
-		delete (lineEl.dataset as any).mdKind;
-		delete (lineEl.dataset as any).mdLevel;
-		delete (lineEl.dataset as any).mdDepth;
-		delete (lineEl.dataset as any).headingCollapsed;
-		delete (lineEl.dataset as any).headingFoldable;
-		delete (lineEl.dataset as any).listMarker;
-		delete (lineEl.dataset as any).taskChecked;
-		delete (lineEl.dataset as any).listDepth;
-		delete (lineEl.dataset as any).listBullet;
-		delete (lineEl.dataset as any).codeInfo;
-		delete (lineEl.dataset as any).calloutType;
-		delete (lineEl.dataset as any).calloutRange;
-		delete (lineEl.dataset as any).footnoteId;
-		delete (lineEl.dataset as any).tableHeader;
-		delete (lineEl.dataset as any).tableRange;
-		delete (lineEl.dataset as any).deflistRange;
-		delete (lineEl.dataset as any).imageSrc;
-		delete (lineEl.dataset as any).imageAlt;
-		delete (lineEl.dataset as any).imageWidth;
-		delete (lineEl.dataset as any).embedTarget;
-		delete (lineEl.dataset as any).mathRange;
+		deleteDatasetKeys(lineEl, LINE_DATASET_KEYS);
 		lineEl.style.removeProperty("--tategaki-sot-list-depth");
 		lineEl.style.removeProperty("--tategaki-sot-blockquote-depth");
 
@@ -11857,9 +11865,7 @@ export class SoTWysiwygView extends ItemView {
 				"tategaki-sot-line",
 				...decoration.classes,
 			].join(" ");
-			for (const [key, value] of Object.entries(decoration.dataset)) {
-				(lineEl.dataset as any)[key] = value;
-			}
+			setDatasetEntries(lineEl, decoration.dataset);
 			for (const [key, value] of Object.entries(decoration.styleVars)) {
 				lineEl.style.setProperty(key, value);
 			}
@@ -12120,7 +12126,7 @@ export class SoTWysiwygView extends ItemView {
 				if (number !== undefined) {
 					span.dataset.footnoteNumber = String(number);
 				} else {
-					delete (span.dataset as any).footnoteNumber;
+					delete span.dataset.footnoteNumber;
 				}
 				const tooltip = this.footnoteDefinitionText.get(footnoteId);
 				if (tooltip) {
@@ -12134,14 +12140,14 @@ export class SoTWysiwygView extends ItemView {
 			if (segment.href) {
 				span.dataset.href = segment.href;
 			} else {
-				delete (span.dataset as any).href;
+				delete span.dataset.href;
 			}
 			if (segment.ruby) {
 				span.dataset.ruby = segment.ruby;
 				span.dataset.aozoraRuby = "1";
 			} else {
-				delete (span.dataset as any).ruby;
-				delete (span.dataset as any).aozoraRuby;
+				delete span.dataset.ruby;
+				delete span.dataset.aozoraRuby;
 			}
 			span.textContent = segment.text;
 			parent.appendChild(span);

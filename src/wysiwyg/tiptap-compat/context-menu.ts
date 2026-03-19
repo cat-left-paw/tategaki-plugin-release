@@ -20,6 +20,7 @@ import {
 	createAozoraTcyRegExp,
 	isValidAozoraTcyBody,
 } from "../../shared/aozora-tcy";
+import type { WritingMode } from "../../types/settings";
 import { resolveTipTapRubySelection } from "./ruby-selection";
 
 export interface ContextMenuAction {
@@ -44,6 +45,17 @@ export interface TipTapCompatContextMenuOptions {
 	getCustomEmphasisChars?: () => string[];
 	setCustomEmphasisChars?: (chars: string[]) => void;
 	getContentFontFamily?: () => string;
+}
+
+type VerticalWritingStorage = {
+	verticalWriting?: {
+		currentMode?: string;
+	};
+};
+
+function getStoredWritingMode(editor: Editor): string | undefined {
+	const storage = editor.storage as VerticalWritingStorage;
+	return storage.verticalWriting?.currentMode;
 }
 
 export class TipTapCompatContextMenu {
@@ -168,20 +180,19 @@ export class TipTapCompatContextMenu {
 				".tategaki-wysiwyg-editor"
 			) as HTMLElement | null;
 			const hostMode = host?.getAttribute("data-writing-mode");
-			const storedMode = (editor.storage as any)?.verticalWriting
-				?.currentMode as string | undefined;
+			const storedMode = getStoredWritingMode(editor);
 			const mode =
 				hostMode === "vertical-rl" || hostMode === "horizontal-tb"
 					? hostMode
 					: storedMode === "vertical-rl" || storedMode === "horizontal-tb"
 						? storedMode
 						: "vertical-rl";
-				try {
-					editor.commands.setWritingMode(mode as any);
-				} catch (_) {
-					// noop: 書字方向の再適用失敗は無視
-				}
-			};
+			try {
+				editor.commands.setWritingMode(mode as WritingMode);
+			} catch (_) {
+				// noop: 書字方向の再適用失敗は無視
+			}
+		};
 
 			return [
 				{

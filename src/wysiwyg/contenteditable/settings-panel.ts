@@ -4,9 +4,20 @@
  */
 
 import {
+	BookFrontmatterDisplayMode,
+	BookFrontmatterPageLayout,
+	BookFrontmatterPageWritingMode,
+	CaretColorMode,
 	DEFAULT_V2_SETTINGS,
-	TategakiV2Settings,
+	HeaderFooterAlign,
+	HeaderFooterContent,
 	PRESET_THEME_IDS,
+	PageNumberFormat,
+	PageTransitionEffect,
+	SoTSelectionMode,
+	isBookHeadingTitlePageEnabled,
+	TategakiV2Settings,
+	WritingMode,
 } from "../../types/settings";
 import { App, Modal, Setting, setIcon } from "obsidian";
 import TategakiV2Plugin from "../../core/plugin";
@@ -31,7 +42,10 @@ const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
 	使用する: "Use",
 	使用しない: "Do not use",
 	SoT全文プレーン表示: "SoT full plain-text view",
+	全文プレーン表示: "Full plain-text view",
 	"全文プレーン表示（SoT）": "SoT full plain-text view",
+	"執筆・参照モードの選択方法":
+		"Selection behavior in Writing/Reading mode",
 	"Markdown装飾・ルビの表示を行わず、記号をそのまま表示します（ソーステキスト編集は無効）":
 		"Show raw Markdown symbols without rich formatting/ruby (source text edit is disabled).",
 	有効: "Enabled",
@@ -86,6 +100,9 @@ const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
 	見出し文字色をリセット: "Reset heading color",
 	本文と同じ色に戻します: "Revert to body text color.",
 	リセット: "Reset",
+	フロントマター設定: "Frontmatter",
+	"見出しを章扉に設定すると、フロントマターは独立ページとして扱われます":
+		"When headings are set to title pages, frontmatter is treated as a separate page.",
 	余白設定: "Margins",
 	上余白: "Top padding",
 	"ページ上部の余白を調整（0〜200px）": "Adjust top padding (0-200px).",
@@ -107,7 +124,6 @@ const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
 	"縦書き: 右方向補正": "Vertical: horizontal offset",
 	"縦書きIMEの表示位置を、既定値から右方向(+) / 左方向(-)に調整します（相対値・em単位、0=既定）":
 		"Adjust vertical IME position relative to the default, right (+) / left (-) in em (0 = default).",
-	参照設定: "Reading",
 	フロントマター情報を表示: "Show frontmatter info",
 	"YAML自体ではなく、title/authorなどの内容を本文先頭に表示します":
 		"Show title/author info at the top instead of raw YAML.",
@@ -161,17 +177,17 @@ const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
 	テーマ: "Theme",
 	"同期バックアップ（互換モード）": "Sync backup (compatibility mode)",
 	同期バックアップを作成: "Create sync backups",
-	"互換モードの同期時にバックアップを作成します。OFFにするとバックアップは作成されません（事故時はObsidianの「Open version history」を利用してください）。":
-		"Create backups while syncing in compatibility mode. If OFF, backups are not created (use Obsidian's Open version history if needed).",
+	"互換モードの同期時にバックアップを作成します。OFFにするとバックアップは作成されません（必要に応じて「バージョン履歴」を利用してください）。":
+		'Create backups while syncing in compatibility mode. If OFF, backups are not created (use "Version history" if needed).',
 	同期バックアップフォルダを開く: "Open sync backup folder",
-	"バックアップ保存先（.obsidian/tategaki-sync-backups）を開きます。":
-		"Open backup folder (.obsidian/tategaki-sync-backups).",
+	"バックアップ保存先（Vault設定フォルダ内の tategaki-sync-backups）を開きます。":
+		"Open the backup folder in the vault config folder (tategaki-sync-backups).",
 	開く: "Open",
 	同期バックアップをゴミ箱へ移動: "Move sync backups to trash",
 	"同期の安全策として作成されたバックアップをゴミ箱へ移動します（復元できなくなるので注意）。":
 		"Move safety backups created during sync to trash (cannot be restored).",
 	移動: "Move",
-	"Obsidian ベーステーマ": "Obsidian base theme",
+	アプリテーマ: "App theme",
 	デフォルト: "Default",
 	"アッシュベリー（ライト）": "Ashberry (Light)",
 	"アッシュベリー（ダーク）": "Ashberry (Dark)",
@@ -438,6 +454,10 @@ const LANGUAGE_FONT_GROUPS: Record<string, string[]> = {
 
 const HEX_COLOR_PATTERN = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
+function getTypedSelectValue<T extends string>(select: HTMLSelectElement): T {
+	return select.value as T;
+}
+
 function normalizeHexColor(hex: string): string {
 	const trimmed = hex.trim();
 	if (!HEX_COLOR_PATTERN.test(trimmed)) {
@@ -483,13 +503,11 @@ function resolveColorForSwatch(
 		return fallbackHex;
 	}
 	const probe = document.createElement("span");
+	probe.classList.add("tategaki-hidden-probe");
 	probe.style.color = candidate;
 	if (!probe.style.color) {
 		return fallbackHex;
 	}
-	probe.style.position = "absolute";
-	probe.style.visibility = "hidden";
-	probe.style.pointerEvents = "none";
 	document.body.appendChild(probe);
 	const computed = getComputedStyle(probe).color;
 	document.body.removeChild(probe);
@@ -1013,6 +1031,8 @@ export class SettingsPanelModal extends Modal {
 		let rubySizeValueSpan: HTMLSpanElement;
 		let rubyGapSlider: HTMLInputElement | null = null;
 		let rubyGapValueSpan: HTMLSpanElement | null = null;
+		let refreshHeadingAlignOptions: (() => void) | null = null;
+		let refreshFrontmatterDisplayModeNotice: (() => void) | null = null;
 
 		// ─── 基本設定 ───
 		this.createCollapsibleSection(
@@ -1043,16 +1063,17 @@ export class SettingsPanelModal extends Modal {
 
 						select.addEventListener("change", () => {
 							this.tempSettings.common.writingMode =
-								select.value as any;
+								getTypedSelectValue<WritingMode>(select);
+							refreshHeadingAlignOptions?.();
 							this.applySettings();
 						});
 					},
 				);
 
-				// SoT全文プレーン表示
+				// 全文プレーン表示
 				this.createSettingItem(
 					content,
-					"全文プレーン表示（SoT）",
+					"全文プレーン表示",
 					"Markdown装飾・ルビの表示を行わず、記号をそのまま表示します（ソーステキスト編集は無効）",
 					(itemEl) => {
 						const button = itemEl.createEl("button", {
@@ -1804,6 +1825,8 @@ export class SettingsPanelModal extends Modal {
 			"見出し設定",
 			false,
 			(content) => {
+				let refreshHeadingColorSwatch: (() => void) | null = null;
+
 				// 見出しフォント
 				this.createSettingItem(
 					content,
@@ -1899,16 +1922,61 @@ export class SettingsPanelModal extends Modal {
 				);
 
 				// 見出し文字色
-				this.createColorSettingItem(
+				this.createSettingItem(
 					content,
 					"見出し文字色",
-					this.tempSettings.common.headingTextColor ||
-						this.tempSettings.common.textColor,
-					this.tempSettings.common.textColor ||
-						DEFAULT_V2_SETTINGS.common.textColor,
-					(color) => {
-						this.tempSettings.common.headingTextColor = color;
-						this.applySettings();
+					sp("クリックして色を変更"),
+					(itemEl) => {
+						const colorButton = itemEl.createEl("button");
+						colorButton.className = "tategaki-settings-color-button";
+						const swatch = colorButton.createSpan({
+							cls: "tategaki-settings-color-swatch",
+						});
+
+						const updateSwatch = () => {
+							const currentColor =
+								this.tempSettings.common.headingTextColor ||
+								this.tempSettings.common.textColor;
+							const fallbackColor =
+								this.tempSettings.common.textColor ||
+								DEFAULT_V2_SETTINGS.common.textColor;
+							const resolvedColor = resolveColorForSwatch(
+								currentColor,
+								fallbackColor,
+							);
+							swatch.style.setProperty(
+								"--tategaki-color-swatch",
+								resolvedColor,
+							);
+						};
+
+						refreshHeadingColorSwatch = updateSwatch;
+						updateSwatch();
+
+						colorButton.addEventListener("click", () => {
+							const currentColor =
+								this.tempSettings.common.headingTextColor ||
+								this.tempSettings.common.textColor;
+							const fallbackColor =
+								this.tempSettings.common.textColor ||
+								DEFAULT_V2_SETTINGS.common.textColor;
+							const initialColor = resolveColorForSwatch(
+								currentColor,
+								fallbackColor,
+							);
+							openColorPicker(
+								isEnglishUi()
+									? `Choose ${sp("見出し文字色")}`
+									: "見出し文字色を選択",
+								initialColor,
+								(newColor) => {
+									this.tempSettings.common.headingTextColor =
+										newColor;
+									updateSwatch();
+									this.applySettings();
+								},
+							);
+						});
 					},
 				);
 
@@ -1923,8 +1991,8 @@ export class SettingsPanelModal extends Modal {
 						button.className = "tategaki-settings-action-button";
 						button.addEventListener("click", () => {
 							this.tempSettings.common.headingTextColor = "";
+							refreshHeadingColorSwatch?.();
 							this.applySettings();
-							this.onOpen();
 						});
 					},
 				);
@@ -2001,21 +2069,38 @@ export class SettingsPanelModal extends Modal {
 						const select = itemEl.createEl("select");
 						select.className = "tategaki-settings-select";
 
-						const isVertical = this.tempSettings.common.writingMode !== "horizontal-tb";
 						const labelPairs: Record<string, [string, string]> = {
 							start: ["上", "左"],
 							center: ["中央", "中央"],
 							end: ["下", "右"],
 						};
 
-						for (const value of ["start", "center", "end"] as const) {
-							const text = isVertical ? labelPairs[value][0] : labelPairs[value][1];
-							select.createEl("option", { text, value });
-						}
+						const updateOptions = () => {
+							const selectedValue =
+								this.tempSettings.common.headingAlign ??
+								"start";
+							const isVertical =
+								this.tempSettings.common.writingMode !==
+								"horizontal-tb";
+							select.empty();
+							for (const value of [
+								"start",
+								"center",
+								"end",
+							] as const) {
+								const text = isVertical
+									? labelPairs[value][0]
+									: labelPairs[value][1];
+								select.createEl("option", { text, value });
+							}
+							select.value = selectedValue;
+						};
 
-						select.value = this.tempSettings.common.headingAlign ?? "start";
+						refreshHeadingAlignOptions = updateOptions;
+						updateOptions();
 						select.addEventListener("change", () => {
-							this.tempSettings.common.headingAlign = select.value as "start" | "center" | "end";
+							this.tempSettings.common.headingAlign =
+								select.value as "start" | "center" | "end";
 							this.applySettings();
 						});
 					},
@@ -2115,7 +2200,7 @@ export class SettingsPanelModal extends Modal {
 			(content) => {
 				this.createSettingItem(
 					content,
-					"SoTの選択方法",
+					"執筆・参照モードの選択方法",
 					"クリック位置の反映を優先するか、ドラッグ選択の自然さを優先するかを選びます。",
 					(itemEl) => {
 						const select = itemEl.createEl("select");
@@ -2132,11 +2217,11 @@ export class SettingsPanelModal extends Modal {
 
 						select.value =
 							this.tempSettings.wysiwyg.sotSelectionMode ??
-							"fast-click";
+							"native-drag";
 
 						select.addEventListener("change", () => {
 							this.tempSettings.wysiwyg.sotSelectionMode =
-								select.value as any;
+								getTypedSelectValue<SoTSelectionMode>(select);
 							this.applySettings();
 						});
 					},
@@ -2180,7 +2265,7 @@ export class SettingsPanelModal extends Modal {
 
 						select.addEventListener("change", () => {
 							this.tempSettings.wysiwyg.caretColorMode =
-								select.value as any;
+								getTypedSelectValue<CaretColorMode>(select);
 							this.applySettings();
 						});
 					},
@@ -2355,11 +2440,11 @@ export class SettingsPanelModal extends Modal {
 				},
 			);
 
-		// ─── 参照設定 ───
+		// ─── フロントマター設定 ───
 		this.createCollapsibleSection(
 			container,
 			"file-text",
-			"参照設定",
+			"フロントマター設定",
 			false,
 			(content) => {
 				// フロントマター表示設定
@@ -2421,6 +2506,7 @@ export class SettingsPanelModal extends Modal {
 							);
 							setVisibility(!visible);
 							refreshButton();
+							refreshFrontmatterDisplayModeNotice?.();
 						});
 					},
 				);
@@ -2430,7 +2516,7 @@ export class SettingsPanelModal extends Modal {
 					content,
 					"書籍モード表示方式",
 					"フロントマターを本文先頭に流すか、独立ページにするかを選びます",
-					(itemEl) => {
+					(itemEl, context) => {
 						const isFrontmatterVisible = () =>
 							!(this.tempSettings.preview.hideFrontmatter ?? true);
 
@@ -2443,35 +2529,80 @@ export class SettingsPanelModal extends Modal {
 						select.disabled = !isFrontmatterVisible();
 
 						select.addEventListener("change", () => {
-							const mode = select.value as "inline" | "separate-page";
+							const mode =
+								getTypedSelectValue<BookFrontmatterDisplayMode>(
+									select,
+								);
 							this.tempSettings.preview.bookFrontmatterDisplayMode = mode;
 							// 旧設定も同期
 							this.tempSettings.preview.bookFrontmatterAsCoverPage = mode === "separate-page";
 							this.applySettings();
 							refreshSubSettings();
+							refreshFrontmatterDisplayModeNotice?.();
 						});
+
+						const modeNoticeEl = context?.infoContainer.createDiv({
+							cls: "tategaki-settings-item-disabled-reason",
+						});
+
+						const refreshModeNotice = () => {
+							const frontmatterVisible = !(
+								this.tempSettings.preview.hideFrontmatter ?? true
+							);
+								const forceSeparate =
+									frontmatterVisible &&
+									isBookHeadingTitlePageEnabled(
+										this.tempSettings.preview,
+									);
+								if (!modeNoticeEl) {
+									return;
+								}
+								modeNoticeEl.style.display = forceSeparate
+									? ""
+									: "none";
+								modeNoticeEl.textContent = forceSeparate
+									? sp(
+											"見出しを章扉に設定すると、フロントマターは独立ページとして扱われます",
+										)
+									: "";
+						};
+						refreshFrontmatterDisplayModeNotice = refreshModeNotice;
+						refreshModeNotice();
 
 						// 独立ページ時のサブ設定コンテナ
 						const subContainer = content.createDiv("tategaki-sub-settings");
+						const wmContainer = subContainer.createDiv(
+							"tategaki-sub-settings",
+						);
 
 						const refreshSubSettings = () => {
 							const isSeparate =
-								(this.tempSettings.preview.bookFrontmatterDisplayMode ?? "inline") === "separate-page";
+								(
+									this.tempSettings.preview
+										.bookFrontmatterDisplayMode ?? "inline"
+								) === "separate-page";
 							const visible = isFrontmatterVisible();
-							subContainer.style.display = isSeparate && visible ? "" : "none";
+							subContainer.style.display =
+								isSeparate && visible ? "" : "none";
 							select.disabled = !visible;
+							refreshWmVisibility();
 						};
-
-						// レイアウト設定
-						// 文字方向設定コンテナ（中央配置時のみ表示）
-						const wmContainer = subContainer.createDiv("tategaki-sub-settings");
 
 						const refreshWmVisibility = () => {
 							const isCenter =
-								(this.tempSettings.preview.bookFrontmatterSeparatePageLayout ?? "normal") === "center";
+								(
+									this.tempSettings.preview
+										.bookFrontmatterSeparatePageLayout ??
+									"normal"
+								) === "center";
 							wmContainer.style.display = isCenter ? "" : "none";
 							// 通常レイアウト時は文字方向を「本文に合わせる」にリセット
-							if (!isCenter && this.tempSettings.preview.bookFrontmatterSeparatePageWritingMode !== "inherit") {
+							if (
+								!isCenter &&
+								this.tempSettings.preview
+									.bookFrontmatterSeparatePageWritingMode !==
+									"inherit"
+							) {
 								this.tempSettings.preview.bookFrontmatterSeparatePageWritingMode = "inherit";
 								this.applySettings();
 							}
@@ -2489,7 +2620,9 @@ export class SettingsPanelModal extends Modal {
 								layoutSelect.value = this.tempSettings.preview.bookFrontmatterSeparatePageLayout ?? "normal";
 								layoutSelect.addEventListener("change", () => {
 									this.tempSettings.preview.bookFrontmatterSeparatePageLayout =
-										layoutSelect.value as "normal" | "center";
+										getTypedSelectValue<BookFrontmatterPageLayout>(
+											layoutSelect,
+										);
 									this.applySettings();
 									refreshWmVisibility();
 								});
@@ -2497,6 +2630,8 @@ export class SettingsPanelModal extends Modal {
 						);
 
 						// 文字方向設定（中央配置時のみ表示）
+						wmContainer.remove();
+						subContainer.appendChild(wmContainer);
 						this.createSettingItem(
 							wmContainer,
 							"独立ページの文字方向",
@@ -2510,7 +2645,9 @@ export class SettingsPanelModal extends Modal {
 								wmSelect.value = this.tempSettings.preview.bookFrontmatterSeparatePageWritingMode ?? "inherit";
 								wmSelect.addEventListener("change", () => {
 									this.tempSettings.preview.bookFrontmatterSeparatePageWritingMode =
-										wmSelect.value as "inherit" | "horizontal-tb" | "vertical-rl";
+										getTypedSelectValue<BookFrontmatterPageWritingMode>(
+											wmSelect,
+										);
 									this.applySettings();
 								});
 							},
@@ -2557,7 +2694,7 @@ export class SettingsPanelModal extends Modal {
 
 						select.addEventListener("change", () => {
 							this.tempSettings.preview.headerContent =
-								select.value as any;
+								getTypedSelectValue<HeaderFooterContent>(select);
 							this.applySettings();
 						});
 					},
@@ -2590,7 +2727,7 @@ export class SettingsPanelModal extends Modal {
 
 						select.addEventListener("change", () => {
 							this.tempSettings.preview.headerAlign =
-								select.value as any;
+								getTypedSelectValue<HeaderFooterAlign>(select);
 							this.applySettings();
 						});
 					},
@@ -2624,7 +2761,7 @@ export class SettingsPanelModal extends Modal {
 
 						select.addEventListener("change", () => {
 							this.tempSettings.preview.footerContent =
-								select.value as any;
+								getTypedSelectValue<HeaderFooterContent>(select);
 							this.applySettings();
 						});
 					},
@@ -2657,7 +2794,7 @@ export class SettingsPanelModal extends Modal {
 
 						select.addEventListener("change", () => {
 							this.tempSettings.preview.footerAlign =
-								select.value as any;
+								getTypedSelectValue<HeaderFooterAlign>(select);
 							this.applySettings();
 						});
 					},
@@ -2687,7 +2824,7 @@ export class SettingsPanelModal extends Modal {
 
 						select.addEventListener("change", () => {
 							this.tempSettings.preview.pageNumberFormat =
-								select.value as any;
+								getTypedSelectValue<PageNumberFormat>(select);
 							this.applySettings();
 						});
 					},
@@ -2725,7 +2862,7 @@ export class SettingsPanelModal extends Modal {
 
 						select.addEventListener("change", () => {
 							this.tempSettings.preview.pageTransitionEffect =
-								select.value as any;
+								getTypedSelectValue<PageTransitionEffect>(select);
 							this.applySettings();
 						});
 					},
@@ -2851,25 +2988,26 @@ export class SettingsPanelModal extends Modal {
 								const currentLevel = this.tempSettings.preview.bookHeadingPaginationLevel ?? 0;
 								levelSelect.value = (currentLevel > 0 ? currentLevel : 1).toString();
 
-								levelSelect.addEventListener("change", () => {
-									const val = parseInt(levelSelect.value, 10) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
-									this.tempSettings.preview.bookHeadingPaginationLevel = val;
-									// 旧設定も同期
-									this.tempSettings.preview.bookPageBreakBeforeHeadingLevel =
-										this.tempSettings.preview.bookHeadingPaginationMode !== "none" ? val : 0;
-									this.applySettings();
-								});
-							},
-						);
+									levelSelect.addEventListener("change", () => {
+										const val = parseInt(levelSelect.value, 10) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+										this.tempSettings.preview.bookHeadingPaginationLevel = val;
+										// 旧設定も同期
+										this.tempSettings.preview.bookPageBreakBeforeHeadingLevel =
+											this.tempSettings.preview.bookHeadingPaginationMode !== "none" ? val : 0;
+										this.applySettings();
+										refreshFrontmatterDisplayModeNotice?.();
+									});
+								},
+							);
 
 						const refreshSubSettings = () => {
 							const mode = this.tempSettings.preview.bookHeadingPaginationMode ?? "none";
 							subContainer.style.display = mode !== "none" ? "" : "none";
 						};
 
-						modeSelect.addEventListener("change", () => {
-							const mode = modeSelect.value as "none" | "page-break" | "title-page";
-							this.tempSettings.preview.bookHeadingPaginationMode = mode;
+							modeSelect.addEventListener("change", () => {
+								const mode = modeSelect.value as "none" | "page-break" | "title-page";
+								this.tempSettings.preview.bookHeadingPaginationMode = mode;
 							// レベルが未設定の場合はデフォルトを設定
 							if (mode !== "none" && (this.tempSettings.preview.bookHeadingPaginationLevel ?? 0) === 0) {
 								this.tempSettings.preview.bookHeadingPaginationLevel = 1;
@@ -2879,9 +3017,10 @@ export class SettingsPanelModal extends Modal {
 								mode !== "none"
 									? (this.tempSettings.preview.bookHeadingPaginationLevel ?? 1) as 0 | 1 | 2 | 3 | 4 | 5 | 6
 									: 0;
-							this.applySettings();
-							refreshSubSettings();
-						});
+								this.applySettings();
+								refreshSubSettings();
+								refreshFrontmatterDisplayModeNotice?.();
+							});
 
 						refreshSubSettings();
 					},
@@ -2911,7 +3050,7 @@ export class SettingsPanelModal extends Modal {
 					this.createSettingItem(
 						content,
 						"同期バックアップを作成",
-						"互換モードの同期時にバックアップを作成します。OFFにするとバックアップは作成されません（事故時はObsidianの「Open version history」を利用してください）。",
+						"互換モードの同期時にバックアップを作成します。OFFにするとバックアップは作成されません（必要に応じて「バージョン履歴」を利用してください）。",
 						(itemEl) => {
 							const button = itemEl.createEl("button", {
 								cls: "tategaki-toggle-button",
@@ -2939,7 +3078,7 @@ export class SettingsPanelModal extends Modal {
 					this.createSettingItem(
 						content,
 						"同期バックアップフォルダを開く",
-						"バックアップ保存先（.obsidian/tategaki-sync-backups）を開きます。",
+						"バックアップ保存先（Vault設定フォルダ内の tategaki-sync-backups）を開きます。",
 						(itemEl) => {
 							const button = itemEl.createEl("button");
 							button.textContent = t("common.open");
@@ -2985,7 +3124,13 @@ export class SettingsPanelModal extends Modal {
 		container: HTMLElement,
 		name: string,
 		desc: string,
-		controlBuilder: (itemEl: HTMLElement) => void | Promise<void>,
+		controlBuilder: (
+			itemEl: HTMLElement,
+			context?: {
+				infoContainer: HTMLElement;
+				settingItem: HTMLElement;
+			},
+		) => void | Promise<void>,
 		options?: { disabled?: boolean; disabledReason?: string },
 	): void {
 		const settingItem = container.createDiv(
@@ -3020,7 +3165,10 @@ export class SettingsPanelModal extends Modal {
 		const controlContainer = settingItem.createDiv(
 			"setting-item-control tategaki-settings-item-control",
 		);
-		const result = controlBuilder(controlContainer);
+		const result = controlBuilder(controlContainer, {
+			infoContainer,
+			settingItem,
+		});
 
 		if (result instanceof Promise) {
 			result
@@ -3109,9 +3257,9 @@ export class SettingsPanelModal extends Modal {
 		const select = selectContainer.createEl("select");
 		select.className = "tategaki-theme-selector-select";
 
-		// Obsidianベースオプションを追加
+		// アプリテーマオプションを追加
 		select.createEl("option", {
-			text: sp("Obsidian ベーステーマ"),
+			text: sp("アプリテーマ"),
 			value: "obsidian-base",
 		});
 

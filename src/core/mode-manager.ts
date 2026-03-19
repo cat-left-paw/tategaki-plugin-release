@@ -25,6 +25,49 @@ import { t } from "../shared/i18n";
 
 type ReadingReturnMode = TategakiViewMode | "sot";
 
+type SyncStateLike = {
+	dirty?: boolean;
+};
+
+type SyncManagerLike = {
+	getState?: () => SyncStateLike | null | undefined;
+	flush?: () => Promise<void> | void;
+};
+
+type ManagedLeafView = {
+	handleAppQuit?: (action: "save") => Promise<void> | void;
+	syncManager?: SyncManagerLike;
+	getCurrentFilePath?: () => string | null;
+};
+
+type ViewRegistryLike = {
+	viewByType?: Record<string, unknown>;
+};
+
+type AppWithViewRegistry = App & {
+	viewRegistry?: ViewRegistryLike;
+};
+
+type WorkspaceWithLeafEvents = App["workspace"] & {
+	on: (
+		name: "leaf-open" | "leaf-detach",
+		callback: () => void,
+	) => EventRef;
+};
+
+type ManagedLeaf = WorkspaceLeaf & {
+	__tategakiManaged?: boolean;
+	__tategakiPopout?: boolean;
+	containerEl?: HTMLElement;
+	[key: string]: unknown;
+};
+
+function getManagedLeafView(view: unknown): ManagedLeafView {
+	return typeof view === "object" && view !== null
+		? (view as ManagedLeafView)
+		: {};
+}
+
 /**
  * Tiptap ビューの管理クラス
  */
@@ -48,6 +91,14 @@ export class ModeManager {
 		this.plugin = plugin;
 	}
 
+	private getViewRegistry(): ViewRegistryLike | null {
+		return (this.app as AppWithViewRegistry).viewRegistry ?? null;
+	}
+
+	private getManagedLeaf(leaf: WorkspaceLeaf): ManagedLeaf {
+		return leaf as ManagedLeaf;
+	}
+
 	/**
 	 * ビューを登録
 	 */
@@ -67,7 +118,7 @@ export class ModeManager {
 			if (existingTipTapLeaves.length > 0) {
 				// 破棄前に可能なら同期を試みる（旧インスタンスが残っている場合の安全策）
 				for (const leaf of existingTipTapLeaves) {
-					const view = leaf.view as any;
+					const view = getManagedLeafView(leaf.view);
 					try {
 						if (view?.syncManager?.getState?.()?.dirty) {
 							await view.syncManager.flush?.();
@@ -89,7 +140,7 @@ export class ModeManager {
 		}
 
 		// ビューが既に登録されているかチェック
-		const viewRegistry = (this.app as any).viewRegistry;
+		const viewRegistry = this.getViewRegistry();
 		if (!viewRegistry?.viewByType?.[TIPTAP_COMPAT_VIEW_TYPE]) {
 			this.plugin.registerView(TIPTAP_COMPAT_VIEW_TYPE, (leaf) =>
 				new TipTapCompatView(
@@ -227,9 +278,10 @@ export class ModeManager {
 	cleanup(): void {
 		for (const leaf of this.managedLeaves) {
 			try {
-				if ((leaf as any).__tategakiManaged) {
+				const managedLeaf = this.getManagedLeaf(leaf);
+				if (managedLeaf.__tategakiManaged) {
 					void leaf.detach();
-					delete (leaf as any).__tategakiManaged;
+					delete managedLeaf.__tategakiManaged;
 				}
 			} catch (error) {
 				debugWarn("Tategaki: failed to detach managed leaf", error);
@@ -478,7 +530,7 @@ export class ModeManager {
 		this.prepareLeafInitialViewMode(leaf, viewMode);
 		await leaf.setViewState({ type: viewType, active: true });
 		this.app.workspace.setActiveLeaf(leaf);
-		(leaf as any).__tategakiPopout = false;
+		this.getManagedLeaf(leaf).__tategakiPopout = false;
 		this.trackManagedLeaf(leaf);
 		return leaf;
 	}
@@ -497,7 +549,7 @@ export class ModeManager {
 			this.prepareLeafInitialViewMode(leaf, viewMode);
 			await leaf.setViewState({ type: viewType, active: true });
 			this.app.workspace.setActiveLeaf(leaf);
-			(leaf as any).__tategakiPopout = true;
+			this.getManagedLeaf(leaf).__tategakiPopout = true;
 			this.trackManagedLeaf(leaf);
 			return leaf;
 		} catch (error) {
@@ -507,8 +559,9 @@ export class ModeManager {
 	}
 
 	private trackManagedLeaf(leaf: WorkspaceLeaf): void {
-		if (!(leaf as any).__tategakiManaged) {
-			(leaf as any).__tategakiManaged = true;
+		const managedLeaf = this.getManagedLeaf(leaf);
+		if (!managedLeaf.__tategakiManaged) {
+			managedLeaf.__tategakiManaged = true;
 		}
 		this.managedLeaves.add(leaf);
 		this.primaryLeaf = leaf;
@@ -544,7 +597,7 @@ export class ModeManager {
 
 	private extractFilePathFromLeaf(leaf: WorkspaceLeaf | null): string | null {
 		if (!leaf) return null;
-		const view = leaf.view as any;
+		const view = getManagedLeafView(leaf.view);
 		if (view && typeof view.getCurrentFilePath === "function") {
 			try {
 				const path = view.getCurrentFilePath();
@@ -572,10 +625,11 @@ export class ModeManager {
 
 	private prepareLeafInitialFile(leaf: WorkspaceLeaf | null, file: TFile | null): void {
 		if (!leaf) return;
+		const managedLeaf = this.getManagedLeaf(leaf);
 		if (file) {
-			(leaf as any)[ModeManager.INITIAL_FILE_PROP] = file;
+			managedLeaf[ModeManager.INITIAL_FILE_PROP] = file;
 		} else {
-			delete (leaf as any)[ModeManager.INITIAL_FILE_PROP];
+			delete managedLeaf[ModeManager.INITIAL_FILE_PROP];
 		}
 	}
 
@@ -584,10 +638,11 @@ export class ModeManager {
 		mode: TategakiViewMode | null
 	): void {
 		if (!leaf) return;
+		const managedLeaf = this.getManagedLeaf(leaf);
 		if (mode === "edit") {
-			(leaf as any)[ModeManager.INITIAL_VIEW_MODE_PROP] = mode;
+			managedLeaf[ModeManager.INITIAL_VIEW_MODE_PROP] = mode;
 		} else {
-			delete (leaf as any)[ModeManager.INITIAL_VIEW_MODE_PROP];
+			delete managedLeaf[ModeManager.INITIAL_VIEW_MODE_PROP];
 		}
 	}
 
@@ -609,11 +664,13 @@ export class ModeManager {
 		this.disposeWorkspaceGuards();
 		const enforce = () => this.scheduleEnforceSingleView();
 		this.workspaceGuards.push(this.app.workspace.on("layout-change", enforce));
+		const workspaceWithLeafEvents =
+			this.app.workspace as WorkspaceWithLeafEvents;
 		this.workspaceGuards.push(
-			(this.app.workspace as any).on("leaf-open", enforce) as EventRef
+			workspaceWithLeafEvents.on("leaf-open", enforce)
 		);
 		this.workspaceGuards.push(
-			(this.app.workspace as any).on("leaf-detach", enforce) as EventRef
+			workspaceWithLeafEvents.on("leaf-detach", enforce)
 		);
 	}
 
@@ -677,8 +734,9 @@ export class ModeManager {
 
 		for (const leaf of leavesToClose) {
 			this.managedLeaves.delete(leaf);
-			delete (leaf as any).__tategakiManaged;
-			delete (leaf as any).__tategakiPopout;
+			const managedLeaf = this.getManagedLeaf(leaf);
+			delete managedLeaf.__tategakiManaged;
+			delete managedLeaf.__tategakiPopout;
 			try {
 				void leaf.detach();
 			} catch (error) {
@@ -716,11 +774,11 @@ export class ModeManager {
 
 	private isLeafAvailable(leaf: WorkspaceLeaf | null | undefined): leaf is WorkspaceLeaf {
 		if (!leaf) return false;
-		const container = (leaf as any)?.containerEl as HTMLElement | undefined;
+		const container = this.getManagedLeaf(leaf).containerEl;
 		return !!container?.isConnected;
 	}
 
 	private isPopoutLeaf(leaf: WorkspaceLeaf | null | undefined): boolean {
-		return Boolean(leaf && (leaf as any).__tategakiPopout);
+		return Boolean(leaf && this.getManagedLeaf(leaf).__tategakiPopout);
 	}
 }

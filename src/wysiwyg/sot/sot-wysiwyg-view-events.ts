@@ -1,11 +1,26 @@
-import type { WorkspaceLeaf } from "obsidian";
+import type { EventRef, WorkspaceLeaf } from "obsidian";
 
 export type SoTViewEventHost = {
-	app: { workspace: { on: (...args: any[]) => any }; };
+	app: {
+		workspace: {
+			on: {
+				(
+					name: "active-leaf-change",
+					callback: (leaf: WorkspaceLeaf | null) => void,
+				): EventRef;
+				(name: "layout-change", callback: () => void): EventRef;
+			};
+		};
+	};
 	containerEl: HTMLElement;
 	leaf: WorkspaceLeaf;
-	registerDomEvent: (...args: any[]) => void;
-	registerEvent: (...args: any[]) => void;
+	registerDomEvent: (
+		el: Window | Document | HTMLElement,
+		type: string,
+		callback: EventListenerOrEventListenerObject,
+		options?: boolean | AddEventListenerOptions,
+	) => void;
+	registerEvent: (ref: EventRef) => void;
 	register: (callback: () => void) => void;
 	registerEscapeGuard: () => void;
 	registerEscapeKeymap: () => void;

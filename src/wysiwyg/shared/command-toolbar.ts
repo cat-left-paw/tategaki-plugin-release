@@ -12,7 +12,9 @@ type ButtonState = {
 	isDisabled?: () => boolean;
 	getIcon?: () => string;
 	getTitle?: () => string;
+	getHoverIcon?: () => string;
 	currentIcon?: string;
+	hovered?: boolean;
 };
 
 export class CommandToolbar {
@@ -111,6 +113,7 @@ export class CommandToolbar {
 		isDisabled?: () => boolean,
 		getIcon?: () => string,
 		getTitle?: () => string,
+		getHoverIcon?: () => string,
 	): HTMLButtonElement {
 		const button = this.container.createEl("button", {
 			cls: "clickable-icon contenteditable-toolbar-button",
@@ -129,6 +132,7 @@ export class CommandToolbar {
 			isDisabled,
 			getIcon,
 			getTitle,
+			getHoverIcon,
 			currentIcon: icon,
 		};
 		this.buttons.push(state);
@@ -148,6 +152,16 @@ export class CommandToolbar {
 				this.updateButtonStates();
 			}
 		});
+		if (getHoverIcon) {
+			button.addEventListener("mouseenter", () => {
+				state.hovered = true;
+				this.updateButtonVisual(state);
+			});
+			button.addEventListener("mouseleave", () => {
+				state.hovered = false;
+				this.updateButtonVisual(state);
+			});
+		}
 
 		return button;
 	}
@@ -163,6 +177,10 @@ export class CommandToolbar {
 			this.adapter.getWritingMode?.() === "vertical-rl"
 				? "arrow-down-up"
 				: "arrow-left-right";
+		const getHoverIcon = (): string =>
+			this.adapter.getWritingMode?.() === "vertical-rl"
+				? "arrow-left-right"
+				: "arrow-down-up";
 		const getTitle = (): string =>
 			this.adapter.getWritingMode?.() === "vertical-rl"
 				? t("toolbar.writingMode.toHorizontal")
@@ -173,13 +191,14 @@ export class CommandToolbar {
 			t("toolbar.writingMode.toggle"),
 			this.adapter.toggleWritingMode
 				? () => {
-						this.adapter.toggleWritingMode?.();
-					}
+					this.adapter.toggleWritingMode?.();
+				}
 				: undefined,
 			undefined,
 			() => !this.adapter.toggleWritingMode,
 			getIcon,
 			getTitle,
+			getHoverIcon,
 		);
 	}
 
@@ -563,19 +582,25 @@ export class CommandToolbar {
 		}
 
 		for (const state of this.buttons) {
-			const active = state.isActive?.() ?? false;
-			const disabled = state.isDisabled?.() ?? false;
-			state.button.disabled = disabled;
-			state.button.classList.toggle("is-active", active);
-			const nextTitle = state.getTitle?.() ?? state.title;
-			if (nextTitle) {
-				state.button.setAttr("aria-label", nextTitle);
-			}
-			const nextIcon = state.getIcon?.() ?? state.icon;
-			if (nextIcon && state.currentIcon !== nextIcon) {
-				setIcon(state.button, nextIcon);
-				state.currentIcon = nextIcon;
-			}
+			this.updateButtonVisual(state);
+		}
+	}
+
+	private updateButtonVisual(state: ButtonState): void {
+		const active = state.isActive?.() ?? false;
+		const disabled = state.isDisabled?.() ?? false;
+		state.button.disabled = disabled;
+		state.button.classList.toggle("is-active", active);
+		const nextTitle = state.getTitle?.() ?? state.title;
+		if (nextTitle) {
+			state.button.setAttr("aria-label", nextTitle);
+		}
+		const nextIcon = state.hovered
+			? (state.getHoverIcon?.() ?? state.getIcon?.() ?? state.icon)
+			: (state.getIcon?.() ?? state.icon);
+		if (nextIcon && state.currentIcon !== nextIcon) {
+			setIcon(state.button, nextIcon);
+			state.currentIcon = nextIcon;
 		}
 	}
 

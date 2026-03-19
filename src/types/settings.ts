@@ -147,6 +147,54 @@ export interface PreviewSettings {
 	bookHeadingPaginationLevel?: BookHeadingLevel; // 見出しレベル
 }
 
+export function resolveEffectiveBookHeadingPagination(
+	preview: PreviewSettings,
+): {
+	mode: BookHeadingPaginationMode;
+	level: BookHeadingLevel;
+} {
+	if (preview.bookHeadingPaginationMode === "none") {
+		return {
+			mode: "none",
+			level: 0,
+		};
+	}
+
+	const configuredLevel = preview.bookHeadingPaginationLevel ?? 0;
+	const effectiveLevel = (
+		configuredLevel > 0
+			? configuredLevel
+			: (preview.bookPageBreakBeforeHeadingLevel ?? 0)
+	) as BookHeadingLevel;
+	const effectiveMode =
+		preview.bookHeadingPaginationMode !== undefined
+			? preview.bookHeadingPaginationMode
+			: effectiveLevel > 0
+				? "page-break"
+				: "none";
+
+	return {
+		mode: effectiveMode,
+		level: effectiveLevel,
+	};
+}
+
+export function isBookHeadingTitlePageEnabled(
+	preview: PreviewSettings,
+): boolean {
+	const pagination = resolveEffectiveBookHeadingPagination(preview);
+	return pagination.mode === "title-page" && pagination.level > 0;
+}
+
+export function resolveEffectiveBookFrontmatterDisplayMode(
+	preview: PreviewSettings,
+): BookFrontmatterDisplayMode {
+	if (isBookHeadingTitlePageEnabled(preview)) {
+		return "separate-page";
+	}
+	return preview.bookFrontmatterDisplayMode ?? "inline";
+}
+
 /**
  * WYSIWYGモード設定
  */
@@ -285,7 +333,7 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		debugLogging: false,
 	},
 
-	// 参照設定
+	// フロントマター設定
 	preview: {
 		syncCursor: true,
 		updateInterval: 300,
@@ -337,7 +385,7 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		caretColorMode: "accent",
 		caretCustomColor: "#1e90ff",
 		caretWidthPx: 3,
-		sotSelectionMode: "fast-click",
+			sotSelectionMode: "native-drag",
 		sotPaddingTop: 32,
 		sotPaddingBottom: 16,
 	},

@@ -67,6 +67,12 @@
 	padding-top: 36px;
 }
 
+.tategaki-hidden-probe {
+	position: absolute !important;
+	visibility: hidden !important;
+	pointer-events: none !important;
+}
+
 /* 編集・プレビュー共通の本文レイアウト */
 .tategaki-editor,
 .tategaki-wysiwyg-editor,
@@ -129,6 +135,7 @@
 .tategaki-wysiwyg-editor[data-writing-mode="horizontal-tb"] {
 	text-orientation: initial;
 }
+
 
 .tategaki-wysiwyg-editor .ProseMirror {
 	writing-mode: inherit;
@@ -279,6 +286,26 @@
 	text-align: var(--tategaki-heading-align, start);
 }
 
+/* TipTap 互換モード: Obsidian テーマの見出し色・行間上書き */
+.tategaki-wysiwyg-editor .ProseMirror h1,
+.tategaki-wysiwyg-editor .ProseMirror h2,
+.tategaki-wysiwyg-editor .ProseMirror h3,
+.tategaki-wysiwyg-editor .ProseMirror h4,
+.tategaki-wysiwyg-editor .ProseMirror h5,
+.tategaki-wysiwyg-editor .ProseMirror h6 {
+	color: var(
+		--tategaki-heading-text-color,
+		var(--tategaki-text-color, inherit)
+	) !important;
+	line-height: var(--tategaki-line-height, 1.8) !important;
+}
+
+/* TipTap 互換モード: Obsidian テーマの段落色・行間上書き */
+.tategaki-wysiwyg-editor .ProseMirror p {
+	color: var(--tategaki-text-color, inherit) !important;
+	line-height: var(--tategaki-line-height, 1.8) !important;
+}
+
 /* 見出し区切り線（TipTap ProseMirror / preview） */
 .tategaki-heading-divider-h1 .ProseMirror h1,
 .tategaki-heading-divider-h1 .tategaki-preview h1 {
@@ -403,9 +430,7 @@
 }
 
 .tategaki-wysiwyg-editor .ProseMirror mark,
-.tategaki-wysiwyg-editor .ProseMirror .tategaki-highlight,
-.tategaki-contenteditable-container mark,
-.tategaki-block mark {
+.tategaki-wysiwyg-editor .ProseMirror .tategaki-highlight {
 	background-color: var(--tategaki-highlight-color, rgba(255, 235, 59, 0.6));
 	padding: 0.05em 0.1em;
 	border-radius: 2px;
@@ -549,29 +574,6 @@
 
 .tategaki-wysiwyg-editor .ProseMirror[style*="vertical-rl"] {
 	text-orientation: mixed;
-}
-
-.tategaki-block-editor-root .tategaki-block {
-	min-height: 1.2em;
-}
-
-.tategaki-block-editor-source {
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 100%;
-	box-sizing: border-box;
-	font-family: var(--font-monospace, monospace);
-	font-size: var(--font-ui-medium, 14px);
-	line-height: 1.6;
-	padding: 16px;
-	border: none;
-	outline: none;
-	background: var(--background-primary);
-	color: var(--text-normal);
-	resize: none;
-	overflow: auto;
 }
 
 /* tiptapの編集可能時にキャレットが消える場合の対策（WebKit系） */
@@ -720,315 +722,12 @@
 	}
 }
 
-/* ====================
-   コントロールパネル
-   ==================== */
 
-.tategaki-control-panel {
-	position: fixed;
-	top: 0;
-	left: 0;
-	right: 0;
-	z-index: 1000;
-	background: var(--background-primary);
-	border-bottom: 1px solid var(--background-modifier-border);
-	padding: 4px 8px;
-	width: 100%;
 
-	/* フレックスボックス設定 */
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: center;
-	gap: 6px;
 
-	/* 書き方向を強制的に横書きに */
-	writing-mode: horizontal-tb !important; /* 横並びのため */
-}
 
-/* 縦書きコンテナ内でのコントロールパネル位置調整 */
-.tategaki-scroll-container .tategaki-control-panel {
-	writing-mode: horizontal-tb !important;
-}
 
-/* 縦書きモード時のコントロールパネル位置調整 */
-/* 縦書き時の特別な位置調整は不要（横表示時のみ表示） */
 
-/* パネル内の要素配置 */
-.tategaki-control-panel > * {
-	flex-shrink: 0;
-	writing-mode: horizontal-tb !important;
-	white-space: nowrap;
-}
-
-/* パネル全体のフォント設定 */
-.tategaki-control-panel,
-.tategaki-control-panel *,
-.tategaki-control-panel select,
-.tategaki-control-panel option,
-.tategaki-control-panel button,
-.tategaki-control-panel input,
-.tategaki-control-panel label {
-	font-family: var(--font-ui) !important;
-	font-size: 12px;
-}
-
-/* コントロールグループ */
-.tategaki-control-group {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex-wrap: nowrap;
-	flex-shrink: 0;
-	min-width: max-content;
-}
-
-.tategaki-control-group.buttons {
-	display: flex;
-	gap: 4px;
-}
-
-/* ラベルとコントロール */
-.tategaki-control-panel label {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	white-space: nowrap;
-	writing-mode: horizontal-tb !important;
-	color: var(--text-normal);
-	flex-shrink: 0;
-	min-width: max-content;
-}
-
-/* セレクトボックス */
-.tategaki-control-panel select {
-	padding: 1px 6px;
-	writing-mode: horizontal-tb !important;
-	min-width: 80px;
-	width: 80px;
-	margin-left: 2px;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
-	color: var(--text-normal);
-	border-radius: 3px;
-	flex-shrink: 0;
-}
-
-/* スライダー */
-.tategaki-control-panel input[type="range"] {
-	width: 60px;
-	margin: 0 2px;
-	flex-shrink: 0;
-}
-
-/* ボタン */
-.tategaki-control-button {
-	padding: 3px 10px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 3px;
-	background: var(--interactive-normal);
-	color: var(--text-normal);
-	cursor: pointer;
-	transition: all 0.2s ease;
-	writing-mode: horizontal-tb !important;
-	text-orientation: mixed !important;
-	min-width: max-content;
-	height: auto;
-	white-space: nowrap;
-	font-size: 12px;
-	flex-shrink: 0;
-}
-
-.tategaki-control-button:hover {
-	background: var(--interactive-hover);
-	border-color: var(--interactive-accent);
-}
-
-.tategaki-control-button:active {
-	background: var(--interactive-active);
-	transform: translateY(1px);
-}
-
-.tategaki-control-button.active {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-	border-color: var(--interactive-accent);
-}
-
-/* 値表示 */
-.tategaki-value {
-	color: var(--text-normal);
-	font-weight: 500;
-	min-width: 30px;
-	text-align: center;
-	padding: 2px 4px;
-	background: var(--background-secondary);
-	border-radius: 3px;
-	border: 1px solid var(--background-modifier-border);
-	font-size: 12px;
-	flex-shrink: 0;
-}
-
-/* 縦表示時の値表示 */
-/* 旧縦レイアウト関連は廃止 */
-
-/* 縦表示モード */
-/* 旧縦レイアウト関連は廃止 */
-
-/* 縦表示モード時のボタン配置 */
-/* 旧縦レイアウト関連は廃止 */
-
-/* 旧縦レイアウト関連は廃止 */
-
-/* 旧縦レイアウト関連は廃止 */
-
-/* 旧縦レイアウト関連は廃止 */
-
-/* 旧縦レイアウト関連は廃止 */
-
-/* 旧縦レイアウト関連は廃止 */
-
-/* 旧縦レイアウト関連は廃止 */
-
-/* 縦表示時のスクロールバー非表示 */
-/* 旧縦レイアウト関連は廃止 */
-
-/* 旧縦レイアウト関連は廃止 */
-
-/* 旧縦レイアウト関連は廃止 */
-
-/* スクロールバー */
-.tategaki-control-panel::-webkit-scrollbar {
-	height: 4px;
-	width: 4px;
-}
-
-.tategaki-control-panel::-webkit-scrollbar-track {
-	background: var(--background-secondary);
-	border-radius: 2px;
-}
-
-.tategaki-control-panel::-webkit-scrollbar-thumb {
-	background: var(--scrollbar-thumb-bg);
-	border-radius: 2px;
-}
-
-.tategaki-control-panel::-webkit-scrollbar-thumb:hover {
-	background: var(--scrollbar-thumb-bg-hover);
-}
-
-/* プレビュー表示 */
-
-/* ページ表示（印刷レイアウト）用のスナップスクロール */
-.tategaki-page-container {
-	/* 中央配置はレイアウト側で行う */
-}
-
-.tategaki-preview.page-mode {
-	overflow: hidden;
-	display: flex;
-	justify-content: flex-start;
-	align-items: stretch;
-}
-
-.tategaki-preview.page-mode .page {
-	scroll-snap-align: start;
-}
-
-/* 縦書き（横スクロール・逆順）のときは右端をスナップ基準にする */
-.tategaki-pages-scroller.pages-horizontal-reverse .page {
-	scroll-snap-align: end;
-}
-
-/* ページスナップ用のスクローラー */
-.tategaki-pages-scroller {
-	width: 100%;
-	height: 100%;
-	display: flex;
-	gap: 0;
-	-webkit-overflow-scrolling: touch;
-	/* 縦書き時でも横方向にページを並べるため強制的に横書きの書字方向を採用 */
-	writing-mode: horizontal-tb !important;
-	/* スクロールバー非表示 */
-	scrollbar-width: none;
-	scroll-behavior: smooth;
-}
-.tategaki-pages-scroller.pages-horizontal-reverse {
-	flex-direction: row-reverse;
-	overflow-x: auto;
-	overflow-y: hidden;
-	scroll-snap-type: x mandatory;
-	scroll-padding-inline: 0px; /* scrollIntoView(inline:end) の停止位置を安定化 */
-}
-.tategaki-pages-scroller.pages-vertical {
-	flex-direction: column;
-	overflow-y: auto;
-	overflow-x: hidden;
-	scroll-snap-type: y mandatory;
-}
-.tategaki-page-edge-zone {
-	position: absolute;
-	top: 0;
-	bottom: 0;
-	width: 6%;
-	z-index: 50;
-	background: transparent;
-	/* デバッグ用に下線を残す場合は以下を有効化 */
-	/* outline: 1px dashed rgba(0,0,0,0.1); */
-}
-.tategaki-page-edge-zone.prev {
-	left: 0;
-}
-.tategaki-page-edge-zone.next {
-	right: 0;
-}
-
-.tategaki-pages-scroller::-webkit-scrollbar {
-	display: none;
-}
-
-/* 1ページの枠（ボーダー内側一杯） */
-.tategaki-pages-scroller .page {
-	flex: 0 0 100%;
-	width: 100%;
-	height: 100%;
-	overflow: hidden;
-	position: relative;
-	box-sizing: border-box;
-}
-
-/* ページ内の本文ラッパー（プレビューの書字方向を維持） */
-.tategaki-pages-scroller .page .page-content {
-	/* runtimeでwriting-modeを設定するのでここでは固定しない */
-	width: 100%;
-	height: 100%;
-	box-sizing: border-box;
-	overflow: hidden;
-	/* 縦書き時のテキスト配置調整 */
-	display: block;
-	position: relative;
-}
-
-/* ページ表示モードでは、縦書きに継承される break-all/anywhere を打ち消し、厳密な改行を適用 */
-.tategaki-preview.page-mode .page .page-content {
-	word-break: break-word;
-	overflow-wrap: break-word;
-	line-break: auto;
-	text-align: justify;
-	text-align-last: auto;
-}
-
-.tategaki-preview.page-mode[style*="vertical-rl"] .page .page-content {
-	text-justify: inter-character;
-}
-
-.tategaki-preview.page-mode[style*="horizontal-tb"] .page .page-content {
-	text-justify: inter-character;
-}
-
-.tategaki-preview.page-mode .page .tategaki-continued-start {
-	text-indent: 0 !important;
-}
 
 /* ページをまたぐ折り返し行の両端揃えを実現するための非表示文字 */
 /* 通常のフローで折り返させるため、position: absolute は使わない */
@@ -1045,115 +744,7 @@
 	pointer-events: none;
 }
 
-/* プレビュー内段落の余白をリセットし、空行の高さを一貫させる */
-.tategaki-preview p {
-	margin: 0;
-}
 
-/* 見出しやリストなどは既存の専用マージンを維持（下の既存ルールが適用される） */
-
-/* プレビュー内のMarkdown要素 */
-.tategaki-preview h1,
-.tategaki-preview h2,
-.tategaki-preview h3,
-.tategaki-preview h4,
-.tategaki-preview h5,
-.tategaki-preview h6 {
-	writing-mode: inherit;
-	text-orientation: inherit;
-	margin-block: 0;
-	font-weight: bold;
-	letter-spacing: var(--tategaki-letter-spacing, 0);
-}
-
-.tategaki-preview ul,
-.tategaki-preview ol {
-	writing-mode: inherit;
-	text-orientation: inherit;
-	margin-block: 0.5em;
-}
-
-.tategaki-preview li {
-	writing-mode: inherit;
-	text-orientation: inherit;
-}
-
-.tategaki-preview pre {
-	writing-mode: horizontal-tb;
-	text-orientation: mixed;
-	overflow: auto;
-	padding: 0.5em;
-	background-color: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 4px;
-	margin-block: 0.5em;
-}
-
-.tategaki-preview code {
-	background-color: var(--background-secondary);
-	padding: 0.1em 0.3em;
-	border-radius: 3px;
-	font-family: var(--font-monospace);
-}
-
-.tategaki-preview blockquote {
-	writing-mode: inherit;
-	text-orientation: inherit;
-	border-left: 4px solid var(--interactive-accent);
-	padding-left: 1em;
-	margin-block: 0.5em;
-	font-style: italic;
-	text-indent: 0;
-}
-
-.tategaki-preview[style*="vertical-rl"] blockquote,
-.tategaki-preview-container[style*="vertical-rl"] blockquote {
-	border-left: none !important;
-	border-inline-start: none !important;
-}
-
-.tategaki-preview hr {
-	border: none;
-	border-top: 2px solid var(--background-modifier-border);
-	margin: 1em 0;
-}
-
-.tategaki-preview[style*="vertical-rl"] hr {
-	border-top: none;
-	border-right: 2px solid var(--background-modifier-border);
-	margin: 0 1em;
-	height: 100%;
-	width: 0;
-}
-
-.tategaki-preview em {
-	font-style: italic !important;
-	background: none !important;
-	color: inherit !important;
-	padding: 0 !important;
-	border: none !important;
-	text-decoration: none !important;
-}
-
-.tategaki-preview strong {
-	font-weight: bold !important;
-	background: none !important;
-	color: inherit !important;
-	padding: 0 !important;
-	border: none !important;
-	text-decoration: none !important;
-}
-
-.tategaki-preview strong em,
-.tategaki-preview em strong {
-	font-style: italic !important;
-	font-weight: bold !important;
-	background: none !important;
-	color: inherit !important;
-	padding: 0 !important;
-	border: none !important;
-	text-decoration: none !important;
-}
 
 /* レンダリングエラー表示 */
 .tategaki-render-error {
@@ -1167,23 +758,7 @@
 	text-orientation: mixed;
 }
 
-/* 小さい画面での調整 */
-@media screen and (max-width: 768px) {
-	.tategaki-control-panel {
-		min-width: 600px;
-		padding: 6px 10px;
-		gap: 6px;
-		overflow-x: auto;
-	}
 
-	.tategaki-control-button {
-		padding: 3px 8px;
-	}
-
-	.tategaki-control-panel select {
-		min-width: 50px;
-	}
-}
 
 /* カーソルインジケーター（旧実装準拠） */
 .cursor-indicator {
@@ -1208,12 +783,7 @@
 	box-shadow: 0 0 0 1px var(--tategaki-text-color, var(--interactive-accent)) !important;
 }
 
-/* 縦書き時のカーソル */
-.tategaki-preview[style*="vertical-rl"] .cursor-indicator {
-	width: 1em !important;
-	height: 2px !important;
-	display: inline-block;
-}
+
 
 /* TipTap（開発版）縦書き時の外部カーソル */
 .tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .cursor-indicator {
@@ -1226,69 +796,7 @@
 	hanging-punctuation: allow-end;
 }
 
-/* 行末許容: より柔軟な行末処理 */
-.tategaki-preview.line-end-allow-end {
-	text-align: justify;
-	text-justify: inter-character;
-}
 
-/* 行末処理スタイル */
-
-/* 行末そろえ（justifyText）設定 */
-.tategaki-preview.text-justify-enabled {
-	text-align: justify;
-	text-align-last: auto;
-}
-
-/* 縦書き時の行末そろえ */
-.tategaki-preview.text-justify-enabled[style*="vertical-rl"] {
-	text-align: justify;
-	text-justify: inter-character;
-}
-
-/* 横書き時の行末そろえ */
-.tategaki-preview.text-justify-enabled[style*="horizontal-tb"] {
-	text-align: justify;
-	text-justify: inter-character;
-}
-
-/* 段落要素での行末そろえ適用 */
-.tategaki-preview.text-justify-enabled p,
-.tategaki-preview.text-justify-enabled div.markdown-preview-section > div {
-	text-align: justify;
-	text-align-last: auto;
-}
-
-/* 縦書き段落での行末そろえ強化 */
-.tategaki-preview.text-justify-enabled[style*="vertical-rl"] p,
-.tategaki-preview.text-justify-enabled[style*="vertical-rl"]
-	div.markdown-preview-section
-	> div {
-	text-align: justify;
-	text-justify: inter-character;
-	text-align-last: auto;
-}
-
-/* 横書き段落での行末そろえ強化 */
-.tategaki-preview.text-justify-enabled[style*="horizontal-tb"] p,
-.tategaki-preview.text-justify-enabled[style*="horizontal-tb"]
-	div.markdown-preview-section
-	> div {
-	text-align: justify;
-	text-justify: inter-character;
-	text-align-last: auto;
-}
-
-/* 行末そろえで短い行は左寄せ/上寄せに */
-.tategaki-preview.text-justify-enabled h1,
-.tategaki-preview.text-justify-enabled h2,
-.tategaki-preview.text-justify-enabled h3,
-.tategaki-preview.text-justify-enabled h4,
-.tategaki-preview.text-justify-enabled h5,
-.tategaki-preview.text-justify-enabled h6 {
-	text-align: start;
-	text-align-last: start;
-}
 
 /* TipTap検索ハイライト */
 .tategaki-search-match {
@@ -1302,24 +810,7 @@
 	outline: 1px solid rgba(255, 120, 0, 0.65);
 }
 
-/* 縦書き時の長い英字文字列の改行設定 */
-/* 既定の過剰な改行を解除（ページモードで個別に指定するため） */
-.tategaki-preview[style*="vertical-rl"] {
-	word-break: normal;
-	overflow-wrap: normal;
-	line-break: auto;
-}
 
-/* 縦書きでの英字・数字の配置調整（緩め） */
-.tategaki-preview[style*="vertical-rl"] p,
-.tategaki-preview[style*="vertical-rl"] div,
-.tategaki-preview[style*="vertical-rl"] span {
-	word-break: normal;
-	overflow-wrap: normal;
-	line-break: auto;
-	/* 手動全角スペース字下げとCSS字下げの二重化を避けるため、基本は0。必要な場面はTS側で制御 */
-	text-indent: 0;
-}
 
 @keyframes cursor-blink {
 	0% {
@@ -1343,7 +834,6 @@ ruby {
 
 /* 編集モード用のルビサイズ（標準的な0.5emに修正） */
 .tategaki-editor-root,
-.tategaki-block-editor-root,
 .tategaki-wysiwyg-editor,
 .tategaki-preview-content,
 .tategaki-preview {
@@ -1352,52 +842,28 @@ ruby {
 }
 
 .tategaki-editor-root:not(.tategaki-ruby-plugin-active) rt,
-.tategaki-block-editor-root:not(.tategaki-ruby-plugin-active) rt,
-.tategaki-wysiwyg-editor:not(.tategaki-ruby-plugin-active) rt,
-.tategaki-block-editor-root:not(.tategaki-ruby-plugin-active)
-	.tategaki-block
-	rt {
+.tategaki-wysiwyg-editor:not(.tategaki-ruby-plugin-active) rt {
 	font-size: calc(var(--tategaki-ruby-size, 0.5) * 1em) !important;
 	line-height: 1.2;
 }
 
 .tategaki-editor-root.tategaki-ruby-plugin-active rt,
-.tategaki-block-editor-root.tategaki-ruby-plugin-active rt,
-.tategaki-wysiwyg-editor.tategaki-ruby-plugin-active rt,
-.tategaki-block-editor-root.tategaki-ruby-plugin-active .tategaki-block rt {
+.tategaki-wysiwyg-editor.tategaki-ruby-plugin-active rt {
 	/* JapaneseNovelRuby 有効時も Tategaki 側の設定値を優先する */
 	font-size: calc(var(--tategaki-ruby-size, 0.5) * 1em) !important;
 	line-height: 1.2;
 }
 
-/* プレビューモード用のルビサイズ */
-.tategaki-preview-content:not(.tategaki-ruby-plugin-active) rt,
-.tategaki-preview:not(.tategaki-ruby-plugin-active) rt,
-.tategaki-preview-content:not(.tategaki-ruby-plugin-active)
-	.tategaki-preview
-	rt {
-	font-size: calc(var(--tategaki-ruby-size, 0.5) * 1em) !important;
-	line-height: 1.2;
-}
 
-.tategaki-preview-content.tategaki-ruby-plugin-active rt,
-.tategaki-preview.tategaki-ruby-plugin-active rt,
-.tategaki-preview-content.tategaki-ruby-plugin-active .tategaki-preview rt {
-	/* JapaneseNovelRuby 有効時も Tategaki 側の設定値を優先する */
-	font-size: calc(var(--tategaki-ruby-size, 0.5) * 1em) !important;
-	line-height: 1.2;
-}
 
 /* 縦書き時のルビ調整 */
 .tategaki-editor-root[style*="vertical-rl"] ruby,
-.tategaki-block-editor-root[style*="vertical-rl"] ruby,
 .tategaki-preview-content[style*="vertical-rl"] ruby,
 .tategaki-preview[style*="vertical-rl"] ruby {
 	ruby-position: over;
 }
 
 .tategaki-editor-root[style*="vertical-rl"] rt,
-.tategaki-block-editor-root[style*="vertical-rl"] rt,
 .tategaki-preview-content[style*="vertical-rl"] rt,
 .tategaki-preview[style*="vertical-rl"] rt {
 	writing-mode: vertical-rl;
@@ -1415,14 +881,12 @@ ruby {
 
 /* 横書き時のルビ調整 */
 .tategaki-editor-root[style*="horizontal-tb"] ruby,
-.tategaki-block-editor-root[style*="horizontal-tb"] ruby,
 .tategaki-preview-content[style*="horizontal-tb"] ruby,
 .tategaki-preview[style*="horizontal-tb"] ruby {
 	ruby-position: over;
 }
 
 .tategaki-editor-root[style*="horizontal-tb"] rt,
-.tategaki-block-editor-root[style*="horizontal-tb"] rt,
 .tategaki-preview-content[style*="horizontal-tb"] rt,
 .tategaki-preview[style*="horizontal-tb"] rt {
 	writing-mode: horizontal-tb;
@@ -1567,79 +1031,7 @@ ruby {
 
 /* モバイル用のルビ補正は無効化（ズレ防止のため共通値を使用） */
 
-/* ソースモード検索ハイライト */
-/* ブロックエディタ - 選択範囲の安定性向上 */
-.tategaki-block-editor-root {
-	/* ユーザー選択を有効化 */
-	user-select: text;
-	-webkit-user-select: text;
-	-moz-user-select: text;
-	-ms-user-select: text;
-	/* プレビューモードと同じフォント設定 */
-	font-family: var(
-		--tategaki-font-family,
-		"Yu Mincho",
-		"Hiragino Mincho ProN",
-		serif
-	);
-	font-size: var(--tategaki-font-size, 18px);
-	line-height: var(--tategaki-line-height, 1.8);
-	color: var(--tategaki-text-color, var(--text-normal));
-}
-
-/* エディタビューの見出しに文字間を適用 */
-.tategaki-block-editor-root h1,
-.tategaki-block-editor-root h2,
-.tategaki-block-editor-root h3,
-.tategaki-block-editor-root h4,
-.tategaki-block-editor-root h5,
-.tategaki-block-editor-root h6,
-.tategaki-block h1,
-.tategaki-block h2,
-.tategaki-block h3,
-.tategaki-block h4,
-.tategaki-block h5,
-.tategaki-block h6 {
-	letter-spacing: var(--tategaki-letter-spacing, 0);
-}
-
-/* ブロックエディタの太字・斜体スタイル */
-.tategaki-block-editor-root em,
-.tategaki-block em {
-	font-style: italic !important;
-	background: none !important;
-	color: inherit !important;
-	padding: 0 !important;
-	border: none !important;
-	text-decoration: none !important;
-}
-
-.tategaki-block-editor-root strong,
-.tategaki-block strong {
-	font-weight: 600 !important;
-	background: none !important;
-	color: inherit !important;
-	padding: 0 !important;
-	border: none !important;
-	text-decoration: none !important;
-}
-
-.tategaki-block-editor-root em strong,
-.tategaki-block-editor-root strong em,
-.tategaki-block em strong,
-.tategaki-block strong em {
-	font-style: italic !important;
-	font-weight: 600 !important;
-	background: none !important;
-	color: inherit !important;
-	padding: 0 !important;
-	border: none !important;
-	text-decoration: none !important;
-}
-
 /* 編集ビューの区切り線 */
-.tategaki-contenteditable-container hr,
-.tategaki-block hr,
 .tategaki-wysiwyg-editor hr {
 	position: relative;
 	border: none;
@@ -1648,8 +1040,6 @@ ruby {
 	min-height: 1.6em;
 }
 
-.tategaki-contenteditable-container[style*="vertical-rl"] hr,
-.tategaki-block-editor-root[data-writing-mode="vertical-rl"] hr,
 .tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] hr {
 	margin: 1em;
 	margin-top: 0.2em;
@@ -1661,8 +1051,6 @@ ruby {
 }
 
 /* 縦書きの区切り線は画面高さいっぱいに伸ばす */
-.tategaki-contenteditable-container[style*="vertical-lr"] hr,
-.tategaki-block-editor-root[data-writing-mode="vertical-lr"] hr,
 .tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] hr {
 	margin: 1em;
 	margin-top: 0.2em;
@@ -1673,8 +1061,6 @@ ruby {
 	max-height: calc(100% - 0.5em);
 }
 
-.tategaki-contenteditable-container hr::before,
-.tategaki-block hr::before,
 .tategaki-wysiwyg-editor hr::before {
 	content: "";
 	position: absolute;
@@ -1686,11 +1072,7 @@ ruby {
 	pointer-events: none;
 }
 
-.tategaki-contenteditable-container[style*="vertical-rl"] hr::before,
-.tategaki-block-editor-root[data-writing-mode="vertical-rl"] hr::before,
 .tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] hr::before,
-.tategaki-contenteditable-container[style*="vertical-lr"] hr::before,
-.tategaki-block-editor-root[data-writing-mode="vertical-lr"] hr::before,
 .tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] hr::before {
 	left: 50%;
 	right: auto;
@@ -1710,62 +1092,8 @@ ruby {
 	border-color: var(--interactive-accent);
 }
 
-.tategaki-block-editor-root.text-justify-enabled {
-	text-align: justify;
-	text-align-last: auto;
-	text-justify: inter-character;
-}
-
-.tategaki-block-editor-root.text-justify-enabled[data-writing-mode="vertical-rl"] {
-	text-justify: inter-character;
-}
-
-.tategaki-block-editor-root.text-justify-enabled[data-writing-mode="horizontal-tb"] {
-	text-justify: inter-character;
-}
-
-.tategaki-block-editor-root.text-justify-enabled .tategaki-block {
-	text-align: inherit;
-	text-align-last: auto;
-}
-
-.tategaki-block {
-	/* ブロック間の選択を滑らかにする */
-	user-select: text !important;
-	-webkit-user-select: text !important;
-	/* ブロック境界での選択途切れを防ぐ */
-	cursor: text;
-	/* 選択時のアウトラインを表示 */
-	outline: none;
-	/* ブロック間の余白を削除（選択が途切れないようにする） */
-	margin: 0;
-	padding: 0;
-	/* ブロック間の視覚的な区切りは最小高さで確保 */
-	min-height: 1.2em;
-	/* 改行を保持（プレビューモードと同じ） */
-	white-space: pre-wrap;
-	/* 行の高さを継承 */
-	line-height: inherit;
-}
-
-.tategaki-block:focus {
-	outline: none;
-}
-
-/* 複数ブロック選択時のビジュアルフィードバック */
-.tategaki-block::selection {
-	background-color: var(--text-selection);
-}
-
-.tategaki-block::-moz-selection {
-	background-color: var(--text-selection);
-}
-
 /* 選択時も下線を表示 - border-bottomを使用した確実な方法 */
 /* uタグをinline-blockにしてborder-bottomで下線を表現 */
-.tategaki-block u,
-.tategaki-contenteditable-container u,
-.tategaki-block-editor-root u,
 .tategaki-wysiwyg-editor u,
 .tategaki-preview u {
 	/* text-decorationの代わりにborder-bottomを使用 */
@@ -1776,8 +1104,6 @@ ruby {
 }
 
 /* 縦書き時は右側に下線（border-right）を使用 */
-.tategaki-block-editor-root[data-writing-mode="vertical-rl"] u,
-.tategaki-block-editor-root[data-writing-mode="vertical-lr"] u,
 .tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] u,
 .tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] u,
 .tategaki-preview[style*="vertical-rl"] u,
@@ -1789,127 +1115,14 @@ ruby {
 }
 
 /* 選択時の背景色を調整して下線が見えやすくする */
-.tategaki-block u::selection,
-.tategaki-contenteditable-container u::selection,
-.tategaki-block-editor-root u::selection,
 .tategaki-wysiwyg-editor u::selection,
 .tategaki-preview u::selection {
 	background-color: var(--text-selection, rgba(0, 123, 255, 0.3));
 }
 
-.tategaki-block u::-moz-selection,
-.tategaki-contenteditable-container u::-moz-selection,
-.tategaki-block-editor-root u::-moz-selection,
 .tategaki-wysiwyg-editor u::-moz-selection,
 .tategaki-preview u::-moz-selection {
 	background-color: var(--text-selection, rgba(0, 123, 255, 0.3));
-}
-
-/* 空ブロック（<br>のみ）でも選択を通過できるようにする */
-.tategaki-block br {
-	/* brを選択可能な要素として扱う */
-	user-select: text;
-	-webkit-user-select: text;
-}
-
-/* 空ブロックに最小限の内容を持たせて選択を通過可能にする */
-.tategaki-block:empty::after {
-	content: "";
-	display: inline-block;
-	width: 0;
-}
-
-/* アクティブブロックのビジュアルフィードバック（控えめ） */
-.tategaki-block--active {
-	/* 背景色は設定しない（選択の視認性を優先） */
-}
-
-/* 縦書き時の選択範囲の改善 */
-.tategaki-block-editor-root[style*="vertical-rl"] .tategaki-block {
-	/* 縦書き時の選択を滑らかにする（句読点での折り返しを防ぐため、normalに戻す） */
-	word-break: normal;
-	overflow-wrap: normal;
-	line-break: strict;
-}
-
-/* 横書き時の選択範囲の改善 */
-.tategaki-block-editor-root[style*="horizontal-tb"] .tategaki-block {
-	/* 横書き時の選択を滑らかにする */
-	word-break: break-word;
-	overflow-wrap: break-word;
-}
-
-/* ========================================
- * Hybrid Editing: Plain Block Editing Mode
- * ======================================== */
-
-/* プレーン編集モードのブロック */
-.tategaki-block--plain {
-	/* 装飾を削除してプレーンテキスト表示 */
-	/* 背景色は半透明オーバーレイで視覚的に区別 */
-	position: relative;
-	border: 1px solid var(--text-faint);
-	border-radius: 3px;
-	padding: 0.5em;
-	font-family: inherit;
-	white-space: pre-wrap;
-	word-wrap: break-word;
-	overflow-wrap: break-word;
-}
-
-/* 半透明の背景オーバーレイ */
-.tategaki-block--plain::before {
-	content: "";
-	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	background-color: var(--text-normal);
-	opacity: 0.05;
-	pointer-events: none;
-	z-index: -1;
-	border-radius: 2px;
-}
-
-/* プレーン編集モード時のMarkdownソース表示 */
-.tategaki-block--plain[contenteditable="true"] {
-	/* 編集可能状態の視覚的フィードバック */
-	border-color: var(--text-muted);
-	box-shadow: 0 0 0 1px var(--text-muted);
-}
-
-/* 編集中の背景オーバーレイを少し濃く */
-.tategaki-block--plain[contenteditable="true"]::before {
-	opacity: 0.08;
-}
-
-/* プレーン編集モード時のフォーカス状態 */
-.tategaki-block--plain:focus {
-	outline: 2px solid var(--interactive-accent);
-	outline-offset: 1px;
-}
-
-/* 縦書き時のプレーン編集モード */
-.tategaki-block-editor-root[style*="vertical-rl"] .tategaki-block--plain,
-.tategaki-block-editor-root[style*="vertical-lr"] .tategaki-block--plain {
-	/* 縦書きでもプレーンテキストは読みやすく */
-	writing-mode: inherit;
-	text-orientation: inherit;
-}
-
-/* プレーン編集モード内の全ての要素をプレーンテキスト化 */
-.tategaki-block--plain * {
-	font-family: inherit;
-	font-size: inherit;
-	font-weight: normal;
-	font-style: normal;
-	text-decoration: none;
-	color: inherit;
-	background: none;
-	border: none;
-	padding: 0;
-	margin: 0;
 }
 
 /* TipTap プレーン編集モードのオーバーレイ */
@@ -2012,20 +1225,9 @@ ruby {
 	padding-inline-start: 0 !important;
 }
 
-.tategaki-contenteditable-container a[href^="http://"],
-.tategaki-contenteditable-container a[href^="https://"],
-.tategaki-block a[href^="http://"],
-.tategaki-block a[href^="https://"] {
-	background-image: none !important;
-	padding-inline-end: 0 !important;
-	padding-inline-start: 0 !important;
-}
 
-.tategaki-preview a.external-link::after,
-.tategaki-contenteditable-container a[href^="http://"]::after,
-.tategaki-contenteditable-container a[href^="https://"]::after,
-.tategaki-block a[href^="http://"]::after,
-.tategaki-block a[href^="https://"]::after {
+
+.tategaki-preview a.external-link::after {
 	display: none !important;
 	content: none !important;
 }
@@ -2055,17 +1257,7 @@ ruby {
 	margin-right: 0;
 }
 
-.tategaki-block-editor-root[style*="vertical-rl"] .tategaki-frontmatter {
-	margin-bottom: 0;
-	margin-left: 3em;
-	margin-right: 0;
-}
 
-.tategaki-preview-container[style*="vertical-rl"] .tategaki-frontmatter {
-	margin-bottom: 0;
-	margin-left: 3em;
-	margin-right: 0;
-}
 
 /* 書籍モードでのフロントマター余白 */
 .tategaki-page .tategaki-frontmatter {
@@ -2175,28 +1367,8 @@ ruby {
 	);
 }
 
-/* プレビューモードで地付き要素を強制的に右寄せ */
-.tategaki-preview .tategaki-frontmatter-author,
-.tategaki-preview .tategaki-frontmatter-co-author,
-.tategaki-preview .tategaki-frontmatter-translator,
-.tategaki-preview .tategaki-frontmatter-co-translator {
-	text-align: end !important;
-	display: block !important;
-	margin-inline-start: 0 !important;
-	margin-inline-end: 0 !important;
-}
 
-/* エディタモードでフロントマターのYAMLテキストを非表示 */
-.tategaki-block-editor-root .tategaki-block:first-child {
-	/* フロントマター表示がある場合、最初のブロックがYAMLの場合は確認が必要 */
-}
 
-/* フロントマターのYAML部分を検出して非表示 */
-.tategaki-block-editor-root
-	> .tategaki-frontmatter
-	~ .tategaki-block:first-of-type {
-	/* フロントマター直後の最初のブロックがYAMLの場合 */
-}
 .tategaki-empty-line {
 	display: block;
 	height: calc(var(--tategaki-line-height, 1.8) * 1em);
@@ -2759,11 +1931,6 @@ ruby {
 
 .tategaki-donation-link {
 	display: inline-flex;
-}
-
-.tategaki-donation-image {
-	width: 217px !important;
-	height: 60px !important;
 }
 
 .tategaki-theme-list-container {
@@ -3977,6 +3144,8 @@ ruby {
 .tategaki-page h4,
 .tategaki-page h5,
 .tategaki-page h6 {
+	font-family: var(--tategaki-heading-font-family, var(--tategaki-font-family, inherit));
+	color: var(--tategaki-heading-text-color, var(--tategaki-text-color, inherit));
 	text-align: var(--tategaki-heading-align, start);
 	text-align-last: auto;
 }

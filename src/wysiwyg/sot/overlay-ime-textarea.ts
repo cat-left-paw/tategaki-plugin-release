@@ -277,7 +277,7 @@ export class OverlayImeTextarea {
 			const parentScrollTop = this.parentEl.scrollTop;
 			const parentScrollLeft = this.parentEl.scrollLeft;
 			try {
-				(this.textarea as any).focus({ preventScroll: true });
+				this.textarea.focus({ preventScroll: true });
 			} catch (_) {
 				this.textarea.focus();
 			}

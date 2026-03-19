@@ -47,9 +47,16 @@ export class MarkdownConverter {
 		if (!markdown) return "";
 
 		const enableRuby = options.enableRuby ?? true;
+		const appFromWindow =
+			typeof window !== "undefined"
+				? (
+						window as Window & {
+							app?: App;
+						}
+					).app ?? null
+				: null;
 		const app =
-			options.app ??
-			(typeof window !== "undefined" ? (window as any).app : null);
+			options.app ?? appFromWindow;
 		const sourcePath = options.sourcePath ?? "";
 
 		if (!app || typeof document === "undefined") {

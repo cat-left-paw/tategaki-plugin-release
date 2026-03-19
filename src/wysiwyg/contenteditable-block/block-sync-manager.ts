@@ -15,12 +15,16 @@ import {
 	type MarkdownSyncEditor,
 	type SyncState,
 } from "../contenteditable/sync-manager";
-	import {
-		areMarkdownContentsEquivalent,
-		writeSyncBackupPair,
-	} from "../../shared/sync-backup";
-	import { BackupTriggerDetector } from "../../shared/backup-trigger";
-	import { debugWarn, debugError } from "../../shared/logger";
+import {
+	areMarkdownContentsEquivalent,
+	writeSyncBackupPair,
+} from "../../shared/sync-backup";
+import {
+	overwriteFileContentsWithProcess,
+	replaceFileContentsWithProcess,
+} from "../../shared/vault-process-write";
+import { BackupTriggerDetector } from "../../shared/backup-trigger";
+import { debugWarn, debugError } from "../../shared/logger";
 
 interface BlockSyncManagerOptions {
 	app: App;
@@ -418,7 +422,12 @@ export class BlockContentSyncManager {
 				}
 			}
 
-			await this.app.vault.modify(this.currentFile, markdown);
+			await replaceFileContentsWithProcess(
+				this.app,
+				this.currentFile,
+				diskMarkdownBefore,
+				markdown
+			);
 
 			let readBack: string;
 			try {
@@ -452,7 +461,11 @@ export class BlockContentSyncManager {
 				);
 
 				try {
-					await this.app.vault.modify(this.currentFile, diskMarkdownBefore);
+					await overwriteFileContentsWithProcess(
+						this.app,
+						this.currentFile,
+						diskMarkdownBefore
+					);
 					new Notice(
 						t("notice.sync.rollbackDone"),
 						4500

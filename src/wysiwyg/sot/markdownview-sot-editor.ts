@@ -6,15 +6,19 @@ import type { SoTChange, SoTEditor, SoTSelection, SoTUpdate } from "./sot-editor
 
 type Listener = (update: SoTUpdate) => void;
 
+type MarkdownViewWithCodeMirror = MarkdownView & {
+	editor?: {
+		cm?: EditorView;
+	};
+};
+
 export class MarkdownViewSoTEditor implements SoTEditor {
 	private view: EditorView | null;
 	private listeners = new Set<Listener>();
 	private readonly updateCompartment = new Compartment();
 
 	constructor(markdownView: MarkdownView) {
-		const editorView = (markdownView.editor as any)?.cm as
-			| EditorView
-			| undefined;
+		const editorView = (markdownView as MarkdownViewWithCodeMirror).editor?.cm;
 		if (!editorView) {
 			this.view = null;
 			return;

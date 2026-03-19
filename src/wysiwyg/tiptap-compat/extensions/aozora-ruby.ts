@@ -1,6 +1,6 @@
 import { InputRule, Node } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { Slice, Fragment } from "@tiptap/pm/model";
+import { Slice, Fragment, Mark as PMMark, Node as PMNode } from "@tiptap/pm/model";
 
 export interface AozoraRubyAttributes {
 	ruby: string;
@@ -13,6 +13,19 @@ const AOZORA_RUBY_INPUT_REGEX =
 // ペースト時用のグローバルマッチ用正規表現
 const AOZORA_RUBY_GLOBAL_REGEX =
 	/(?:(?:[|\uFF5C]?(?<body1>[\u4E00-\u9FA0\u3005]+?))|(?:[|\uFF5C](?<body2>[^|\uFF5C]+?)))《(?<ruby>.+?)》/g;
+
+type RubyGroups = Record<string, string | undefined>;
+
+function getMatchGroups(match: RegExpMatchArray): RubyGroups | undefined {
+	return (match as RegExpMatchArray & { groups?: RubyGroups }).groups;
+}
+
+type RubyPasteNode = PMNode;
+
+type RubyMarkdownSerializerState = {
+	text: (text: string, escape?: boolean) => void;
+	write: (text: string) => void;
+};
 
 export const AozoraRubyNode = Node.create({
 	name: "aozoraRuby",
@@ -153,9 +166,7 @@ export const AozoraRubyNode = Node.create({
 			new InputRule({
 				find: AOZORA_RUBY_INPUT_REGEX,
 				handler: ({ commands, match, range }) => {
-					const groups = (match as any).groups as
-						| Record<string, string | undefined>
-						| undefined;
+					const groups = getMatchGroups(match);
 
 					const base = groups?.body2 ?? groups?.body1 ?? "";
 					const ruby = groups?.ruby ?? "";
@@ -187,7 +198,9 @@ export const AozoraRubyNode = Node.create({
 		const nodeType = this.type;
 
 		// 再帰的にノードを処理する関数
-		const transformNode = (node: any): any => {
+		const transformNode = (
+			node: RubyPasteNode,
+		): RubyPasteNode | RubyPasteNode[] => {
 			if (node.isText && node.text) {
 				// テキストノードを処理
 				const text = node.text;
@@ -197,7 +210,7 @@ export const AozoraRubyNode = Node.create({
 					return node;
 				}
 
-				const newNodes: any[] = [];
+				const newNodes: RubyPasteNode[] = [];
 				let lastIndex = 0;
 
 				matches.forEach((match: RegExpMatchArray) => {
@@ -207,12 +220,15 @@ export const AozoraRubyNode = Node.create({
 					if (matchIndex > lastIndex) {
 						const beforeText = text.slice(lastIndex, matchIndex);
 						newNodes.push(
-							nodeType.schema.text(beforeText, node.marks)
+							nodeType.schema.text(
+								beforeText,
+								node.marks as readonly PMMark[] | null | undefined,
+							)
 						);
 					}
 
 					// ルビノードを作成
-					const groups = (match as any).groups as Record<string, string | undefined> | undefined;
+					const groups = getMatchGroups(match);
 					const base = groups?.body2 ?? groups?.body1 ?? "";
 					const ruby = groups?.ruby ?? "";
 
@@ -234,16 +250,19 @@ export const AozoraRubyNode = Node.create({
 				// マッチ後のテキスト
 				if (lastIndex < text.length) {
 					const afterText = text.slice(lastIndex);
-					newNodes.push(
-						nodeType.schema.text(afterText, node.marks)
-					);
+						newNodes.push(
+							nodeType.schema.text(
+								afterText,
+								node.marks as readonly PMMark[] | null | undefined,
+							)
+						);
 				}
 
 				return newNodes;
 			} else if (node.content && node.content.size > 0) {
 				// コンテナノード（段落など）の子を再帰的に処理
-				const newContent: any[] = [];
-				node.content.forEach((child: any) => {
+				const newContent: RubyPasteNode[] = [];
+				node.content.forEach((child: RubyPasteNode) => {
 					const transformed = transformNode(child);
 					if (Array.isArray(transformed)) {
 						newContent.push(...transformed);
@@ -263,7 +282,7 @@ export const AozoraRubyNode = Node.create({
 				key: new PluginKey("aozoraRubyPaste"),
 				props: {
 					transformPasted: (slice) => {
-						const newNodes: any[] = [];
+						const newNodes: RubyPasteNode[] = [];
 
 						slice.content.forEach((node) => {
 							const transformed = transformNode(node);
@@ -301,7 +320,10 @@ export const AozoraRubyNode = Node.create({
 	addStorage() {
 		return {
 			markdown: {
-				serialize: (state: any, node: any) => {
+				serialize: (
+					state: RubyMarkdownSerializerState,
+					node: RubyPasteNode,
+				) => {
 					const base = node.textContent ?? "";
 					const ruby = String(node.attrs?.ruby ?? "");
 					if (!base || !ruby) {

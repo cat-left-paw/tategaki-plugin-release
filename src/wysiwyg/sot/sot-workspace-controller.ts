@@ -1,4 +1,5 @@
 import {
+	App,
 	MarkdownView,
 	Notice,
 	TFile,
@@ -7,7 +8,7 @@ import {
 	normalizePath,
 	setIcon,
 } from "obsidian";
-import type { KeymapEventHandler } from "obsidian";
+import type { KeymapEventHandler, Scope } from "obsidian";
 import { t } from "../../shared/i18n";
 import { FileSwitchModal } from "../../shared/ui/file-switch-modal";
 import { NewNoteModal } from "../../shared/ui/new-note-modal";
@@ -18,14 +19,64 @@ const PAIRED_MARKDOWN_BADGE_CLASS = "tategaki-paired-tab-badge";
 const PAIRED_MARKDOWN_BADGE_ICON_CLASS = "tategaki-paired-tab-badge-icon";
 const PAIRED_MARKDOWN_BADGE_TEXT_CLASS = "tategaki-paired-tab-badge-text";
 const SOT_TAB_BADGE_CLASS = "tategaki-sot-tab-badge";
-const SOT_TAB_BADGE_TITLE = "Tategaki SoT";
+const SOT_TAB_BADGE_TITLE = "Tategaki 執筆・参照";
 const RECENT_FILE_LIMIT = 50;
 
+type MarkdownViewWithCodeMirror = MarkdownView & {
+	editor?: {
+		cm?: unknown;
+	};
+};
+
+type LeafWithTabHeader = WorkspaceLeaf & {
+	tabHeaderEl?: HTMLElement;
+	tabHeader?: {
+		el?: HTMLElement;
+	};
+	containerEl?: HTMLElement;
+	id?: string;
+};
+
+type SoTWorkspaceHost = {
+	app: App;
+	containerEl: HTMLElement;
+	leaf: LeafWithTabHeader;
+	currentFile: TFile | null;
+	pairedMarkdownLeaf: WorkspaceLeaf | null;
+	pairedMarkdownView: MarkdownView | null;
+	pairedMarkdownBadgeLeaf: WorkspaceLeaf | null;
+	pairedMarkdownBadgeEl: HTMLElement | null;
+	sotTabBadgeEl: HTMLElement | null;
+	overlayTextarea?: { isImeVisible: () => boolean } | null;
+	plainEditComposing: boolean;
+	suppressPairCheck: boolean;
+	pairedMismatchNotified: boolean;
+	recentFilePathsInitialized: boolean;
+	recentFilePaths: string[];
+	scope?: Scope | null;
+	plugin: {
+		modeManager: {
+			openSoTWysiwygViewInLeaf: (
+				file: TFile,
+				leaf: WorkspaceLeaf,
+			) => Promise<void>;
+		};
+	};
+	registerEvent: (ref: ReturnType<App["workspace"]["on"]>) => void;
+	register: (callback: () => void) => void;
+	showLoadingOverlay: () => void;
+	closeSelf: () => void;
+	updateToolbar: () => void;
+	attachSoTEditor: (editor: MarkdownViewSoTEditor) => void;
+	scheduleRender: (force?: boolean) => void;
+	focusInputSurface: (preventScroll?: boolean) => void;
+};
+
 export class SoTWorkspaceController {
-	private readonly host: any;
+	private readonly host: SoTWorkspaceHost;
 	private escapeKeymapHandler: KeymapEventHandler | null = null;
 
-	constructor(host: any) {
+	constructor(host: SoTWorkspaceHost) {
 		this.host = host;
 	}
 
@@ -141,7 +192,10 @@ export class SoTWorkspaceController {
 		if (mostRecentLeaf) {
 			return mostRecentLeaf === this.host.leaf;
 		}
-		return this.host.leaf.containerEl.matches(".workspace-leaf.mod-active");
+		return (
+			this.host.leaf.containerEl?.matches(".workspace-leaf.mod-active") ??
+			false
+		);
 	}
 
 	isInModalLayer(el: HTMLElement | null): boolean {
@@ -353,7 +407,8 @@ export class SoTWorkspaceController {
 		if (existingLeaf) {
 			const view = existingLeaf.view;
 			if (view instanceof MarkdownView) {
-				if (!(view.editor as any)?.cm) {
+				const markdownView = view as MarkdownViewWithCodeMirror;
+				if (!markdownView.editor?.cm) {
 					return null;
 				}
 				this.host.pairedMarkdownLeaf = existingLeaf;
@@ -368,7 +423,8 @@ export class SoTWorkspaceController {
 			state: { mode: "source" },
 		});
 		if (leaf.view instanceof MarkdownView) {
-			if (!(leaf.view.editor as any)?.cm) {
+			const markdownView = leaf.view as MarkdownViewWithCodeMirror;
+			if (!markdownView.editor?.cm) {
 				return null;
 			}
 			this.host.pairedMarkdownLeaf = leaf;
@@ -528,7 +584,7 @@ export class SoTWorkspaceController {
 	}
 
 	getLeafTabHeaderEl(leaf: WorkspaceLeaf): HTMLElement | null {
-		const leafAny = leaf as any;
+		const leafAny = leaf as LeafWithTabHeader;
 		const tabHeaderEl = leafAny?.tabHeaderEl;
 		if (tabHeaderEl instanceof HTMLElement) {
 			return tabHeaderEl;

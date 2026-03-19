@@ -2,6 +2,15 @@ import type { LineRange } from "./line-ranges";
 import type { SoTEditor } from "./sot-editor";
 import { getCaretPositionFromPoint } from "./sot-selection-geometry";
 
+type SelectionWithBaseAndExtent = Selection & {
+	setBaseAndExtent?: (
+		anchorNode: Node,
+		anchorOffset: number,
+		focusNode: Node,
+		focusOffset: number,
+	) => void;
+};
+
 export type NativeSelectionSupportContext = {
 	isEnabled: () => boolean;
 	isCeImeMode?: () => boolean;
@@ -258,9 +267,13 @@ export class NativeSelectionSupport {
 
 		this.syncingToDom = true;
 		try {
-			const selectionAny = selection as any;
-			if (typeof selectionAny.setBaseAndExtent === "function") {
-				selectionAny.setBaseAndExtent(
+			const selectionWithBaseAndExtent =
+				selection as SelectionWithBaseAndExtent;
+			if (
+				typeof selectionWithBaseAndExtent.setBaseAndExtent ===
+				"function"
+			) {
+				selectionWithBaseAndExtent.setBaseAndExtent(
 					anchorPos.node,
 					anchorPos.offset,
 					headPos.node,
@@ -419,9 +432,12 @@ export class NativeSelectionSupport {
 			);
 		if (!anchor || !focus) return;
 
-		const selectionAny = selection as any;
-		if (typeof selectionAny.setBaseAndExtent === "function") {
-			selectionAny.setBaseAndExtent(
+		const selectionWithBaseAndExtent =
+			selection as SelectionWithBaseAndExtent;
+		if (
+			typeof selectionWithBaseAndExtent.setBaseAndExtent === "function"
+		) {
+			selectionWithBaseAndExtent.setBaseAndExtent(
 				anchor.node,
 				anchor.offset,
 				focus.node,

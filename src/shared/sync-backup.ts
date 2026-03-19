@@ -46,9 +46,13 @@ const DEFAULT_RETENTION: RetentionConfig = {
 	usageDaysToKeep: 7,
 };
 
-const BACKUP_ROOT = ".obsidian/tategaki-sync-backups";
+const SYNC_BACKUP_FOLDER_NAME = "tategaki-sync-backups";
 
-export const SYNC_BACKUP_ROOT = BACKUP_ROOT;
+export const SYNC_BACKUP_ROOT = SYNC_BACKUP_FOLDER_NAME;
+
+export function getSyncBackupRootPath(app: App): string {
+	return `${app.vault.configDir}/${SYNC_BACKUP_FOLDER_NAME}`;
+}
 
 export async function writeSyncBackupPair(
 	app: App,
@@ -58,11 +62,12 @@ export async function writeSyncBackupPair(
 	options: SyncBackupOptions = {}
 ): Promise<SyncBackupWriteResult> {
 	const reason = options.reason ?? "manual-sync";
+	const backupRoot = getSyncBackupRootPath(app);
 
-	await ensureFolderExists(app, BACKUP_ROOT);
+	await ensureFolderExists(app, backupRoot);
 
 	const fileKey = buildFileKey(targetFile);
-	const backupFolderPath = `${BACKUP_ROOT}/${fileKey}`;
+	const backupFolderPath = `${backupRoot}/${fileKey}`;
 	await ensureFolderExists(app, backupFolderPath);
 
 	const timestamp = formatTimestampCompact(new Date());
@@ -92,16 +97,19 @@ export async function writeSyncBackupPair(
 	};
 }
 
-export function getSyncBackupFolderPathForFile(targetFile: TFile): string {
+export function getSyncBackupFolderPathForFile(
+	app: App,
+	targetFile: TFile
+): string {
 	const fileKey = buildFileKey(targetFile);
-	return `${BACKUP_ROOT}/${fileKey}`;
+	return `${getSyncBackupRootPath(app)}/${fileKey}`;
 }
 
 export async function getLatestSyncBackupPair(
 	app: App,
 	targetFile: TFile
 ): Promise<SyncBackupPair | null> {
-	const backupFolderPath = getSyncBackupFolderPathForFile(targetFile);
+	const backupFolderPath = getSyncBackupFolderPathForFile(app, targetFile);
 
 	let listing: { files: string[]; folders: string[] } | null = null;
 	try {
@@ -299,7 +307,8 @@ export async function moveSyncBackupsToTrash(
 	options: { system?: boolean } = {}
 ): Promise<"none" | "system" | "local"> {
 	const adapter = app.vault.adapter;
-	const exists = await adapter.exists(BACKUP_ROOT);
+	const backupRoot = getSyncBackupRootPath(app);
+	const exists = await adapter.exists(backupRoot);
 	if (!exists) {
 		return "none";
 	}
@@ -307,7 +316,7 @@ export async function moveSyncBackupsToTrash(
 	const preferSystem = options.system !== false;
 	if (preferSystem) {
 		try {
-			const moved = await adapter.trashSystem(BACKUP_ROOT);
+			const moved = await adapter.trashSystem(backupRoot);
 			if (moved) {
 				return "system";
 			}
@@ -316,7 +325,7 @@ export async function moveSyncBackupsToTrash(
 		}
 	}
 
-	await adapter.trashLocal(BACKUP_ROOT);
+	await adapter.trashLocal(backupRoot);
 	return "local";
 }
 
@@ -413,8 +422,9 @@ async function ensureFolderExists(app: App, folderPath: string): Promise<void> {
 		if (!currentExisting) {
 			try {
 				await app.vault.createFolder(current);
-			} catch (error: any) {
-				const message = (error?.message as string) || "";
+			} catch (error: unknown) {
+				const message =
+					error instanceof Error ? error.message : "";
 				// 既に存在する場合は無視（並列保存対策）
 				if (!message.includes("Folder already exists")) {
 					throw error;
@@ -486,7 +496,7 @@ function allocateUniquePath(app: App, desiredPath: string): string {
 		for (const filePath of filePaths) {
 			const abstract = app.vault.getAbstractFileByPath(filePath);
 			if (abstract) {
-				await app.vault.delete(abstract, true);
+				await app.vault.trash(abstract, true);
 				continue;
 			}
 			try {
@@ -615,7 +625,7 @@ async function pruneOldBackupsUsageDayBased(
 		for (const filePath of pair.files) {
 			const abstract = app.vault.getAbstractFileByPath(filePath);
 			if (abstract) {
-				await app.vault.delete(abstract, true);
+				await app.vault.trash(abstract, true);
 				continue;
 			}
 			try {

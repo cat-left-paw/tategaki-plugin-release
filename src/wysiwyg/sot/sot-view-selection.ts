@@ -1,4 +1,96 @@
-export type SoTSelectionHost = any;
+import type TategakiV2Plugin from "../../core/plugin";
+import type { SoTEditor } from "./sot-editor";
+import type { TategakiV2Settings, CommonSettings } from "../../types/settings";
+
+export type SoTSelectionHost = {
+	sourceModeEnabled: boolean;
+	selectionLayerEl: HTMLElement | null;
+	selectionOverlay?: {
+		updateSelectionOverlay: () => void;
+	} | null;
+	caretEl: HTMLElement | null;
+	derivedRootEl: HTMLElement | null;
+	derivedContentEl: HTMLElement | null;
+	sotEditor: SoTEditor | null;
+	plugin: TategakiV2Plugin;
+	getEffectiveCommonSettings: (
+		settings: TategakiV2Settings,
+	) => CommonSettings;
+	resolveCaretColor: (
+		settings: TategakiV2Settings,
+		effectiveCommon: CommonSettings,
+	) => string;
+	ceImeMode: boolean;
+	overlayTextarea?: {
+		isFocused: () => boolean;
+		getSelectionStart: () => number | null;
+		setCaretVisible: (visible: boolean) => void;
+		isImeVisible: () => boolean;
+		setTextIndent: (indentPx: number) => void;
+		setConstraints: (
+			isVertical: boolean,
+			maxSize: number,
+			lineSize: number,
+		) => void;
+		setAnchorPositionVertical: (right: number, top: number) => void;
+		setAnchorPosition: (left: number, top: number) => void;
+	} | null;
+	overlayFocused: boolean;
+	pendingCaretScroll: boolean;
+	pendingLineIndex: number | null;
+	pendingLocalOffset: number | null;
+	findLineIndex: (offset: number) => number | null;
+	lineRanges: Array<{ from: number; to: number }>;
+	getLineElement: (lineIndex: number) => HTMLElement | null;
+	ensureLineRendered: (lineEl: HTMLElement) => void;
+	pendingText: string;
+	restorePendingSelectionLines?: () => void;
+	restorePendingLine?: () => void;
+	updatePendingSpacer: (lineIndex: number, localOffset: number) => void;
+	getCaretRectInLine: (
+		lineEl: HTMLElement,
+		localOffset: number,
+		lineRange: { from: number; to: number },
+		writingMode: string,
+	) => DOMRect | null;
+	getPendingSpacerStartRect: (
+		lineEl: HTMLElement,
+		lineIndex: number,
+		writingMode: string,
+	) => DOMRect | null;
+	getPendingCaretRect: (
+		writingMode: string,
+		caretIndex?: number | null,
+	) => DOMRect | null;
+	isSingleLineParagraphEnd?: (
+		lineIndex: number,
+		offset: number,
+		lineRange: { from: number; to: number },
+	) => boolean;
+	clearPendingSpacer: () => void;
+	setPendingSpacerVertical: (
+		baseLeft: number,
+		baseTop: number,
+		caretRect: DOMRect,
+		rootRect: DOMRect,
+		pendingStartRect: DOMRect | null,
+		localOffset: number,
+		lineRange: { from: number; to: number },
+		caretWidth: number,
+	) => void;
+	setPendingSpacerHorizontal: (
+		baseLeft: number,
+		baseTop: number,
+		caretRect: DOMRect,
+		rootRect: DOMRect,
+		pendingStartRect: DOMRect | null,
+		localOffset: number,
+		lineRange: { from: number; to: number },
+		caretWidth: number,
+	) => void;
+	updatePendingPosition: (left: number, top: number) => void;
+	scrollCaretIntoView: () => void;
+};
 
 export function scheduleCaretUpdate(host: SoTSelectionHost, force = false): void {
 	if (!force) {
@@ -57,7 +149,7 @@ export function updateCaretPosition(host: SoTSelectionHost): void {
 			host.caretEl.style.display = "none";
 			if (host.pendingCaretScroll) {
 				host.pendingCaretScroll = false;
-				scrollCaretIntoView(host);
+				host.scrollCaretIntoView();
 			}
 			return;
 		}

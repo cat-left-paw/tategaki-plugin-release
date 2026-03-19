@@ -470,10 +470,9 @@ export function renderEmbedWidgetLine(
 		}
 	}
 	if (parsed.blockId) {
-		const blocks = cache?.blocks ?? {};
+		const blocks = (cache?.blocks ?? {}) as Record<string, unknown>;
 		const exists =
-			(blocks as any)[parsed.blockId] ||
-			(blocks as any)[`^${parsed.blockId}`];
+			blocks[parsed.blockId] || blocks[`^${parsed.blockId}`];
 		if (!exists) {
 			loading.textContent = t("widget.embed.blockNotFound", {
 				blockId: parsed.blockId,

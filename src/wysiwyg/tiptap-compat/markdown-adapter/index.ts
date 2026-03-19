@@ -1,4 +1,5 @@
 import { Editor } from "@tiptap/core";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import * as MarkdownItModule from "markdown-it";
 import {
 	convertRubyElementsToAozora,
@@ -35,6 +36,32 @@ export interface TipTapMarkdownAdapterOptions {
 	getSettings?: () => TategakiV2Settings;
 	getContextFilePath?: () => string | null;
 	resolveImageSrc?: (src: string, contextFilePath: string | null) => string | null;
+}
+
+type VerticalWritingStorage = {
+	verticalWriting?: {
+		currentMode?: string;
+	};
+};
+
+type ReplaceCallbackArg =
+	| string
+	| number
+	| Record<string, string | undefined>
+	| undefined;
+
+function getStoredWritingMode(editor: Editor): string | undefined {
+	const storage = editor.storage as VerticalWritingStorage;
+	return storage.verticalWriting?.currentMode;
+}
+
+function getReplaceGroups(
+	args: ReplaceCallbackArg[],
+): Record<string, string | undefined> | undefined {
+	const groups = args[args.length - 1];
+	return typeof groups === "object" && groups !== null
+		? groups
+		: undefined;
 }
 
 export function createTipTapMarkdownAdapter(
@@ -108,8 +135,7 @@ class TipTapMarkdownAdapter implements MarkdownAdapter {
 			".tategaki-wysiwyg-editor"
 		) as HTMLElement | null;
 		const hostMode = host?.getAttribute("data-writing-mode");
-		const storedMode = (this.editor.storage as any)?.verticalWriting
-			?.currentMode as string | undefined;
+		const storedMode = getStoredWritingMode(this.editor);
 		const mode =
 			hostMode === "vertical-rl" || hostMode === "horizontal-tb"
 				? hostMode
@@ -522,10 +548,8 @@ export function renderInlineMarkdownToTipTapHtml(
 function convertAozoraRubyTextToTipTapHtml(text: string): string {
 	const regex = createAozoraRubyRegExp();
 	regex.lastIndex = 0;
-	return text.replace(regex, (match: string, ...args: any[]) => {
-		const groups = args[args.length - 1] as
-			| Record<string, string | undefined>
-			| undefined;
+	return text.replace(regex, (match: string, ...args: ReplaceCallbackArg[]) => {
+		const groups = getReplaceGroups(args);
 		const base = groups?.body2 ?? groups?.body1 ?? "";
 		const ruby = groups?.ruby ?? "";
 		if (!base || !ruby) {
@@ -685,11 +709,16 @@ function serializeDocToMarkdown(editor: Editor): string {
 	return parts.join("\n");
 }
 
-function serializeBlock(node: any, indentLevel: number, index: number, siblingCount: number): string | null {
-	switch (node.type.name) {
-		case "heading": {
-			const inlineContent = serializeInline(node);
-			return `${"#".repeat(node.attrs.level ?? 1)} ${inlineContent}`;
+function serializeBlock(
+	node: PMNode,
+	indentLevel: number,
+	index: number,
+	siblingCount: number,
+): string | null {
+		switch (node.type.name) {
+			case "heading": {
+				const inlineContent = serializeInline(node);
+				return `${"#".repeat(Number(node.attrs.level ?? 1))} ${inlineContent}`;
 		}
 	case "paragraph": {
 		const text = serializeInline(node);
@@ -713,12 +742,15 @@ function serializeBlock(node: any, indentLevel: number, index: number, siblingCo
 		case "listItem": {
 			const body = flattenChildren(node, indentLevel);
 			return body;
-		}
-		case "codeBlock": {
-			const lang = node.attrs.language ? node.attrs.language : "";
-			const rawText = node.textContent ?? "";
-			const body = rawText.endsWith("\n")
-				? rawText.slice(0, -1)
+			}
+			case "codeBlock": {
+				const lang =
+					typeof node.attrs.language === "string"
+						? node.attrs.language
+						: "";
+				const rawText = node.textContent ?? "";
+				const body = rawText.endsWith("\n")
+					? rawText.slice(0, -1)
 				: rawText;
 			return ["```" + lang, body, "```"].join("\n");
 		}
@@ -729,7 +761,11 @@ function serializeBlock(node: any, indentLevel: number, index: number, siblingCo
 	}
 }
 
-function serializeList(node: any, indentLevel: number, marker: string): string {
+function serializeList(
+	node: PMNode,
+	indentLevel: number,
+	marker: string,
+): string {
 	const lines: string[] = [];
 	const baseIndent = " ".repeat(indentLevel);
 	const continuationIndent = " ".repeat(indentLevel + marker.length + 1);
@@ -761,7 +797,7 @@ function serializeList(node: any, indentLevel: number, marker: string): string {
 	return lines.join("\n");
 }
 
-function flattenChildren(node: any, indentLevel: number): string {
+function flattenChildren(node: PMNode, indentLevel: number): string {
 	const parts: string[] = [];
 	for (let i = 0; i < node.childCount; i++) {
 		const child = node.child(i);
@@ -772,7 +808,7 @@ function flattenChildren(node: any, indentLevel: number): string {
 	return parts.join("\n");
 }
 
-function serializeInline(node: any): string {
+function serializeInline(node: PMNode): string {
 	if (node.isText) {
 		return applyMarks(node);
 	}
@@ -842,18 +878,18 @@ function serializeInline(node: any): string {
 	return text;
 }
 
-export function serializeInlineToMarkdown(node: any): string {
+export function serializeInlineToMarkdown(node: PMNode): string {
 	return serializeInline(node);
 }
 
-function applyMarks(textNode: any): string {
+function applyMarks(textNode: PMNode): string {
 	let text = textNode.text ?? "";
 	if (!text) return "";
 
 	const marks = textNode.marks ?? [];
-	const spanMark = marks.find((mark: any) => mark.type.name === "spanStyle");
+	const spanMark = marks.find((mark) => mark.type.name === "spanStyle");
 	const orderedMarks = marks.filter(
-		(mark: any) => mark.type.name !== "spanStyle"
+		(mark) => mark.type.name !== "spanStyle"
 	);
 
 	for (const mark of orderedMarks) {

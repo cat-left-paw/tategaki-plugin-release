@@ -10,7 +10,12 @@ import {
 	normalizePath,
 } from "obsidian";
 import type TategakiV2Plugin from "../core/plugin";
-import type { CommonSettings, TategakiV2Settings } from "../types/settings";
+import {
+	resolveEffectiveBookFrontmatterDisplayMode,
+	resolveEffectiveBookHeadingPagination,
+	type CommonSettings,
+	type TategakiV2Settings,
+} from "../types/settings";
 import { PagedReadingMode } from "../wysiwyg/reading-mode/paged-reading-mode";
 import { SettingsPanelModal } from "../wysiwyg/contenteditable/settings-panel";
 import { t } from "../shared/i18n";
@@ -51,6 +56,7 @@ export class TategakiReadingView extends ItemView {
 	private toolbarRightEl: HTMLElement | null = null;
 	private modeBadgeEl: HTMLElement | null = null;
 	private writingModeButton: HTMLButtonElement | null = null;
+	private writingModeButtonHovered = false;
 	private readingModeButton: HTMLButtonElement | null = null;
 	private outlineButton: HTMLButtonElement | null = null;
 	private rubyToggleButton: HTMLButtonElement | null = null;
@@ -104,10 +110,9 @@ export class TategakiReadingView extends ItemView {
 		}
 		if (state?.returnViewMode) {
 			// v1.2.0: "preview" は廃止（互換のため "edit" として扱う）
+			const returnMode = String(state.returnViewMode);
 			this.returnViewMode =
-				(state.returnViewMode as any) === "preview"
-					? "edit"
-					: state.returnViewMode;
+				returnMode === "preview" ? "edit" : state.returnViewMode;
 			this.updateReturnButton();
 		}
 		if (!this.isReady) {
@@ -183,8 +188,9 @@ export class TategakiReadingView extends ItemView {
 			this.filePath = this.pendingState.filePath;
 		}
 		if (this.pendingState?.returnViewMode) {
+			const returnMode = String(this.pendingState.returnViewMode);
 			this.returnViewMode =
-				(this.pendingState.returnViewMode as any) === "preview"
+				returnMode === "preview"
 					? "edit"
 					: this.pendingState.returnViewMode;
 		}
@@ -266,14 +272,22 @@ export class TategakiReadingView extends ItemView {
 		toolbarRight.empty();
 		this.applyToolbarLayout(toolbarLeft);
 
-		this.writingModeButton = this.createToolbarButton(
-			toolbarLeft,
-			"arrow-down-up",
-			t("toolbar.writingMode.toggle"),
-			() => void this.toggleWritingMode()
-		);
-		this.updateWritingModeButton();
-		this.createSeparator(toolbarLeft);
+			this.writingModeButton = this.createToolbarButton(
+				toolbarLeft,
+				"arrow-down-up",
+				t("toolbar.writingMode.toggle"),
+				() => void this.toggleWritingMode()
+			);
+			this.writingModeButton.addEventListener("mouseenter", () => {
+				this.writingModeButtonHovered = true;
+				this.updateWritingModeButton();
+			});
+			this.writingModeButton.addEventListener("mouseleave", () => {
+				this.writingModeButtonHovered = false;
+				this.updateWritingModeButton();
+			});
+			this.updateWritingModeButton();
+			this.createSeparator(toolbarLeft);
 
 		this.outlineButton = this.createToolbarButton(
 			toolbarLeft,
@@ -380,11 +394,18 @@ export class TategakiReadingView extends ItemView {
 		if (!this.writingModeButton) {
 			return;
 		}
-		const mode = this.getEffectiveCommonSettings().writingMode;
-		const isVertical = mode === "vertical-rl";
-		this.writingModeButton.empty();
-		const iconEl = this.writingModeButton.createSpan();
-		setIcon(iconEl, isVertical ? "arrow-down-up" : "arrow-left-right");
+			const mode = this.getEffectiveCommonSettings().writingMode;
+			const isVertical = mode === "vertical-rl";
+			const icon = this.writingModeButtonHovered
+				? isVertical
+					? "arrow-left-right"
+					: "arrow-down-up"
+				: isVertical
+					? "arrow-down-up"
+					: "arrow-left-right";
+			this.writingModeButton.empty();
+			const iconEl = this.writingModeButton.createSpan();
+			setIcon(iconEl, icon);
 		this.writingModeButton.setAttribute(
 			"aria-label",
 			isVertical
@@ -930,16 +951,9 @@ export class TategakiReadingView extends ItemView {
 		proseMirror.setAttribute("contenteditable", "false");
 		proseMirror.innerHTML = normalizedMarkdown;
 
-		// 見出しのページ扱い（新設定を優先）
-		const headingPagMode = settings.preview.bookHeadingPaginationMode ?? "none";
-		const headingPagLevel = settings.preview.bookHeadingPaginationLevel ?? 0;
-		// 後方互換: 旧設定もフォールバックとして参照
-		const effectiveLevel = headingPagLevel > 0
-			? headingPagLevel
-			: (settings.preview.bookPageBreakBeforeHeadingLevel ?? 0);
-		const effectiveMode = headingPagMode !== "none"
-			? headingPagMode
-			: (effectiveLevel > 0 ? "page-break" : "none");
+			// 見出しのページ扱い（新設定を優先）
+			const { mode: effectiveMode, level: effectiveLevel } =
+				resolveEffectiveBookHeadingPagination(settings.preview);
 
 		if (effectiveMode !== "none" && effectiveLevel > 0) {
 			for (let l = 1; l <= effectiveLevel; l++) {
@@ -955,7 +969,9 @@ export class TategakiReadingView extends ItemView {
 		}
 
 		// 独立ページ分離モード（新設定を優先、旧設定もフォールバック）
-		const fmDisplayMode = settings.preview.bookFrontmatterDisplayMode ?? "inline";
+			const fmDisplayMode = resolveEffectiveBookFrontmatterDisplayMode(
+				settings.preview,
+			);
 		const useCoverPage =
 			fmDisplayMode === "separate-page" && frontmatterEl !== null;
 
@@ -1154,9 +1170,6 @@ export class TategakiReadingView extends ItemView {
 	}
 
 	private getEffectiveCommonSettings(): CommonSettings {
-		return typeof (this.plugin as any).getEffectiveCommonSettings ===
-			"function"
-			? (this.plugin as any).getEffectiveCommonSettings()
-			: this.plugin.settings.common;
+		return this.plugin.getEffectiveCommonSettings();
 	}
 }

@@ -59,7 +59,7 @@ const jaDict = {
 	"toolbar.source.disable": "装飾表示に戻す",
 	"toolbar.outline": "アウトライン",
 	"toolbar.findReplace": "検索・置換",
-	"toolbar.readingMode.pagination": "書籍モード（ページネーション）",
+	"toolbar.readingMode.pagination": "書籍モード",
 	"toolbar.auxiliary.toggle": "補助入力パネル",
 	"toolbar.auxiliary.enable": "補助入力パネルをオンにする",
 	"toolbar.auxiliary.disable": "補助入力パネルをオフにする",
@@ -74,10 +74,10 @@ const jaDict = {
 	"toolbar.sync.saveShortcut": "保存 ({shortcut})",
 	"toolbar.reading.return": "戻る",
 	"toolbar.reading.returnTo": "{view}へ戻る",
-	"reading.returnLabel.sot": "SoT編集ビュー",
-	"reading.returnLabel.compat": "互換モード",
-	"view.reading.display": "Tategaki 書籍",
-	"view.reading.displayWithTitle": "Tategaki 書籍: - {title} -",
+	"reading.returnLabel.sot": "執筆・参照ビュー",
+	"reading.returnLabel.compat": "互換ビュー",
+	"view.reading.display": "書籍ビュー",
+	"view.reading.displayWithTitle": "書籍ビュー: - {title} -",
 	"badge.mode.reading": "書籍",
 	"badge.mode.compat": "互換",
 	"badge.pairedMarkdown.short": "縦",
@@ -108,14 +108,14 @@ const jaDict = {
 	"plugin.notice.backup.openFailed":
 		"バックアップフォルダを開けませんでした。",
 
-	"settings.section.main": "Tategaki設定",
-	"settings.compatMode.name": "互換モード（旧エディタ）",
+	"settings.section.main": "一般",
+	"settings.compatMode.name": "互換モード",
 	"settings.compatMode.desc":
 		"互換ビューと同期機能を有効化します。オフにすると互換用の同期/バックアップ設定を非表示にします",
 	"settings.showModeDialog.name": "ビュー起動時にモード選択を表示",
 	"settings.showModeDialog.desc":
-		"縦書きビューを開くときに、執筆モード/参照モードを選択するダイアログを表示します",
-	"settings.section.syncAndUpdateCompat": "同期と更新（互換モード専用）",
+		"縦書きビューを開くときに、表示モードを選ぶダイアログを表示します",
+	"settings.section.syncAndUpdateCompat": "互換モード",
 	"settings.updateInterval.name": "外部同期の更新間隔(ms)",
 	"settings.updateInterval.desc":
 		"カーソル同期や追従時のポーリング間隔です。0=リアルタイム（高負荷の可能性）。値を大きくするほど負荷は軽くなります",
@@ -126,7 +126,7 @@ const jaDict = {
 	"settings.syncMode.manual": "手動同期",
 	"settings.syncBackupCreate.name": "同期バックアップを作成",
 	"settings.syncBackupCreate.desc":
-		"互換モードの同期時にバックアップを作成します。無効にするとバックアップは作成されません（事故時は Obsidian の「ファイル履歴」を利用してください）。",
+		"互換モードの同期時にバックアップを作成します。無効にするとバックアップは作成されません（必要に応じて「バージョン履歴」を利用してください）。",
 	"settings.syncBackupOpen.name": "同期バックアップフォルダを開く",
 	"settings.syncBackupOpen.desc": "バックアップ保存先フォルダを開きます。",
 	"settings.syncBackupMove.name": "同期バックアップをゴミ箱へ移動",
@@ -147,8 +147,7 @@ const jaDict = {
 	"settings.manualUpdate.button": "更新の確認",
 	"settings.notice.update.invalidResponse":
 		"更新情報を取得できませんでした（latest.jsonの形式を確認してください）。",
-	"settings.notice.update.latest":
-		"Tategakiエディタは最新です（現在: {current}）。",
+	"settings.notice.update.latest": "最新です（現在: {current}）。",
 	"settings.notice.update.compareUnavailableWithUrl":
 		"更新情報を取得しました（公開: {latest} / 現在: {current}）。バージョン比較ができないため、Releases を確認してください: {url}",
 	"settings.notice.update.compareUnavailableNoUrl":
@@ -167,10 +166,10 @@ const jaDict = {
 	"settings.supportDonation.name": "サポート（寄付）",
 	"settings.supportDonation.desc":
 		"このプラグインを気に入っていただけたらサポートをしていただくと幸いです（任意）",
-	"settings.section.theme": "テーマ管理",
-	"settings.theme.obsidianBase.name": "Obsidian ベーステーマ",
+	"settings.section.theme": "テーマ",
+	"settings.theme.obsidianBase.name": "アプリテーマ",
 	"settings.theme.obsidianBase.desc":
-		"Obsidianで適用されているテーマをベースとしたテーマです",
+		"現在適用中のアプリテーマをベースにしたテーマです",
 	"settings.theme.unknown": "未知のテーマ",
 	"settings.theme.current": "現在のテーマ: {themeName}",
 	"settings.theme.saved": "保存されているテーマ",
@@ -189,22 +188,23 @@ const jaDict = {
 		"設定パネルで見た目を調整した後、「現在の設定をテーマとして保存」ボタンから新しいテーマとして保存できます。保存されたテーマはここで管理できます。",
 	"theme.userCreatedDescription": "ユーザー作成テーマ",
 
-	"modal.viewMode.title": "Tategakiエディタを開く",
+	"modal.viewMode.title": "縦書きビューを開く",
 	"modal.viewMode.prompt": "表示モードを選択してください。",
 	"modal.viewMode.edit.title": "執筆・参照モード",
-	"modal.viewMode.edit.desc": "SoTビューで編集・参照を行います。",
+	"modal.viewMode.edit.desc":
+		"執筆・参照モードで編集・参照を行います。",
 	"modal.viewMode.reading.title": "書籍モード",
 	"modal.viewMode.reading.desc":
 		"縦書き読書モードで、ページめくりスタイルで閲覧します。",
-	"modal.viewMode.compat.title": "互換モード（旧TipTap）",
-	"modal.viewMode.compat.desc": "旧TipTapベースの互換ビューで編集します。",
+	"modal.viewMode.compat.title": "互換モード",
+	"modal.viewMode.compat.desc": "TipTapベースの互換ビューで編集します。",
 	"modal.viewMode.placement.right": "右側に開く",
 	"modal.viewMode.placement.tab": "隣のタブに開く",
 	"modal.viewMode.placement.window": "新規ウィンドウで開く",
 
 	"modal.viewAlreadyOpen.title": "縦書きビューは既に開かれています",
 	"modal.viewAlreadyOpen.desc":
-		"既に縦書きビュー（執筆モード、参照モード、または書籍モード）が開かれています。新しいビューを開くには、既存のビューを閉じてください。",
+		"既に縦書きビューが開かれています。新しいビューを開くには、既存のビューを閉じてください。",
 
 	"modal.unsupportedHtml.title": "未対応HTMLタグの検出",
 	"modal.unsupportedHtml.desc":
@@ -219,7 +219,7 @@ const jaDict = {
 	"modal.unsavedChanges.title": "未保存の変更",
 	"modal.settingsPanel.title": "表示設定",
 	"modal.settingsPanel.pluginSettingsHint":
-		"起動方法や一般設定は Obsidian のプラグイン設定から変更できます。",
+		"起動方法や一般項目はプラグイン設定から変更できます。",
 	"modal.settingsPanel.openPluginSettings": "プラグイン設定を開く",
 	"settings.headingMarginAfter": "見出し後マージン",
 	"settings.headingMarginAfter.desc": "見出しの後（縦書き：左側、横書き：下側）のマージン（em）",
@@ -372,8 +372,8 @@ const jaDict = {
 	"notice.ruby.toggleFailed": "ルビ表示の切り替えに失敗しました。",
 	"notice.ruby.singleLineOnly": "ルビは1行内の選択のみ対応しています。",
 	"notice.customEmphasis.saveFailed": "傍点候補の保存に失敗しました。",
-	"notice.bookMode.opened": "書籍モードビューを開きました。",
-	"notice.bookMode.closed": "書籍モードビューを閉じました。",
+	"notice.bookMode.opened": "書籍モードを開きました。",
+	"notice.bookMode.closed": "書籍モードを閉じました。",
 	"notice.outline.openFailed": "アウトラインを開けませんでした。",
 	"notice.sourceEdit.unavailableInPlainText":
 		"全文プレーン表示中はソーステキスト編集を使えません。",
@@ -482,7 +482,7 @@ const enDict: Record<I18nKey, string> = {
 	"toolbar.source.disable": "Return to formatted view",
 	"toolbar.outline": "Outline",
 	"toolbar.findReplace": "Find and replace",
-	"toolbar.readingMode.pagination": "Book mode (pagination)",
+	"toolbar.readingMode.pagination": "Book mode",
 	"toolbar.auxiliary.toggle": "Auxiliary input panel",
 	"toolbar.auxiliary.enable": "Enable auxiliary input panel",
 	"toolbar.auxiliary.disable": "Disable auxiliary input panel",
@@ -497,10 +497,10 @@ const enDict: Record<I18nKey, string> = {
 	"toolbar.sync.saveShortcut": "Save ({shortcut})",
 	"toolbar.reading.return": "Back",
 	"toolbar.reading.returnTo": "Back to {view}",
-	"reading.returnLabel.sot": "SoT editor view",
-	"reading.returnLabel.compat": "Compatibility mode",
-	"view.reading.display": "Tategaki Book",
-	"view.reading.displayWithTitle": "Tategaki Book: - {title} -",
+	"reading.returnLabel.sot": "Writing/Reading view",
+	"reading.returnLabel.compat": "Compatibility view",
+	"view.reading.display": "Book view",
+	"view.reading.displayWithTitle": "Book view: - {title} -",
 	"badge.mode.reading": "Book",
 	"badge.mode.compat": "Compat",
 	"badge.pairedMarkdown.short": "V",
@@ -528,15 +528,14 @@ const enDict: Record<I18nKey, string> = {
 	"plugin.notice.backup.notFound": "Sync backup folder was not found.",
 	"plugin.notice.backup.openFailed": "Failed to open the backup folder.",
 
-	"settings.section.main": "Tategaki Settings",
-	"settings.compatMode.name": "Compatibility mode (legacy editor)",
+	"settings.section.main": "General",
+	"settings.compatMode.name": "Compatibility mode",
 	"settings.compatMode.desc":
 		"Enable the compatibility view and sync features. Turning this off hides compatibility sync/backup settings.",
 	"settings.showModeDialog.name": "Show mode selection when opening view",
 	"settings.showModeDialog.desc":
-		"Show a dialog to choose writing/reading mode when opening the vertical writing view.",
-	"settings.section.syncAndUpdateCompat":
-		"Sync and Updates (compatibility mode only)",
+		"Show a dialog to choose a view mode when opening the vertical writing view.",
+	"settings.section.syncAndUpdateCompat": "Compatibility mode",
 	"settings.updateInterval.name": "External sync update interval (ms)",
 	"settings.updateInterval.desc":
 		"Polling interval for cursor sync/follow behavior. 0 = real-time (may increase load). Larger values reduce load.",
@@ -547,7 +546,7 @@ const enDict: Record<I18nKey, string> = {
 	"settings.syncMode.manual": "Manual sync",
 	"settings.syncBackupCreate.name": "Create sync backups",
 	"settings.syncBackupCreate.desc":
-		"Create backups when syncing in compatibility mode. If disabled, backups are not created (use Obsidian File Recovery if needed).",
+		'Create backups when syncing in compatibility mode. If disabled, backups are not created (use "Version history" if needed).',
 	"settings.syncBackupOpen.name": "Open sync backup folder",
 	"settings.syncBackupOpen.desc": "Open the folder where backups are stored.",
 	"settings.syncBackupMove.name": "Move sync backups to trash",
@@ -568,8 +567,7 @@ const enDict: Record<I18nKey, string> = {
 	"settings.manualUpdate.button": "Check updates",
 	"settings.notice.update.invalidResponse":
 		"Could not get update info (check latest.json format).",
-	"settings.notice.update.latest":
-		"Tategaki editor is up to date (current: {current}).",
+	"settings.notice.update.latest": "Up to date (current: {current}).",
 	"settings.notice.update.compareUnavailableWithUrl":
 		"Update info received (published: {latest} / current: {current}). Could not compare versions, please check Releases: {url}",
 	"settings.notice.update.compareUnavailableNoUrl":
@@ -588,10 +586,10 @@ const enDict: Record<I18nKey, string> = {
 	"settings.supportDonation.name": "Support (donation)",
 	"settings.supportDonation.desc":
 		"If you enjoy this plugin, your support is appreciated (optional).",
-	"settings.section.theme": "Theme Management",
-	"settings.theme.obsidianBase.name": "Obsidian Base Theme",
+	"settings.section.theme": "Themes",
+	"settings.theme.obsidianBase.name": "App theme",
 	"settings.theme.obsidianBase.desc":
-		"A theme based on the currently applied Obsidian theme.",
+		"A theme based on the current app theme.",
 	"settings.theme.unknown": "Unknown theme",
 	"settings.theme.current": "Current theme: {themeName}",
 	"settings.theme.saved": "Saved themes",
@@ -611,23 +609,24 @@ const enDict: Record<I18nKey, string> = {
 		'After adjusting appearance in the settings panel, save it as a new theme with "Save current settings as theme". Saved themes are managed here.',
 	"theme.userCreatedDescription": "User theme",
 
-	"modal.viewMode.title": "Open Tategaki Editor",
+	"modal.viewMode.title": "Open vertical writing view",
 	"modal.viewMode.prompt": "Select a display mode.",
-	"modal.viewMode.edit.title": "Writing/Reading mode",
-	"modal.viewMode.edit.desc": "Edit/read in the SoT view.",
+	"modal.viewMode.edit.title": "Writing and reading mode",
+	"modal.viewMode.edit.desc":
+		"Edit and read in writing and reading mode.",
 	"modal.viewMode.reading.title": "Book mode",
 	"modal.viewMode.reading.desc":
 		"Browse in vertical reading mode with page-turn style navigation.",
-	"modal.viewMode.compat.title": "Compatibility mode (legacy TipTap)",
+	"modal.viewMode.compat.title": "Compatibility mode",
 	"modal.viewMode.compat.desc":
-		"Edit in the legacy TipTap-based compatibility view.",
+		"Edit in the TipTap-based compatibility view.",
 	"modal.viewMode.placement.right": "Open on the right",
 	"modal.viewMode.placement.tab": "Open in adjacent tab",
 	"modal.viewMode.placement.window": "Open in new window",
 
 	"modal.viewAlreadyOpen.title": "Vertical writing view is already open",
 	"modal.viewAlreadyOpen.desc":
-		"A vertical writing view (writing mode, reading mode, or book mode) is already open. Close the existing view before opening a new one.",
+		"A vertical writing view is already open. Close the existing view before opening a new one.",
 
 	"modal.unsupportedHtml.title": "Unsupported HTML tags detected",
 	"modal.unsupportedHtml.desc":
@@ -642,7 +641,7 @@ const enDict: Record<I18nKey, string> = {
 	"modal.unsavedChanges.title": "Unsaved changes",
 	"modal.settingsPanel.title": "Display settings",
 	"modal.settingsPanel.pluginSettingsHint":
-		"Startup options and general settings can be changed in Obsidian's plugin settings.",
+		"Startup and general options can be changed in the plugin settings.",
 	"modal.settingsPanel.openPluginSettings": "Open plugin settings",
 	"settings.headingMarginAfter": "Heading after-margin",
 	"settings.headingMarginAfter.desc": "Margin after headings (vertical: left side, horizontal: bottom) in em",
@@ -803,8 +802,8 @@ const enDict: Record<I18nKey, string> = {
 		"Ruby is only supported for selections within a single line.",
 	"notice.customEmphasis.saveFailed":
 		"Failed to save emphasis mark candidates.",
-	"notice.bookMode.opened": "Book mode view opened.",
-	"notice.bookMode.closed": "Book mode view closed.",
+	"notice.bookMode.opened": "Opened book mode.",
+	"notice.bookMode.closed": "Closed book mode.",
 	"notice.outline.openFailed": "Could not open outline.",
 	"notice.sourceEdit.unavailableInPlainText":
 		"Source text editing cannot be used in full plain-text view.",

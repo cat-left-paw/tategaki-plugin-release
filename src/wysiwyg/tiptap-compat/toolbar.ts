@@ -59,6 +59,7 @@ export class TipTapCompatToolbar {
 	private hideEditingButtonsWhenReadOnly = false;
 	private separators: HTMLDivElement[] = [];
 	private writingModeButton: HTMLButtonElement | null = null;
+	private writingModeButtonHovered = false;
 	private horizontalRuleButton: HTMLButtonElement | null = null;
 	private readingModeButton: HTMLButtonElement | null = null;
 	private statusElement: HTMLElement | null = null;
@@ -100,19 +101,27 @@ export class TipTapCompatToolbar {
 		}
 
 		// 書字方向切り替えボタン（一番左に配置）
-		if (this.options.onToggleWritingMode && this.options.getWritingMode) {
-			this.writingModeButton = this.createButton(
-				"arrow-down-up",
+			if (this.options.onToggleWritingMode && this.options.getWritingMode) {
+				this.writingModeButton = this.createButton(
+					"arrow-down-up",
 				t("toolbar.writingMode.toggle"),
 				() => {
 					this.options.onToggleWritingMode?.();
 					this.updateWritingModeButton();
 					this.updateHorizontalRuleIcon();
-				},
-			);
-			this.updateWritingModeButton();
-			this.createSeparator();
-		}
+					},
+				);
+				this.writingModeButton.addEventListener("mouseenter", () => {
+					this.writingModeButtonHovered = true;
+					this.updateWritingModeButton();
+				});
+				this.writingModeButton.addEventListener("mouseleave", () => {
+					this.writingModeButtonHovered = false;
+					this.updateWritingModeButton();
+				});
+				this.updateWritingModeButton();
+				this.createSeparator();
+			}
 
 		// ファイル切替（SoTと同等の導線）
 		if (this.options.onOpenFileSwitcher) {
@@ -997,10 +1006,17 @@ export class TipTapCompatToolbar {
 
 		const mode = this.options.getWritingMode();
 		const isVertical = mode === "vertical-rl";
+		const icon = this.writingModeButtonHovered
+			? isVertical
+				? "arrow-left-right"
+				: "arrow-down-up"
+			: isVertical
+				? "arrow-down-up"
+				: "arrow-left-right";
 
 		this.writingModeButton.empty();
 		const iconEl = this.writingModeButton.createSpan();
-		setIcon(iconEl, isVertical ? "arrow-down-up" : "arrow-left-right");
+		setIcon(iconEl, icon);
 
 		this.writingModeButton.setAttribute(
 			"aria-label",

@@ -1,6 +1,15 @@
 import type { LineRange } from "./line-ranges";
 import type { SoTEditor } from "./sot-editor";
 
+type SelectionWithBaseAndExtent = Selection & {
+	setBaseAndExtent?: (
+		anchorNode: Node,
+		anchorOffset: number,
+		focusNode: Node,
+		focusOffset: number,
+	) => void;
+};
+
 export type SoTCeSelectionContext = {
 	isCeImeMode: () => boolean;
 	isCeImeComposing: () => boolean;
@@ -89,9 +98,9 @@ export class SoTCeSelectionSync {
 			return;
 		}
 		this.context.setCeImeSelectionSyncing(true);
-		const selectionAny = selection as any;
-		if (typeof selectionAny.setBaseAndExtent === "function") {
-			selectionAny.setBaseAndExtent(
+		const selectionWithBaseAndExtent = selection as SelectionWithBaseAndExtent;
+		if (typeof selectionWithBaseAndExtent.setBaseAndExtent === "function") {
+			selectionWithBaseAndExtent.setBaseAndExtent(
 				anchorPos.node,
 				anchorPos.offset,
 				headPos.node,

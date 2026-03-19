@@ -1,7 +1,8 @@
-import { Notice, Plugin } from "obsidian";
+import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import * as path from "path";
 import {
 	AppCloseAction,
+	CommonSettings,
 	TategakiV2Settings,
 	ThemePreset,
 	validateV2Settings,
@@ -18,8 +19,8 @@ import {
 	TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
 } from "../wysiwyg/sot-wysiwyg-view";
 import {
+	getSyncBackupRootPath,
 	moveSyncBackupsToTrash,
-	SYNC_BACKUP_ROOT,
 } from "../shared/sync-backup";
 import { debugWarn, debugError, setDebugLogging } from "../shared/logger";
 import { showConfirmModal } from "../shared/ui/confirm-modal";
@@ -29,6 +30,71 @@ type ObsidianSettingApi = {
 	open?: () => void;
 	openTabById?: (tabId: string) => void;
 };
+
+type SyncStateLike = {
+	dirty?: boolean;
+};
+
+type SyncManagerLike = {
+	getState?: () => SyncStateLike | null | undefined;
+	flush?: () => Promise<void> | void;
+};
+
+type QuitAwareView = {
+	handleAppQuit?: (action: AppCloseAction) => Promise<void> | void;
+	syncManager?: SyncManagerLike;
+};
+
+type ViewRegistryLike = {
+	viewByType?: Record<string, unknown>;
+};
+
+type AppWithViewRegistry = typeof Plugin.prototype.app & {
+	viewRegistry?: ViewRegistryLike;
+};
+
+type DesktopVaultAdapter = {
+	getBasePath?: () => string | null | undefined;
+};
+
+type FileSystemLike = {
+	existsSync: (path: string) => boolean;
+};
+
+type ElectronShellLike = {
+	openPath?: (path: string) => Promise<string>;
+	showItemInFolder?: (path: string) => void;
+};
+
+type AppWithDefaultApp = typeof Plugin.prototype.app & {
+	openWithDefaultApp?: (path: string) => Promise<void>;
+};
+
+function getQuitAwareView(view: unknown): QuitAwareView {
+	return typeof view === "object" && view !== null
+		? (view as QuitAwareView)
+		: {};
+}
+
+function getViewRegistry(app: typeof Plugin.prototype.app): ViewRegistryLike | null {
+	return (app as AppWithViewRegistry).viewRegistry ?? null;
+}
+
+function getDesktopRequire(): ((module: string) => unknown) | undefined {
+	return (window as Window & { require?: (module: string) => unknown }).require;
+}
+
+function isFileSystemLike(module: unknown): module is FileSystemLike {
+	return (
+		typeof module === "object" &&
+		module !== null &&
+		typeof (module as FileSystemLike).existsSync === "function"
+	);
+}
+
+function isElectronShellLike(module: unknown): module is ElectronShellLike {
+	return typeof module === "object" && module !== null;
+}
 
 /**
  * Tategaki Plugin v2.0 - メインプラグインクラス
@@ -75,7 +141,7 @@ export default class TategakiV2Plugin extends Plugin {
 					...existingSoTLeaves,
 				];
 				for (const leaf of leavesToClose) {
-					const view = leaf.view as any;
+					const view = getQuitAwareView(leaf.view);
 					try {
 						if (typeof view?.handleAppQuit === "function") {
 							await view.handleAppQuit("save");
@@ -97,7 +163,7 @@ export default class TategakiV2Plugin extends Plugin {
 				existingSoTLeaves.forEach((leaf) => leaf.detach());
 
 				// レジストリからも削除を試行
-				const viewRegistry = (this.app as any).viewRegistry;
+				const viewRegistry = getViewRegistry(this.app);
 				if (viewRegistry?.viewByType) {
 					delete viewRegistry.viewByType["tategaki-preview-view"];
 					delete viewRegistry.viewByType["tategaki-wysiwyg-view"];
@@ -179,7 +245,7 @@ export default class TategakiV2Plugin extends Plugin {
 			allSoTLeaves.forEach((leaf) => leaf.detach());
 
 			// ビューレジストリから削除
-			const viewRegistry = (this.app as any).viewRegistry;
+			const viewRegistry = getViewRegistry(this.app);
 			if (viewRegistry?.viewByType) {
 				delete viewRegistry.viewByType["tategaki-preview-view"];
 				delete viewRegistry.viewByType["tategaki-wysiwyg-view"];
@@ -272,7 +338,7 @@ export default class TategakiV2Plugin extends Plugin {
 	}
 
 	async openSyncBackupFolder(): Promise<void> {
-		const adapter = this.app.vault.adapter as any;
+		const adapter = this.app.vault.adapter as DesktopVaultAdapter;
 		const basePath =
 			typeof adapter.getBasePath === "function"
 				? adapter.getBasePath()
@@ -281,26 +347,34 @@ export default class TategakiV2Plugin extends Plugin {
 			new Notice(t("plugin.notice.backup.desktopOnly"), 3000);
 			return;
 		}
-		const fullPath = path.join(basePath, SYNC_BACKUP_ROOT);
+		const fullPath = path.join(basePath, getSyncBackupRootPath(this.app));
 		const fs = (() => {
 			try {
-				return (window as any).require?.("fs");
+				return getDesktopRequire()?.("fs");
 			} catch {
 				return null;
 			}
 		})();
-		if (fs?.existsSync && !fs.existsSync(fullPath)) {
+		if (isFileSystemLike(fs) && !fs.existsSync(fullPath)) {
 			new Notice(t("plugin.notice.backup.notFound"), 3000);
 			return;
 		}
 		const shell = (() => {
 			try {
-				return (window as any).require?.("electron")?.shell;
+				const electronModule = getDesktopRequire()?.("electron");
+				if (
+					typeof electronModule === "object" &&
+					electronModule !== null &&
+					"shell" in electronModule
+				) {
+					return (electronModule as { shell?: unknown }).shell ?? null;
+				}
+				return null;
 			} catch {
 				return null;
 			}
 		})();
-		if (shell?.openPath) {
+		if (isElectronShellLike(shell) && shell.openPath) {
 			const result = await shell.openPath(fullPath);
 			if (!result) return;
 			if (/(enoent|no such file|not found)/i.test(result)) {
@@ -308,14 +382,14 @@ export default class TategakiV2Plugin extends Plugin {
 				return;
 			}
 		}
-		if (shell?.showItemInFolder) {
+		if (isElectronShellLike(shell) && shell.showItemInFolder) {
 			shell.showItemInFolder(fullPath);
 			return;
 		}
-		const appAny = this.app as any;
-		if (typeof appAny.openWithDefaultApp === "function") {
+		const appWithDefaultApp = this.app as AppWithDefaultApp;
+		if (typeof appWithDefaultApp.openWithDefaultApp === "function") {
 			try {
-				await appAny.openWithDefaultApp(fullPath);
+				await appWithDefaultApp.openWithDefaultApp(fullPath);
 				return;
 			} catch {
 				// fall through
@@ -344,7 +418,7 @@ export default class TategakiV2Plugin extends Plugin {
 		);
 	}
 
-	private collectSyncLeaves(): any[] {
+	private collectSyncLeaves(): WorkspaceLeaf[] {
 		return [
 			...this.app.workspace.getLeavesOfType(TIPTAP_COMPAT_VIEW_TYPE),
 			...this.app.workspace.getLeavesOfType(
@@ -353,9 +427,9 @@ export default class TategakiV2Plugin extends Plugin {
 		];
 	}
 
-	private hasDirtyLeaves(leaves: any[]): boolean {
+	private hasDirtyLeaves(leaves: ReturnType<TategakiV2Plugin["collectSyncLeaves"]>): boolean {
 		for (const leaf of leaves) {
-			const view = leaf.view as any;
+			const view = getQuitAwareView(leaf.view);
 			const state = view?.syncManager?.getState?.();
 			if (state?.dirty) {
 				return true;
@@ -366,13 +440,16 @@ export default class TategakiV2Plugin extends Plugin {
 
 	private async handleAppQuit(
 		action: AppCloseAction,
-		options: { awaitSaves?: boolean; leaves?: any[] } = {},
+		options: {
+			awaitSaves?: boolean;
+			leaves?: ReturnType<TategakiV2Plugin["collectSyncLeaves"]>;
+		} = {},
 	): Promise<void> {
 		const awaitSaves = options.awaitSaves !== false;
 		const leaves = options.leaves ?? this.collectSyncLeaves();
 
 		for (const leaf of leaves) {
-			const view = leaf.view as any;
+			const view = getQuitAwareView(leaf.view);
 			if (typeof view?.handleAppQuit === "function") {
 				const task = view.handleAppQuit(action);
 				if (awaitSaves) {
@@ -387,7 +464,7 @@ export default class TategakiV2Plugin extends Plugin {
 			}
 			if (view?.syncManager) {
 				const state = view.syncManager.getState?.();
-				if (state?.dirty) {
+				if (state?.dirty && typeof view.syncManager.flush === "function") {
 					const task = view.syncManager.flush();
 					if (awaitSaves) {
 						await task;
@@ -603,8 +680,7 @@ export default class TategakiV2Plugin extends Plugin {
 		// 一時的なh1要素を作成
 		const tempH1 = document.createElement("h1");
 		tempH1.textContent = "Test";
-		tempH1.style.cssText =
-			"position: absolute; visibility: hidden; pointer-events: none;";
+		tempH1.classList.add("tategaki-hidden-probe");
 
 		// エディタコンテナに追加してObsidianのテーマスタイルを適用
 		editorContainer.appendChild(tempH1);
@@ -816,7 +892,7 @@ export default class TategakiV2Plugin extends Plugin {
 	/**
 	 * 実効設定を取得（common設定とtemporaryOverridesをマージ）
 	 */
-	getEffectiveCommonSettings() {
+	getEffectiveCommonSettings(): CommonSettings {
 		const base = this.settings.common;
 		const overrides = this.settings.temporaryOverrides;
 

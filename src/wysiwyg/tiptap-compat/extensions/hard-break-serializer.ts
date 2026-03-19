@@ -1,5 +1,9 @@
 import HardBreak from "@tiptap/extension-hard-break";
 
+type MarkdownSerializerStateLike = {
+	write: (text: string) => void;
+};
+
 /**
  * HardBreakのカスタムシリアライザー
  *
@@ -12,11 +16,10 @@ export const HardBreakSerializer = HardBreak.extend({
 	addStorage() {
 		return {
 			markdown: {
-				serialize(state: any) {
+				serialize(state: MarkdownSerializerStateLike) {
 					state.write("\n");
 				},
 			},
 		};
 	},
 });
-

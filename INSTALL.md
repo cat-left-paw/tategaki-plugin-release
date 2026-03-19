@@ -14,10 +14,10 @@
 
 - `1.2.2` からプラグインIDは `tategaki-plugin` から `tategaki` に変更されています
 - 旧版から更新すると、Obsidian 上では別プラグインとして扱われる場合があります
-- 旧プラグイン `tategaki-plugin` を無効化し、新プラグイン `tategaki` を有効化してください
+- 旧プラグイン `tategaki-plugin` を無効化し、新プラグイン「Tategaki」（ID: tategaki）を有効化してください
 - 必要に応じて設定を手動コピーしてください
-  - コピー元: `.obsidian/plugins/tategaki-plugin/data.json`
-  - コピー先: `.obsidian/plugins/tategaki/data.json`
+    - コピー元: `.obsidian/plugins/tategaki-plugin/data.json`
+    - コピー先: `.obsidian/plugins/tategaki/data.json`
 - 既存のホットキー割り当ては再確認してください
 - 動作確認後、旧フォルダ `.obsidian/plugins/tategaki-plugin/` は削除可能です
 
@@ -28,8 +28,8 @@
 1. Obsidian の `設定` → `コミュニティプラグイン` で、BRAT をインストールして有効化します
 2. BRAT の設定画面を開き、`Add Beta plugin` を選びます
 3. リポジトリとして次のどちらかを入力します
-   - `cat-left-paw/tategaki-plugin-release`
-   - `https://github.com/cat-left-paw/tategaki-plugin-release`
+    - `cat-left-paw/tategaki-plugin-release`
+    - `https://github.com/cat-left-paw/tategaki-plugin-release`
 4. 追加された `Tategaki` をインストールします
 5. Obsidian の `設定` → `コミュニティプラグイン` で `Tategaki` を有効化します
 
@@ -53,7 +53,7 @@
 1. Obsidian を終了します
 2. Releases から Zip をダウンロードして展開します
 3. 展開先にプラグインフォルダがあることを確認します
-   - Zip 名: `<plugin-id>-<version>.zip`（例: `tategaki-1.2.3.zip`）
+    - Zip 名: `<plugin-id>-<version>.zip`（例: `tategaki-1.2.3.zip`）
 
 フォルダ構成の例:
 
@@ -67,7 +67,7 @@
 2. Vault 内の `.obsidian/plugins/` を開きます（なければ作成）
 3. 展開した `tategaki/` フォルダを `.obsidian/plugins/` にコピーします
 4. 結果が `.obsidian/plugins/tategaki/` になることを確認します
-5. Obsidian を起動し、設定 → コミュニティプラグイン で `tategaki` を有効化します
+5. Obsidian を起動し、設定 → コミュニティプラグイン で `Tategaki` を有効化します
 
 ## OS別メモ
 
@@ -96,8 +96,8 @@
 1. コマンドパレット（`Ctrl+P` / `Cmd+P`）を開きます
 2. `BRAT` または `update` で検索します
 3. 次のようなコマンドを実行します
-   - `Check for updates to beta plugins and UPDATE`
-   - または `Check for updates to all beta plugins and UPDATE`
+    - `Check for updates to beta plugins and UPDATE`
+    - または `Check for updates to all beta plugins and UPDATE`
 4. 更新が見つかれば、そのままダウンロードと差し替えが行われます
 5. 必要なら Obsidian を再起動します
 
@@ -115,10 +115,10 @@
 
 ## アンインストール
 
-1. Obsidian の設定 → コミュニティプラグインで `tategaki` を無効化
+1. Obsidian の設定 → コミュニティプラグインで `Tategaki` を無効化
 2. BRAT 経由で入れている場合は、必要に応じて BRAT の管理対象から外します
 3. そのままアンインストール
 4. 必要に応じて次を削除
 
 - `.obsidian/plugins/tategaki/`
-- `.obsidian/tategaki-sync-backups/`（互換モードのバックアップ）
+- `<Vault設定フォルダ>/tategaki-sync-backups/`（互換モードのバックアップ。通常は `.obsidian/tategaki-sync-backups/`）

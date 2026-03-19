@@ -98,7 +98,7 @@ export class SoTPointerHandler {
 		) as HTMLAnchorElement | null;
 		if (embedAnchor && (event.metaKey || event.ctrlKey)) {
 			const dataHref =
-				(embedAnchor.dataset as any)?.href ??
+				embedAnchor.dataset.href ??
 				embedAnchor.getAttribute("data-href") ??
 				"";
 			const href = (

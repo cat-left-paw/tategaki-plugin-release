@@ -1,8 +1,25 @@
 import { Notice } from "obsidian";
 import type { MarkdownView, TFile } from "obsidian";
 import { t } from "../../shared/i18n";
+import type TategakiV2Plugin from "../../core/plugin";
+import type { SoTWorkspaceController } from "./sot-workspace-controller";
 
-export type SoTFileHost = any;
+export type SoTFileHost = {
+	workspaceController: SoTWorkspaceController;
+	currentFile: TFile | null;
+	plugin: TategakiV2Plugin;
+	leaf: import("obsidian").WorkspaceLeaf;
+	app: {
+		workspace: {
+			setActiveLeaf: (
+				leaf: import("obsidian").WorkspaceLeaf,
+				opts?: { focus?: boolean },
+			) => void;
+		};
+	};
+	pairedMarkdownLeaf: import("obsidian").WorkspaceLeaf | null;
+	ensureMarkdownViewForFile: (file: TFile) => Promise<MarkdownView | null>;
+};
 
 export async function openFile(host: SoTFileHost, file: TFile): Promise<void> {
 	await host.workspaceController.openFile(file);

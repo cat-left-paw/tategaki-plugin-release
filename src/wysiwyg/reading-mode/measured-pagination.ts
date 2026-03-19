@@ -1122,18 +1122,47 @@ export class MeasuredPagination {
 	 * 空の見出し要素が残り、区切り線が表示されてしまうのを防ぐ
 	 */
 	private pruneTrailingEmptyPageBreakHeadings(wrapper: HTMLElement): void {
-		let last = wrapper.lastElementChild;
-		while (last) {
+		let ghost = this.findTrailingEmptyPageBreakHeading(wrapper);
+		while (ghost) {
+			const parent = ghost.parentElement;
+			ghost.remove();
+			this.pruneEmptyTrailingAncestors(parent, wrapper);
+			ghost = this.findTrailingEmptyPageBreakHeading(wrapper);
+		}
+	}
+
+	private findTrailingEmptyPageBreakHeading(
+		wrapper: HTMLElement
+	): HTMLElement | null {
+		let current =
+			wrapper.lastElementChild instanceof HTMLElement
+				? wrapper.lastElementChild
+				: null;
+		while (current?.lastElementChild instanceof HTMLElement) {
+			current = current.lastElementChild;
+		}
+		let cursor: HTMLElement | null = current;
+		while (cursor && cursor !== wrapper) {
 			if (
-				last.getAttribute("data-tategaki-page-break-before") === "true" &&
-				!nodeHasVisibleContent(last)
+				cursor.getAttribute("data-tategaki-page-break-before") === "true" &&
+				!nodeHasVisibleContent(cursor)
 			) {
-				const prev = last.previousElementSibling;
-				last.remove();
-				last = prev;
-			} else {
-				break;
+				return cursor;
 			}
+			cursor = cursor.parentElement;
+		}
+		return null;
+	}
+
+	private pruneEmptyTrailingAncestors(
+		start: HTMLElement | null,
+		wrapper: HTMLElement
+	): void {
+		let current = start;
+		while (current && current !== wrapper && !nodeHasVisibleContent(current)) {
+			const parent = current.parentElement;
+			current.remove();
+			current = parent;
 		}
 	}
 

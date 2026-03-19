@@ -1,4 +1,35 @@
-export type SoTRenderHost = any;
+export type SoTRenderHost = {
+	pendingSpacerEl: HTMLElement | null;
+	pendingLineIndex: number | null;
+	pendingLocalOffset: number | null;
+	pendingSelectionFrom: number | null;
+	pendingSelectionTo: number | null;
+	pendingSelectionLineStart: number | null;
+	pendingSelectionLineEnd: number | null;
+	pendingHold: boolean;
+	updatePendingText: (text: string, force?: boolean) => void;
+	updateSourceModeLineRange: (force?: boolean) => void;
+	derivedRootEl: HTMLElement | null;
+	pendingFoldScrollLineIndex: number | null;
+	pendingScrollRestoreTop: number | null;
+	pendingScrollRestoreLeft: number | null;
+	getLineElement: (lineIndex: number) => HTMLElement | null;
+	ensureLineRendered: (lineEl: HTMLElement) => void;
+	outlinePanel?: {
+		refresh: () => void;
+	} | null;
+	scheduleCaretUpdate: (force?: boolean) => void;
+	loadingOverlayPending: boolean;
+	hideLoadingOverlay: () => void;
+	renderPipeline?: {
+		scheduleRender: (force?: boolean) => void;
+		renderNow: () => void;
+	} | null;
+	lineRanges: unknown[];
+	lineCache: {
+		purgeLineCaches: (start: number, end: number, total: number) => void;
+	};
+};
 
 export function resetPendingRenderState(host: SoTRenderHost): void {
 	host.pendingSpacerEl = null;

@@ -1,19 +1,33 @@
 export type CaretPosition = { node: Node; offset: number };
 
+type DocumentWithCaretApis = Document & {
+	caretPositionFromPoint?: (
+		clientX: number,
+		clientY: number,
+	) => {
+		offsetNode: Node | null;
+		offset: number;
+	} | null;
+	caretRangeFromPoint?: (
+		clientX: number,
+		clientY: number,
+	) => Range | null;
+};
+
 export function getCaretPositionFromPoint(
 	doc: Document,
 	clientX: number,
 	clientY: number
 ): CaretPosition | null {
-	const anyDoc = doc as any;
-	if (typeof anyDoc.caretPositionFromPoint === "function") {
-		const pos = anyDoc.caretPositionFromPoint(clientX, clientY);
+	const docWithCaretApis = doc as DocumentWithCaretApis;
+	if (typeof docWithCaretApis.caretPositionFromPoint === "function") {
+		const pos = docWithCaretApis.caretPositionFromPoint(clientX, clientY);
 		if (pos?.offsetNode) {
 			return { node: pos.offsetNode, offset: pos.offset };
 		}
 	}
-	if (typeof anyDoc.caretRangeFromPoint === "function") {
-		const range = anyDoc.caretRangeFromPoint(clientX, clientY);
+	if (typeof docWithCaretApis.caretRangeFromPoint === "function") {
+		const range = docWithCaretApis.caretRangeFromPoint(clientX, clientY);
 		if (range) {
 			return {
 				node: range.startContainer,

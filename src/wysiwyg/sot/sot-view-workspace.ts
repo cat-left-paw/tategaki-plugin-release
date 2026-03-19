@@ -1,6 +1,9 @@
 import type { MarkdownView, TFile, WorkspaceLeaf } from "obsidian";
+import type { SoTWorkspaceController } from "./sot-workspace-controller";
 
-export type SoTWorkspaceHost = any;
+export type SoTWorkspaceHost = {
+	workspaceController: SoTWorkspaceController;
+};
 
 export function registerWorkspacePairGuards(host: SoTWorkspaceHost): void {
 	host.workspaceController.registerWorkspacePairGuards();
