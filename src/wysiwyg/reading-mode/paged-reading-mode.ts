@@ -66,6 +66,22 @@ export function calculatePagedScrollTop(
 	return safePageIndex * stride;
 }
 
+export function resolveEventTargetElement(
+	target: EventTarget | null
+): Element | null {
+	if (!target || typeof target !== "object") {
+		return null;
+	}
+	const node = target as Node;
+	if (typeof node.nodeType !== "number") {
+		return null;
+	}
+	if (node.nodeType === 1) {
+		return node as Element;
+	}
+	return node.parentElement;
+}
+
 /**
  * 縦スクロール方式のページ風ビュー
  * - CSS カラムを使わず、連続した縦書きテキストを縦スクロールで表示
@@ -686,10 +702,11 @@ export class PagedReadingMode {
 	 * イベントターゲットがこのコンテナ内にあるかチェック
 	 */
 	private isEventTargetWithinContainer(target: EventTarget | null): boolean {
-		if (!target || !(target instanceof Element)) {
+		const element = resolveEventTargetElement(target);
+		if (!element) {
 			return false;
 		}
-		return this.container.contains(target);
+		return this.container.contains(element);
 	}
 
 	/**
@@ -736,8 +753,8 @@ export class PagedReadingMode {
 	 * 要素がスクロール可能な親要素（モーダル、設定パネルなど）内にあるかチェック
 	 * これらの要素内でのホイールイベントはページ送りではなく通常のスクロールに使う
 	 */
-	private isWithinScrollableElement(target: Element): boolean {
-		let el: Element | null = target;
+	private isWithinScrollableElement(target: EventTarget | null): boolean {
+		let el = resolveEventTargetElement(target);
 		while (el && el !== this.container) {
 			// モーダルや設定パネルなど特定のクラスをチェック
 			if (
@@ -758,7 +775,8 @@ export class PagedReadingMode {
 				continue;
 			}
 			// スクロール可能な要素かチェック（overflow: auto/scroll）
-			const style = getComputedStyle(el);
+			const view = el.ownerDocument.defaultView ?? window;
+			const style = view.getComputedStyle(el);
 			const overflowY = style.overflowY;
 			const overflowX = style.overflowX;
 			if (

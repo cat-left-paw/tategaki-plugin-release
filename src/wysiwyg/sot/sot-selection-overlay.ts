@@ -4,6 +4,13 @@ import {
 	getSelectionRectsForLine,
 	type SoTSelectionRectsContext,
 } from "./sot-selection-rects";
+import {
+	createViewDocumentFragment,
+	createViewElement,
+	elementFromViewPoint,
+	elementsFromViewPoint,
+	getViewComputedStyle,
+} from "./sot-view-local-dom";
 
 export type SoTSelectionOverlayContext = {
 	getDerivedRootEl: () => HTMLElement | null;
@@ -183,8 +190,8 @@ export class SoTSelectionOverlay {
 			selectionLayerEl.replaceChildren();
 			return;
 		}
-		const writingMode = window.getComputedStyle(rootEl).writingMode;
-		const fragment = document.createDocumentFragment();
+		const writingMode = getViewComputedStyle(rootEl).writingMode;
+		const fragment = createViewDocumentFragment(rootEl);
 		const lineRanges = this.context.getLineRanges();
 		const rectContext: SoTSelectionRectsContext = {
 			getLineTextNodes: (lineEl) => this.context.getLineTextNodes(lineEl),
@@ -272,9 +279,7 @@ export class SoTSelectionOverlay {
 
 		const resolveLineIndex = (x: number, y: number): number | null => {
 			const elements =
-				typeof document.elementsFromPoint === "function"
-					? document.elementsFromPoint(x, y)
-					: [];
+				elementsFromViewPoint(rootEl, x, y);
 			for (const el of elements) {
 				const lineEl = (el as HTMLElement).closest(
 					".tategaki-sot-line"
@@ -305,7 +310,7 @@ export class SoTSelectionOverlay {
 					}
 				}
 			}
-			const el = document.elementFromPoint(x, y) as HTMLElement | null;
+			const el = elementFromViewPoint(rootEl, x, y) as HTMLElement | null;
 			const lineEl = el?.closest(".tategaki-sot-line") as HTMLElement | null;
 			if (lineEl) {
 				const index = Number.parseInt(lineEl.dataset.line ?? "", 10);
@@ -357,7 +362,7 @@ export class SoTSelectionOverlay {
 	): { start: number; end: number } | null {
 		const lineRanges = this.context.getLineRanges();
 		if (lineRanges.length === 0) return null;
-		const computed = window.getComputedStyle(rootEl);
+		const computed = getViewComputedStyle(rootEl);
 		const fontSize = Number.parseFloat(computed.fontSize) || 16;
 		const lineHeight =
 			Number.parseFloat(computed.lineHeight) || fontSize * 1.8;
@@ -383,7 +388,7 @@ export class SoTSelectionOverlay {
 		rootRect: DOMRect,
 		rootEl: HTMLElement
 	): HTMLElement {
-		const overlay = document.createElement("div");
+		const overlay = createViewElement(rootEl, "div");
 		overlay.className = "tategaki-sot-selection-rect";
 		const left = rect.left - rootRect.left + rootEl.scrollLeft;
 		const top = rect.top - rootRect.top + rootEl.scrollTop;

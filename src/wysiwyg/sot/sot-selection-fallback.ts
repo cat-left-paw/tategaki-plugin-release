@@ -1,5 +1,6 @@
 import type { SoTEditor } from "./sot-editor";
 import type { SoTSelectionOverlay } from "./sot-selection-overlay";
+import { createViewElement } from "./sot-view-local-dom";
 
 export type NativeSelectionFallbackParams = {
 	isNativeSelectionEnabled: boolean;
@@ -56,7 +57,7 @@ export function tryRenderNativeSelectionFallback(
 		const width = Math.max(0, right - left);
 		const height = Math.max(0, bottom - top);
 		if (width > 0 && height > 0) {
-			const overlay = document.createElement("div");
+			const overlay = createViewElement(params.derivedRootEl, "div");
 			overlay.className = "tategaki-sot-selection-rect";
 			const offsetLeft =
 				left - rootRect.left + params.derivedRootEl.scrollLeft;

@@ -393,13 +393,17 @@ function parseTimestampToDate(timestamp: string): Date | null {
 	const match = timestamp.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/);
 	if (!match) return null;
 
-	const [, year, month, day, hour, minute] = match;
+	const year = match[1] ?? "0";
+	const month = match[2] ?? "1";
+	const day = match[3] ?? "1";
+	const hour = match[4] ?? "0";
+	const minute = match[5] ?? "0";
 	return new Date(
-		parseInt(year!, 10),
-		parseInt(month!, 10) - 1,
-		parseInt(day!, 10),
-		parseInt(hour!, 10),
-		parseInt(minute!, 10)
+		parseInt(year, 10),
+		parseInt(month, 10) - 1,
+		parseInt(day, 10),
+		parseInt(hour, 10),
+		parseInt(minute, 10)
 	);
 }
 

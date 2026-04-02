@@ -51,6 +51,7 @@ import {
 	PagedReadingMode,
 	calculatePagedPageCount,
 	calculatePagedScrollTop,
+	resolveEventTargetElement,
 } from "./wysiwyg/reading-mode/paged-reading-mode";
 import {
 	normalizeConsecutiveTitlePageSegments,
@@ -74,6 +75,10 @@ import {
 	getCollapsedGapRangeFromElement,
 } from "./wysiwyg/sot/sot-gap-dom";
 import {
+	computeSoTCollapsePreviewTooltipPosition,
+	resolveSoTCollapsePreviewTooltipHost,
+} from "./wysiwyg/sot/sot-collapse-preview-tooltip";
+import {
 	computeCollapsedDiffRebuildRange,
 	shiftCollapsedHeadingLines,
 	couldLineChangeBlockStructure,
@@ -96,7 +101,27 @@ import {
 } from "./wysiwyg/sot/sot-ruby";
 import { SoTChunkController } from "./wysiwyg/sot/sot-chunk-controller";
 import { probeChunkSnapshot } from "./wysiwyg/sot/sot-chunk-read-probe";
-import { decideOnPointerDown } from "./wysiwyg/sot/sot-native-selection-assist";
+import {
+	decideOnPointerDown,
+	shouldHandleNativeSelectionMouseUpFallback,
+} from "./wysiwyg/sot/sot-native-selection-assist";
+import { SoTSelectionChangeBinding } from "./wysiwyg/sot/sot-selectionchange-binding";
+import {
+	cancelViewAnimationFrame,
+	clearViewTimeout,
+	createViewDocumentFragment,
+	createViewElement,
+	elementFromViewPoint,
+	elementsFromViewPoint,
+	getViewComputedStyle,
+	requestViewAnimationFrame,
+	setViewTimeout,
+} from "./wysiwyg/sot/sot-view-local-dom";
+import {
+	resolveSoTLinePointWritingMode,
+	shouldSnapPointToLineEnd,
+} from "./wysiwyg/sot/sot-line-end-click";
+import { SoTPointerWindowBinding } from "./wysiwyg/sot/sot-pointer-window-binding";
 import { collectAutoTcyRanges } from "./shared/aozora-tcy";
 import { SoTRenderPipeline, type SoTRenderPipelineContext } from "./wysiwyg/sot/sot-render-pipeline";
 import { normalizeParsed, parseFrontmatterBlock } from "./shared/frontmatter";
@@ -142,6 +167,7 @@ export class TategakiTestSuite {
 				await this.testTipTapCompatRubyCaretNavigation();
 				await this.testTipTapCompatExistingRubyPreservesDelimiter();
 				await this.testPagedReadingModePaginationMath();
+				await this.testPagedReadingModePopoutEventTargets();
 				await this.testPagedReadingModeFrontmatterCoverStaging();
 				await this.testPagedReadingModeQueuedNavigationDuringPagination();
 				await this.testBookModeConsecutiveTitlePages();
@@ -161,15 +187,20 @@ export class TategakiTestSuite {
 				await this.testSoTOrderedListRenumber();
 				await this.testSoTListIndentKeepsCaretAfterMarker();
 					await this.testSoTRubyEditPreservesDelimiter();
-					await this.testSoTDisplayChunksModel();
+				await this.testSoTDisplayChunksModel();
 				await this.testSoTCollapsedGapRanges();
 				await this.testSoTCollapsedGapDom();
+				await this.testSoTCollapsePreviewTooltipPlacement();
 				await this.testSoTCollapsedGapNewlineIntegrity();
 				await this.testSoTCollapsedDiffHelpers();
 				await this.testSoTScrollAnchor();
 				await this.testSoTChunkController();
 				await this.testSoTChunkReadProbe();
+				await this.testSoTViewLocalDomUsesPopoutWindow();
+				await this.testSoTLineEndClickHelper();
+				await this.testSoTPointerWindowBindingRebindsWindow();
 				await this.testSoTNativeSelectionAssistPointerdownPolicy();
+				await this.testSoTSelectionChangeBindingRebindsDocument();
 				await this.testSoTLineElementContract();
 				await this.testVersionCompare();
 				await this.testOnScrollSettledPreciseFirst();
@@ -206,6 +237,482 @@ export class TategakiTestSuite {
 				name: testName,
 				success: false,
 				message: `行レンジ計算エラー: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTViewLocalDomUsesPopoutWindow(): Promise<void> {
+		const testName = "SoT派生ビュー: view-local DOM helper は popout window/document を使う";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const mainWindow = new Window();
+			const popoutWindow = new Window();
+			const mainDoc =
+				mainWindow.document as unknown as globalThis.Document;
+			const popoutDoc =
+				popoutWindow.document as unknown as globalThis.Document;
+			const mainEl =
+				mainDoc.createElement("div") as unknown as HTMLElement;
+			const popoutEl =
+				popoutDoc.createElement("div") as unknown as HTMLElement;
+			let mainElementsFromPointCalls = 0;
+			let popoutElementsFromPointCalls = 0;
+			let mainElementFromPointCalls = 0;
+			let popoutElementFromPointCalls = 0;
+			let mainGetComputedStyleCalls = 0;
+			let popoutGetComputedStyleCalls = 0;
+			let mainTimeoutCalls = 0;
+			let popoutTimeoutCalls = 0;
+			let popoutClearTimeoutCalls = 0;
+			let mainRafCalls = 0;
+			let popoutRafCalls = 0;
+			let popoutCancelRafCalls = 0;
+
+			Reflect.set(mainDoc, "elementsFromPoint", () => {
+				mainElementsFromPointCalls += 1;
+				return [mainEl];
+			});
+			Reflect.set(popoutDoc, "elementsFromPoint", () => {
+				popoutElementsFromPointCalls += 1;
+				return [popoutEl];
+			});
+			Reflect.set(mainDoc, "elementFromPoint", () => {
+				mainElementFromPointCalls += 1;
+				return mainEl;
+			});
+			Reflect.set(popoutDoc, "elementFromPoint", () => {
+				popoutElementFromPointCalls += 1;
+				return popoutEl;
+			});
+			Reflect.set(mainWindow, "getComputedStyle", () => {
+				mainGetComputedStyleCalls += 1;
+				return {
+					writingMode: "horizontal-tb",
+					fontSize: "11px",
+					lineHeight: "11px",
+				} as CSSStyleDeclaration;
+			});
+			Reflect.set(popoutWindow, "getComputedStyle", () => {
+				popoutGetComputedStyleCalls += 1;
+				return {
+					writingMode: "vertical-rl",
+					fontSize: "19px",
+					lineHeight: "31px",
+				} as CSSStyleDeclaration;
+			});
+			Reflect.set(mainWindow, "setTimeout", () => {
+				mainTimeoutCalls += 1;
+				return 11;
+			});
+			Reflect.set(popoutWindow, "setTimeout", () => {
+				popoutTimeoutCalls += 1;
+				return 22;
+			});
+			Reflect.set(popoutWindow, "clearTimeout", () => {
+				popoutClearTimeoutCalls += 1;
+			});
+			Reflect.set(mainWindow, "requestAnimationFrame", () => {
+				mainRafCalls += 1;
+				return 33;
+			});
+			Reflect.set(popoutWindow, "requestAnimationFrame", () => {
+				popoutRafCalls += 1;
+				return 44;
+			});
+			Reflect.set(popoutWindow, "cancelAnimationFrame", () => {
+				popoutCancelRafCalls += 1;
+			});
+
+			assert(
+				elementsFromViewPoint(popoutEl, 10, 20)[0] === popoutEl,
+				"elementsFromPoint が popout document を見ていません"
+			);
+			assert(
+				popoutElementsFromPointCalls === 1 &&
+					mainElementsFromPointCalls === 0,
+				"elementsFromPoint が main document を参照しています"
+			);
+			assert(
+				elementFromViewPoint(popoutEl, 10, 20) === popoutEl,
+				"elementFromPoint が popout document を見ていません"
+			);
+			assert(
+				popoutElementFromPointCalls === 1 &&
+					mainElementFromPointCalls === 0,
+				"elementFromPoint が main document を参照しています"
+			);
+			assert(
+				getViewComputedStyle(popoutEl).writingMode === "vertical-rl",
+				"getComputedStyle が popout window を使っていません"
+			);
+			assert(
+				popoutGetComputedStyleCalls === 1 &&
+					mainGetComputedStyleCalls === 0,
+				"getComputedStyle が main window を参照しています"
+			);
+			assert(
+				createViewElement(popoutEl, "div").ownerDocument === popoutDoc,
+				"createElement が popout document を使っていません"
+			);
+			assert(
+				createViewDocumentFragment(popoutEl).ownerDocument === popoutDoc,
+				"createDocumentFragment が popout document を使っていません"
+			);
+			assert(
+				setViewTimeout(popoutEl, () => undefined, 10) === 22,
+				"setTimeout が popout window を使っていません"
+			);
+			assert(
+				popoutTimeoutCalls === 1 && mainTimeoutCalls === 0,
+				"setTimeout が main window を参照しています"
+			);
+			clearViewTimeout(popoutEl, 22);
+			assert(
+				popoutClearTimeoutCalls === 1,
+				"clearTimeout が popout window を使っていません"
+			);
+			assert(
+				requestViewAnimationFrame(popoutEl, () => undefined) === 44,
+				"requestAnimationFrame が popout window を使っていません"
+			);
+			assert(
+				popoutRafCalls === 1 && mainRafCalls === 0,
+				"requestAnimationFrame が main window を参照しています"
+			);
+			cancelViewAnimationFrame(popoutEl, 44);
+			assert(
+				popoutCancelRafCalls === 1,
+				"cancelAnimationFrame が popout window を使っていません"
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "overlay/render helper が ownerDocument/defaultView に従います",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `view-local DOM helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTLineEndClickHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: 行末外クリック helper は line end 判定と popout writingMode を解決する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const mainWindow = new Window();
+			const popoutWindow = new Window();
+			const popoutDoc =
+				popoutWindow.document as unknown as globalThis.Document;
+			const popoutRoot =
+				popoutDoc.createElement("div") as unknown as HTMLElement;
+			const popoutLine =
+				popoutDoc.createElement("div") as unknown as HTMLElement;
+			let mainGetComputedStyleCalls = 0;
+			let popoutGetComputedStyleCalls = 0;
+
+			Reflect.set(mainWindow, "getComputedStyle", () => {
+				mainGetComputedStyleCalls += 1;
+				return {
+					writingMode: "horizontal-tb",
+				} as CSSStyleDeclaration;
+			});
+			Reflect.set(popoutWindow, "getComputedStyle", () => {
+				popoutGetComputedStyleCalls += 1;
+				return {
+					writingMode: "vertical-rl",
+				} as CSSStyleDeclaration;
+			});
+
+			assert(
+				resolveSoTLinePointWritingMode(popoutRoot, popoutLine) ===
+					"vertical-rl",
+				"writingMode が popout window から解決されません"
+			);
+			assert(
+				popoutGetComputedStyleCalls === 1 &&
+					mainGetComputedStyleCalls === 0,
+				"writingMode 解決で main window を参照しています"
+			);
+
+			const horizontalRects = [
+				DOMRect.fromRect({ x: 10, y: 10, width: 18, height: 12 }),
+				DOMRect.fromRect({ x: 10, y: 30, width: 20, height: 12 }),
+			];
+			assert(
+				shouldSnapPointToLineEnd({
+					rects: horizontalRects,
+					writingMode: "horizontal-tb",
+					clientX: 36,
+					clientY: 36,
+				}),
+				"横書きの行末外クリックが line end 扱いになりません"
+			);
+			assert(
+				!shouldSnapPointToLineEnd({
+					rects: horizontalRects,
+					writingMode: "horizontal-tb",
+					clientX: 24,
+					clientY: 12,
+				}),
+				"通常の本文クリックまで line end 扱いされています"
+			);
+
+			const verticalRects = [
+				DOMRect.fromRect({ x: 100, y: 10, width: 12, height: 30 }),
+				DOMRect.fromRect({ x: 80, y: 10, width: 12, height: 20 }),
+			];
+			assert(
+				shouldSnapPointToLineEnd({
+					rects: verticalRects,
+					writingMode: "vertical-rl",
+					clientX: 86,
+					clientY: 36,
+				}),
+				"縦書きの行末外クリックが line end 扱いになりません"
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "line end 補正条件と popout writingMode 解決を確認",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `line end helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTPointerWindowBindingRebindsWindow(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: pointer window binder は window 差し替え時に再バインドされる";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const mainWindow = new Window();
+			const popoutWindow = new Window();
+			const binding = new SoTPointerWindowBinding();
+			const mainViewWindow =
+				mainWindow as unknown as globalThis.Window;
+			const popoutViewWindow =
+				popoutWindow as unknown as globalThis.Window;
+			let moveCalls = 0;
+			let upCalls = 0;
+			let cancelCalls = 0;
+
+			assert(
+				binding.bind(
+					mainViewWindow,
+					{
+						onPointerMove: () => {
+							moveCalls += 1;
+						},
+						onPointerUp: () => {
+							upCalls += 1;
+						},
+						onPointerCancel: () => {
+							cancelCalls += 1;
+						},
+					},
+				),
+				"初回 bind は true を返すべきです",
+			);
+			assert(
+				!binding.bind(
+					mainViewWindow,
+					{
+						onPointerMove: () => undefined,
+						onPointerUp: () => undefined,
+						onPointerCancel: () => undefined,
+					},
+				),
+				"同じ window への再 bind は不要です",
+			);
+
+			mainWindow.dispatchEvent(
+				new mainWindow.Event("pointermove"),
+			);
+			mainWindow.dispatchEvent(
+				new mainWindow.Event("pointerup"),
+			);
+			mainWindow.dispatchEvent(
+				new mainWindow.Event("pointercancel"),
+			);
+			assert(
+				moveCalls === 1 && upCalls === 1 && cancelCalls === 1,
+				"main window の pointer listener を受け取れません",
+			);
+
+			assert(
+				binding.bind(
+					popoutViewWindow,
+					{
+						onPointerMove: () => {
+							moveCalls += 1;
+						},
+						onPointerUp: () => {
+							upCalls += 1;
+						},
+						onPointerCancel: () => {
+							cancelCalls += 1;
+						},
+					},
+				),
+				"別 window への bind 差し替えが行われません",
+			);
+
+			mainWindow.dispatchEvent(
+				new mainWindow.Event("pointermove"),
+			);
+			mainWindow.dispatchEvent(
+				new mainWindow.Event("pointerup"),
+			);
+			mainWindow.dispatchEvent(
+				new mainWindow.Event("pointercancel"),
+			);
+			assert(
+				moveCalls === 1 && upCalls === 1 && cancelCalls === 1,
+				"旧 window の listener が解除されていません",
+			);
+
+			popoutWindow.dispatchEvent(
+				new popoutWindow.Event("pointermove"),
+			);
+			popoutWindow.dispatchEvent(
+				new popoutWindow.Event("pointerup"),
+			);
+			popoutWindow.dispatchEvent(
+				new popoutWindow.Event("pointercancel"),
+			);
+			assert(
+				moveCalls === 2 && upCalls === 2 && cancelCalls === 2,
+				"新 window の pointer listener を受け取れません",
+			);
+
+			binding.dispose();
+			popoutWindow.dispatchEvent(
+				new popoutWindow.Event("pointermove"),
+			);
+			assert(moveCalls === 2, "dispose 後に pointer listener が残っています");
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "pointermove/up/cancel listener を現在の window に張り替えられます",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `pointer window binder テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTSelectionChangeBindingRebindsDocument(): Promise<void> {
+		const testName = "SoT派生ビュー: selectionchange listener は document 差し替え時に再バインドされる";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const mainWindow = new Window();
+			const popoutWindow = new Window();
+			const binding = new SoTSelectionChangeBinding();
+			let calls = 0;
+			const handleSelectionChange = () => {
+				calls += 1;
+			};
+			const mainDoc =
+				mainWindow.document as unknown as globalThis.Document;
+			const popoutDoc =
+				popoutWindow.document as unknown as globalThis.Document;
+
+			assert(
+				binding.bind(mainDoc, handleSelectionChange),
+				"初回 bind は true を返すべきです"
+			);
+			assert(
+				!binding.bind(mainDoc, handleSelectionChange),
+				"同じ document への再 bind は不要です"
+			);
+			mainDoc.dispatchEvent(
+				new mainWindow.Event("selectionchange") as unknown as Event,
+			);
+			assert(calls === 1, "main document の selectionchange を受け取れません");
+
+			assert(
+				binding.bind(popoutDoc, handleSelectionChange),
+				"別 document への bind 差し替えが行われません"
+			);
+			mainDoc.dispatchEvent(
+				new mainWindow.Event("selectionchange") as unknown as Event,
+			);
+			assert(
+				calls === 1,
+				"旧 document の listener が解除されていません"
+			);
+			popoutDoc.dispatchEvent(
+				new popoutWindow.Event("selectionchange") as unknown as Event,
+			);
+			assert(
+				calls === 2,
+				"新 document の selectionchange を受け取れません"
+			);
+
+			binding.dispose();
+			popoutDoc.dispatchEvent(
+				new popoutWindow.Event("selectionchange") as unknown as Event,
+			);
+			assert(calls === 2, "dispose 後に listener が残っています");
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "selectionchange listener を現在の document に張り替えられます",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `selectionchange bind テスト失敗: ${error.message}`,
 				duration,
 			});
 		}
@@ -1206,6 +1713,93 @@ export class TategakiTestSuite {
 		}
 	}
 
+	private async testSoTCollapsePreviewTooltipPlacement(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: 折りたたみプレビューチップは ownerDocument 基準で配置";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const popoutWindow = new Window();
+			const popoutDoc = popoutWindow.document as unknown as globalThis.Document;
+			const target = popoutDoc.createElement("span") as unknown as HTMLElement;
+			popoutDoc.body.appendChild(target);
+
+			const host = resolveSoTCollapsePreviewTooltipHost(target);
+			assert(
+				host.doc === popoutDoc,
+				"tooltip host document が target.ownerDocument になっていない",
+			);
+			assert(
+				host.containerEl === popoutDoc.body,
+				"tooltip append 先が ownerDocument.body になっていない",
+			);
+			assert(
+				host.viewportWidth === popoutWindow.innerWidth &&
+					host.viewportHeight === popoutWindow.innerHeight,
+				"tooltip viewport が ownerDocument.defaultView 基準で解決されない",
+			);
+
+			const lowerPlacement = computeSoTCollapsePreviewTooltipPosition({
+				targetRect: {
+					left: 470,
+					top: 190,
+					bottom: 202,
+					width: 24,
+				} as Pick<DOMRect, "left" | "top" | "bottom" | "width">,
+				tooltipRect: {
+					width: 120,
+					height: 60,
+				} as Pick<DOMRect, "width" | "height">,
+				viewportWidth: 500,
+				viewportHeight: 240,
+			});
+			assert(
+				lowerPlacement.left === 372 && lowerPlacement.top === 122,
+				`右下クランプが不正: left=${lowerPlacement.left}, top=${lowerPlacement.top}`,
+			);
+
+			const upperPlacement = computeSoTCollapsePreviewTooltipPosition({
+				targetRect: {
+					left: 2,
+					top: 10,
+					bottom: 18,
+					width: 20,
+				} as Pick<DOMRect, "left" | "top" | "bottom" | "width">,
+				tooltipRect: {
+					width: 150,
+					height: 80,
+				} as Pick<DOMRect, "width" | "height">,
+				viewportWidth: 120,
+				viewportHeight: 70,
+			});
+			assert(
+				upperPlacement.left === 8 && upperPlacement.top === 8,
+				`左上クランプが不正: left=${upperPlacement.left}, top=${upperPlacement.top}`,
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"tooltip host document/body と viewport clamp が popout 基準で解決されます",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `collapse preview tooltip テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
 	private async testSoTCollapsedGapNewlineIntegrity(): Promise<void> {
 		const testName = "SoT派生ビュー: 折りたたみ見出し+改行挿入のgap整合性";
 		const startTime = performance.now();
@@ -1946,13 +2540,53 @@ export class TategakiTestSuite {
 					fastClickExplicit.reason === "pointerdown-content",
 				"fast-clickモード明示指定でdeactivateにならない",
 			);
+			assert(
+				shouldHandleNativeSelectionMouseUpFallback({
+					button: 0,
+					hasPendingClick: true,
+					pendingFocus: true,
+					assistActive: true,
+					alreadyHandled: false,
+				}),
+				"pending click 中の mouseup fallback が有効にならない",
+			);
+			assert(
+				!shouldHandleNativeSelectionMouseUpFallback({
+					button: 0,
+					hasPendingClick: true,
+					pendingFocus: true,
+					assistActive: true,
+					alreadyHandled: true,
+				}),
+				"既に終端処理済みでも mouseup fallback が走っている",
+			);
+			assert(
+				!shouldHandleNativeSelectionMouseUpFallback({
+					button: 0,
+					hasPendingClick: false,
+					pendingFocus: false,
+					assistActive: false,
+					alreadyHandled: false,
+				}),
+				"pending 状態がないのに mouseup fallback が走っている",
+			);
+			assert(
+				!shouldHandleNativeSelectionMouseUpFallback({
+					button: 2,
+					hasPendingClick: true,
+					pendingFocus: true,
+					assistActive: true,
+					alreadyHandled: false,
+				}),
+				"右クリックでも mouseup fallback が走っている",
+			);
 
 			const duration = performance.now() - startTime;
 			this.results.push({
 				name: testName,
 				success: true,
 				message:
-					"fast-click/native-drag両モードのpointerdown方針を確認",
+					"fast-click/native-drag両モードのpointerdown方針と mouseup fallback 条件を確認",
 				duration,
 			});
 		} catch (error) {
@@ -2171,10 +2805,75 @@ export class TategakiTestSuite {
 		}
 	}
 
+	private async testPagedReadingModePopoutEventTargets(): Promise<void> {
+		const testName = "書籍モード: popout realm の event target を要素解決できる";
+		const startTime = performance.now();
+		const globalScope = globalThis;
+		const originalElement = Reflect.get(globalScope, "Element");
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) {
+					throw new Error(message);
+				}
+			};
+
+			const mainWindow = this.createHappyDomWindow();
+			const popoutWindow = new Window();
+			const popoutDoc = popoutWindow.document as unknown as globalThis.Document;
+			Reflect.set(globalScope, "Element", mainWindow.Element);
+			const mainRealmElement = Reflect.get(
+				globalScope,
+				"Element"
+			) as typeof Element;
+
+			const container = popoutDoc.createElement("div") as unknown as HTMLElement;
+			const inner = popoutDoc.createElement("div") as unknown as HTMLElement;
+			const textNode = popoutDoc.createTextNode("本文");
+			inner.appendChild(textNode);
+			container.appendChild(inner);
+
+			assert(
+				!(inner instanceof mainRealmElement),
+				"テスト前提エラー: popout 要素が main realm の Element に一致しています"
+			);
+			assert(
+				resolveEventTargetElement(inner) === inner,
+				"popout 要素をそのまま解決できません"
+			);
+			assert(
+				resolveEventTargetElement(textNode) === inner,
+				"text target から親要素を解決できません"
+			);
+			assert(
+				resolveEventTargetElement(popoutWindow as unknown as EventTarget) === null,
+				"window target は null を返すべきです"
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "別 realm の要素と text target を wheel 判定向けに解決できます",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `popout event target テスト失敗: ${error.message}`,
+				duration,
+			});
+		} finally {
+			Reflect.set(globalScope, "Element", originalElement);
+		}
+	}
+
 	private async testPagedReadingModeFrontmatterCoverStaging(): Promise<void> {
 		const testName = "書籍モード: frontmatter 表紙を live 先出しし本文は commit 後に反映";
 		const startTime = performance.now();
-		const globalScope = globalThis as any;
+		const globalScope = globalThis as unknown as Record<string, unknown>;
 		const originalRequestAnimationFrame = globalScope.requestAnimationFrame;
 		const originalCancelAnimationFrame = globalScope.cancelAnimationFrame;
 		const prototype = PagedReadingMode.prototype as unknown as Record<string, unknown>;
@@ -2226,8 +2925,14 @@ export class TategakiTestSuite {
 			let onRenderedCount = 0;
 
 			prototype["splitContentIntoPages"] = async function (): Promise<void> {
-				const self = this as any;
-				const liveContainer = self.pagesContainerEl as HTMLElement | null;
+				const self = this as unknown as {
+					pagesContainerEl: HTMLElement | null;
+					createFrontmatterCoverPage(index: number): HTMLElement;
+					createPageElement(index: number): HTMLElement;
+					commitPageElements(container: HTMLElement | null, pages: HTMLElement[]): void;
+					notifyCommittedPages(pages: HTMLElement[]): void;
+				};
+				const liveContainer = self.pagesContainerEl;
 				liveKindsDuringSplit = Array.from(
 					liveContainer?.children ?? []
 				)
@@ -2352,7 +3057,7 @@ export class TategakiTestSuite {
 	private async testPagedReadingModeQueuedNavigationDuringPagination(): Promise<void> {
 		const testName = "書籍モード: ページ分割中でも公開済みページへ移動予約できる";
 		const startTime = performance.now();
-		const globalScope = globalThis as any;
+		const globalScope = globalThis as unknown as Record<string, unknown>;
 		const originalRequestAnimationFrame = globalScope.requestAnimationFrame;
 		const originalCancelAnimationFrame = globalScope.cancelAnimationFrame;
 		const paginationPrototype = MeasuredPagination.prototype as unknown as Record<string, unknown>;
@@ -2401,7 +3106,7 @@ export class TategakiTestSuite {
 			};
 
 			paginationPrototype["paginate"] = async function (): Promise<unknown[]> {
-				const self = this as any;
+				const self = this as unknown as { options?: { onPage?: (pageInfo: { element: HTMLElement; startIndex: number; endIndex: number; charCount: number }) => void } };
 				const onPage = self.options?.onPage as
 					| ((pageInfo: { element: HTMLElement; startIndex: number; endIndex: number; charCount: number }) => void)
 					| undefined;
@@ -2454,7 +3159,7 @@ export class TategakiTestSuite {
 			await Promise.race([
 				new Promise<void>((resolve) => {
 					const poll = () => {
-						if ((pagedReadingMode as any)?.paginationInProgress) {
+						if ((pagedReadingMode as unknown as Record<string, unknown>)?.paginationInProgress) {
 							resolve();
 							return;
 						}
@@ -2517,7 +3222,7 @@ export class TategakiTestSuite {
 
 	private createHappyDomWindow(): Window {
 		const window = new Window();
-		const globalScope = globalThis as any;
+		const globalScope = globalThis as unknown as Record<string, unknown>;
 
 		globalScope.Node = window.Node;
 		globalScope.NodeFilter = window.NodeFilter;
@@ -3041,7 +3746,7 @@ export class TategakiTestSuite {
 
 			// sotSelectionMode バリデーション: 不正値はデフォルトにフォールバック
 			const invalidMode = validateV2Settings({
-				wysiwyg: { sotSelectionMode: "invalid-value" as any },
+				wysiwyg: { sotSelectionMode: "invalid-value" as never },
 			});
 			if (invalidMode.wysiwyg.sotSelectionMode !== "native-drag") {
 				throw new Error("sotSelectionModeの不正値がnative-dragにフォールバックしない");
@@ -4234,22 +4939,23 @@ export class TategakiTestSuite {
 		};
 
 		const pipeline = new SoTRenderPipeline(ctx);
+		const pipelineInternal = pipeline as unknown as Record<string, unknown>;
 
 		// virtualEnabled を設定するため内部状態を書き換え
 		// （renderNow を呼ばず直接設定）
-		(pipeline as any).virtualEnabled = opts.virtualEnabled;
+		pipelineInternal["virtualEnabled"] = opts.virtualEnabled;
 
 		// メソッドをプロキシでトレース
-		const origPrecise = (pipeline as any).renderVisibleVirtualLinesPrecise.bind(pipeline);
-		(pipeline as any).renderVisibleVirtualLinesPrecise = (o: any) => {
+		const origPrecise = (pipelineInternal["renderVisibleVirtualLinesPrecise"] as (o: unknown) => void).bind(pipeline);
+		pipelineInternal["renderVisibleVirtualLinesPrecise"] = (o: unknown) => {
 			callLog.push("renderVisibleVirtualLinesPrecise");
 			return origPrecise(o);
 		};
-		(pipeline as any).scheduleResumeAfterScroll = (...args: any[]) => {
+		pipelineInternal["scheduleResumeAfterScroll"] = () => {
 			callLog.push("scheduleResumeAfterScroll");
 			// RAF を予約させない（テスト環境なので空にする）
 		};
-		(pipeline as any).schedulePreciseScan = () => {
+		pipelineInternal["schedulePreciseScan"] = () => {
 			callLog.push("schedulePreciseScan");
 			// タイマーを予約させない
 		};
@@ -4438,7 +5144,9 @@ export class TategakiTestSuite {
 			testEditor.focus();
 			const selection = window.getSelection();
 			const range = document.createRange();
-			range.setStart(testEditor.firstChild!, 2);
+			const firstChild = testEditor.firstChild;
+			if (!firstChild) throw new Error("firstChild is null");
+			range.setStart(firstChild, 2);
 			range.collapse(true);
 			selection?.removeAllRanges();
 			selection?.addRange(range);

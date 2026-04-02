@@ -1,6 +1,7 @@
 import type { LineRange } from "./line-ranges";
 import type { SoTEditor } from "./sot-editor";
 import { getCaretPositionFromPoint } from "./sot-selection-geometry";
+import { debugLog } from "../../shared/logger";
 
 type SelectionWithBaseAndExtent = Selection & {
 	setBaseAndExtent?: (
@@ -58,15 +59,30 @@ export class NativeSelectionSupport {
 	}
 
 	handleSelectionChange(): void {
-		if (!this.context.isEnabled()) {
+		const enabled = this.context.isEnabled();
+		const log = (event: string, detail: Record<string, unknown> = {}) => {
+			debugLog("Tategaki SoT native-selection:", event, {
+				selectionActive: this.selectionActive,
+				enabled,
+				...detail,
+			});
+		};
+		if (!enabled) {
 			if (this.selectionActive) {
 				this.selectionActive = false;
 				this.context.onSelectionActiveChanged?.(false);
 			}
+			log("dom-selection-skip", { reason: "disabled" });
 			return;
 		}
-		if (this.restoringSelection) return;
-		if (this.syncingToDom) return;
+		if (this.restoringSelection) {
+			log("dom-selection-skip", { reason: "restoring-selection" });
+			return;
+		}
+		if (this.syncingToDom) {
+			log("dom-selection-skip", { reason: "syncing-to-dom" });
+			return;
+		}
 
 		const contentEl = this.context.getDerivedContentEl();
 		const sotEditor = this.context.getSotEditor();
@@ -75,13 +91,24 @@ export class NativeSelectionSupport {
 				this.selectionActive = false;
 				this.context.onSelectionActiveChanged?.(false);
 			}
+			log("dom-selection-skip", {
+				reason: "missing-content-or-editor",
+				hasContentEl: !!contentEl,
+				hasSotEditor: !!sotEditor,
+			});
 			return;
 		}
 		const selection = contentEl.ownerDocument.getSelection();
 		const inside =
 			!!selection &&
 			this.context.isSelectionInsideDerivedContent(selection);
+		const collapsed = selection ? selection.isCollapsed : null;
 		const active = !!selection && !selection.isCollapsed && inside;
+		log("dom-selection-enter", {
+			inside,
+			collapsed,
+			active,
+		});
 		if (active !== this.selectionActive) {
 			this.selectionActive = active;
 			this.context.onSelectionActiveChanged?.(active);
@@ -89,31 +116,82 @@ export class NativeSelectionSupport {
 				this.lastStableOffsets = null;
 			}
 		}
-		if (!selection || !inside) return;
+		if (!selection || !inside) {
+			log("dom-selection-skip", {
+				reason: !selection ? "no-selection" : "outside-derived-content",
+				inside,
+				collapsed,
+			});
+			return;
+		}
 		if (active) {
 			this.ensureSelectionEndpointsRendered(selection);
 		}
 
-		if (this.context.isCeImeMode?.()) return;
+		if (this.context.isCeImeMode?.()) {
+			log("dom-selection-skip", {
+				reason: "ce-ime-mode",
+				inside,
+				collapsed,
+			});
+			return;
+		}
 		const offsets = this.getSelectionOffsetsFromDom(true);
-		if (!offsets) return;
+		if (!offsets) {
+			log("dom-selection-skip", {
+				reason: "offsets-unresolved",
+				inside,
+				collapsed,
+			});
+			return;
+		}
 		const unstable = this.isUnstableDomSelection(selection, contentEl);
+		const current = sotEditor.getSelection();
+		log("dom-selection-offsets", {
+			inside,
+			collapsed,
+			offsets,
+			current,
+			unstable,
+			deltaAnchor: offsets.anchor - current.anchor,
+			deltaHead: offsets.head - current.head,
+		});
 		if (unstable && this.lastStableOffsets) {
+			log("dom-selection-skip", {
+				reason: "unstable-with-last-stable",
+				offsets,
+				lastStableOffsets: this.lastStableOffsets,
+			});
 			return;
 		}
 		if (!unstable) {
 			this.lastStableOffsets = offsets;
 		}
-		const current = sotEditor.getSelection();
 		if (
 			current.anchor === offsets.anchor &&
 			current.head === offsets.head
 		) {
+			log("dom-selection-skip", {
+				reason: "same-as-current",
+				offsets,
+				current,
+			});
 			return;
 		}
-		if (!this.context.setSelectionNormalized) return;
+		if (!this.context.setSelectionNormalized) {
+			log("dom-selection-skip", {
+				reason: "missing-set-selection",
+				offsets,
+				current,
+			});
+			return;
+		}
 		this.syncingFromDom = true;
 		try {
+			log("dom-selection-sync", {
+				offsets,
+				current,
+			});
 			this.context.setSelectionNormalized(
 				offsets.anchor,
 				offsets.head

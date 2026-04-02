@@ -107,6 +107,104 @@
 	text-wrap: pretty;
 }
 
+.tategaki-editor,
+.tategaki-wysiwyg-editor,
+.tategaki-preview,
+.tategaki-sot-derived-root {
+	--tategaki-app-text-normal: var(--text-normal);
+	--tategaki-app-text-muted: var(--text-muted);
+	--tategaki-app-background-primary: var(--background-primary);
+	--tategaki-app-background-secondary: var(--background-secondary);
+	--tategaki-app-background-secondary-alt: var(--background-secondary-alt);
+	--tategaki-app-background-modifier-border: var(
+		--background-modifier-border
+	);
+	--tategaki-surface-bg: color-mix(
+		in srgb,
+		var(
+				--tategaki-background-color,
+				var(--tategaki-app-background-primary)
+			)
+			88%,
+		var(--tategaki-text-color, var(--tategaki-app-text-normal)) 12%
+	);
+	--tategaki-surface-bg-alt: color-mix(
+		in srgb,
+		var(
+				--tategaki-background-color,
+				var(--tategaki-app-background-primary)
+			)
+			82%,
+		var(--tategaki-text-color, var(--tategaki-app-text-normal)) 18%
+	);
+	--tategaki-surface-emphasis-bg: color-mix(
+		in srgb,
+		var(
+				--tategaki-background-color,
+				var(--tategaki-app-background-primary)
+			)
+			74%,
+		var(--tategaki-text-color, var(--tategaki-app-text-normal)) 26%
+	);
+	--tategaki-surface-border: color-mix(
+		in srgb,
+		var(
+				--tategaki-background-color,
+				var(--tategaki-app-background-primary)
+			)
+			72%,
+		var(--tategaki-text-color, var(--tategaki-app-text-normal)) 28%
+	);
+	--tategaki-muted-text: color-mix(
+		in srgb,
+		var(--tategaki-text-color, var(--tategaki-app-text-normal)) 68%,
+		var(
+				--tategaki-background-color,
+				var(--tategaki-app-background-primary)
+			)
+			32%
+	);
+	--tategaki-code-bg: color-mix(
+		in srgb,
+		var(
+				--tategaki-background-color,
+				var(--tategaki-app-background-primary)
+			)
+			84%,
+		var(--tategaki-text-color, var(--tategaki-app-text-normal)) 16%
+	);
+	--tategaki-code-text: var(
+		--tategaki-text-color,
+		var(--tategaki-app-text-normal)
+	);
+	--background-primary: var(
+		--tategaki-background-color,
+		var(--tategaki-app-background-primary)
+	);
+	--background-primary-alt: var(--tategaki-surface-bg-alt);
+	--background-secondary: var(--tategaki-surface-bg);
+	--background-secondary-alt: var(--tategaki-surface-bg-alt);
+	--background-modifier-border: var(--tategaki-surface-border);
+	--background-modifier-hover: color-mix(
+		in srgb,
+		var(--background-secondary) 82%,
+		var(--text-normal) 18%
+	);
+	--text-normal: var(--tategaki-text-color, var(--tategaki-app-text-normal));
+	--text-muted: var(--tategaki-muted-text);
+	--code-normal: var(--tategaki-code-text);
+	--code-comment: var(--tategaki-muted-text);
+	--code-punctuation: color-mix(
+		in srgb,
+		var(--tategaki-code-text) 72%,
+		var(
+				--tategaki-background-color,
+				var(--tategaki-app-background-primary)
+			)
+			28%
+	);
+}
+
 .tategaki-wysiwyg-editor .ProseMirror,
 .tategaki-preview p,
 .tategaki-preview div.markdown-preview-section > div {
@@ -4161,10 +4259,12 @@ ruby {
 	border-inline-start: 3px solid var(--interactive-accent);
 	border-radius: 10px;
 	padding: 0.25em 0.6em;
+	color: var(--text-normal);
 }
 
 .tategaki-sot-line.tategaki-md-callout-title {
 	font-weight: 700;
+	color: var(--text-normal);
 }
 
 .tategaki-sot-line.tategaki-md-callout-title::before {
@@ -4182,19 +4282,19 @@ ruby {
 }
 
 .tategaki-sot-line.tategaki-md-callout-widget {
-	padding: 0.2em 0.4em;
+	padding: 0;
+	background: transparent;
+	border: 0;
+	border-inline-start: 0;
+	border-radius: 0;
 }
 
 .tategaki-md-callout-widget-inner {
 	display: block;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 12px;
-	padding: 0.5em;
-	background: color-mix(
-		in srgb,
-		var(--background-secondary) 70%,
-		transparent
-	);
+	border: 0;
+	border-radius: 0;
+	padding: 0;
+	background: transparent;
 	max-inline-size: 100%;
 	max-block-size: 80vh;
 	overflow: auto;
@@ -4213,9 +4313,79 @@ ruby {
 	white-space: normal;
 }
 
+.tategaki-sot-line.tategaki-md-callout-widget > .tategaki-sot-eol {
+	width: 0;
+	height: 0;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+.tategaki-md-callout-widget-content,
+.tategaki-md-callout-widget-content.markdown-rendered {
+	color: var(--tategaki-text-color, var(--tategaki-app-text-normal));
+}
+
+.tategaki-md-callout-widget-content .callout {
+	--tategaki-callout-accent: rgb(var(--callout-color, 128, 128, 128));
+	--callout-title-color: var(
+		--tategaki-text-color,
+		var(--tategaki-app-text-normal)
+	);
+	background: color-mix(
+		in srgb,
+		var(--tategaki-surface-bg) 88%,
+		var(--tategaki-callout-accent) 12%
+	);
+	border: 1px solid
+		color-mix(
+			in srgb,
+			var(--tategaki-surface-border) 55%,
+			var(--tategaki-callout-accent) 45%
+		);
+	color: var(
+		--tategaki-text-color,
+		var(--tategaki-app-text-normal)
+	) !important;
+	box-shadow: none;
+	mix-blend-mode: normal !important;
+}
+
 .tategaki-md-callout-widget-content .callout-title,
 .tategaki-md-callout-widget-content .callout-fold {
 	cursor: pointer;
+}
+
+.tategaki-md-callout-widget-content .callout-title,
+.tategaki-md-callout-widget-content .callout-title-inner,
+.tategaki-md-callout-widget-content .callout-title-inner p,
+.tategaki-md-callout-widget-content .callout-content,
+.tategaki-md-callout-widget-content .callout-content p,
+.tategaki-md-callout-widget-content .callout-title-inner *,
+.tategaki-md-callout-widget-content .callout-content * {
+	color: var(
+		--tategaki-text-color,
+		var(--tategaki-app-text-normal)
+	) !important;
+	-webkit-text-fill-color: var(
+		--tategaki-text-color,
+		var(--tategaki-app-text-normal)
+	) !important;
+	opacity: 1 !important;
+	filter: none !important;
+	mix-blend-mode: normal !important;
+	text-shadow: none !important;
+}
+
+.tategaki-md-callout-widget-content .callout-fold,
+.tategaki-md-callout-widget-content .callout-fold *,
+.tategaki-md-callout-widget-content .callout-icon,
+.tategaki-md-callout-widget-content .callout-icon * {
+	color: color-mix(
+		in srgb,
+		var(--tategaki-callout-accent) 82%,
+		var(--tategaki-text-color, var(--tategaki-app-text-normal)) 18%
+	) !important;
+	-webkit-text-fill-color: currentColor !important;
 }
 
 .tategaki-md-callout-widget-content .callout.is-collapsed .callout-content {
@@ -4488,10 +4658,13 @@ ruby {
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
 	background: color-mix(in srgb, var(--background-primary) 80%, transparent);
+	color: var(--text-normal);
 }
 
 .tategaki-sot-line.tategaki-md-table-header .tategaki-md-table-cell {
 	font-weight: 700;
+	background: var(--tategaki-surface-emphasis-bg);
+	color: var(--text-normal);
 }
 
 .tategaki-sot-line.tategaki-md-table-sep {
@@ -4532,6 +4705,13 @@ ruby {
 
 .tategaki-md-table-widget-content {
 	white-space: normal;
+}
+
+.tategaki-md-table-widget-content th,
+.tategaki-md-table-widget-content thead td {
+	background: var(--tategaki-surface-emphasis-bg);
+	color: var(--text-normal);
+	border-color: var(--background-modifier-border);
 }
 
 .tategaki-sot-line.tategaki-md-deflist-hidden {

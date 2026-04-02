@@ -49,6 +49,14 @@ export interface PointerDownContext {
 	selectionMode?: SoTSelectionMode;
 }
 
+export interface NativeSelectionMouseUpFallbackContext {
+	button: number;
+	hasPendingClick: boolean;
+	pendingFocus: boolean;
+	assistActive: boolean;
+	alreadyHandled: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // 遷移判定: 個別イベント
 // ---------------------------------------------------------------------------
@@ -107,6 +115,14 @@ export function decideOnPointerDown(
 		return { action: "activate", reason: "pointerdown-content-native" };
 	}
 	return { action: "deactivate", reason: "pointerdown-content" };
+}
+
+export function shouldHandleNativeSelectionMouseUpFallback(
+	ctx: NativeSelectionMouseUpFallbackContext,
+): boolean {
+	if (ctx.button !== 0) return false;
+	if (ctx.alreadyHandled) return false;
+	return ctx.hasPendingClick || ctx.pendingFocus || ctx.assistActive;
 }
 
 // ---------------------------------------------------------------------------

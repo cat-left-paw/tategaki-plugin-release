@@ -14,6 +14,16 @@ import {
 	probeChunkSnapshot,
 	type ChunkReadProbeResult,
 } from "./sot-chunk-read-probe";
+import {
+	cancelViewAnimationFrame,
+	clearViewTimeout,
+	createViewDocumentFragment,
+	createViewElement,
+	createViewIntersectionObserver,
+	getViewComputedStyle,
+	requestViewAnimationFrame,
+	setViewTimeout,
+} from "./sot-view-local-dom";
 
 export type SoTRenderPipelineContext = {
 	getDerivedRootEl: () => HTMLElement | null;
@@ -88,6 +98,12 @@ export class SoTRenderPipeline {
 		this.context = context;
 	}
 
+	private getViewTarget(): Node | null {
+		return (
+			this.context.getDerivedRootEl() ?? this.context.getDerivedContentEl()
+		);
+	}
+
 	isVirtualizedRenderEnabled(): boolean {
 		return this.virtualEnabled;
 	}
@@ -114,18 +130,21 @@ export class SoTRenderPipeline {
 
 	cancelScheduledRender(): void {
 		if (this.renderTimer !== null) {
-			window.clearTimeout(this.renderTimer);
+			clearViewTimeout(this.getViewTarget(), this.renderTimer);
 			this.renderTimer = null;
 		}
 	}
 
 	private cancelScrollHold(): void {
 		if (this.scrollHoldTimer !== null) {
-			window.clearTimeout(this.scrollHoldTimer);
+			clearViewTimeout(this.getViewTarget(), this.scrollHoldTimer);
 			this.scrollHoldTimer = null;
 		}
 		if (this.resumeAfterScrollRaf !== null) {
-			window.cancelAnimationFrame(this.resumeAfterScrollRaf);
+			cancelViewAnimationFrame(
+				this.getViewTarget(),
+				this.resumeAfterScrollRaf,
+			);
 			this.resumeAfterScrollRaf = null;
 		}
 		this.scrollingActive = false;
@@ -133,18 +152,24 @@ export class SoTRenderPipeline {
 
 	private cancelSelectionScrollRender(): void {
 		if (this.selectionScrollRaf !== null) {
-			window.cancelAnimationFrame(this.selectionScrollRaf);
+			cancelViewAnimationFrame(
+				this.getViewTarget(),
+				this.selectionScrollRaf,
+			);
 			this.selectionScrollRaf = null;
 		}
 	}
 
 	private cancelPreciseScan(): void {
 		if (this.preciseScanTimer !== null) {
-			window.clearTimeout(this.preciseScanTimer);
+			clearViewTimeout(this.getViewTarget(), this.preciseScanTimer);
 			this.preciseScanTimer = null;
 		}
 		if (this.preciseScanRaf !== null) {
-			window.cancelAnimationFrame(this.preciseScanRaf);
+			cancelViewAnimationFrame(
+				this.getViewTarget(),
+				this.preciseScanRaf,
+			);
 			this.preciseScanRaf = null;
 		}
 	}
@@ -172,9 +197,9 @@ export class SoTRenderPipeline {
 		if (!isLargeScroll) return;
 		this.scrollingActive = true;
 		if (this.scrollHoldTimer !== null) {
-			window.clearTimeout(this.scrollHoldTimer);
+			clearViewTimeout(this.getViewTarget(), this.scrollHoldTimer);
 		}
-		this.scrollHoldTimer = window.setTimeout(() => {
+		this.scrollHoldTimer = setViewTimeout(this.getViewTarget(), () => {
 			this.scrollHoldTimer = null;
 			this.scrollingActive = false;
 			this.scheduleResumeAfterScroll();
@@ -183,13 +208,16 @@ export class SoTRenderPipeline {
 
 	private scheduleSelectionScrollRender(): void {
 		if (this.selectionScrollRaf !== null) return;
-		this.selectionScrollRaf = window.requestAnimationFrame(() => {
+		this.selectionScrollRaf = requestViewAnimationFrame(
+			this.getViewTarget(),
+			() => {
 			this.selectionScrollRaf = null;
 			this.renderVisibleVirtualLinesImmediate(true, {
 				maxLines: 16,
 				budgetMs: 4,
 			});
-		});
+			},
+		);
 	}
 
 	scheduleRender(force = false): void {
@@ -199,10 +227,10 @@ export class SoTRenderPipeline {
 		if (!rootEl || !contentEl || !sotEditor) return;
 		if (this.renderTimer !== null) {
 			if (!force) return;
-			window.clearTimeout(this.renderTimer);
+			clearViewTimeout(this.getViewTarget(), this.renderTimer);
 			this.renderTimer = null;
 		}
-		this.renderTimer = window.setTimeout(() => {
+		this.renderTimer = setViewTimeout(this.getViewTarget(), () => {
 			this.renderTimer = null;
 			this.renderNow();
 		}, 0);
@@ -256,7 +284,7 @@ export class SoTRenderPipeline {
 			return;
 		}
 
-		const fragment = document.createDocumentFragment();
+		const fragment = createViewDocumentFragment(contentEl);
 		const settings = this.context.getPluginSettings();
 		const hideFrontmatter = this.context.getHideFrontmatter();
 		const writingMode = this.context.getWritingMode();
@@ -311,7 +339,8 @@ export class SoTRenderPipeline {
 			return;
 		}
 		this.disconnectVirtualObserver();
-		this.virtualObserver = new IntersectionObserver(
+		this.virtualObserver = createViewIntersectionObserver(
+			rootEl,
 			(entries) => {
 				if (this.isSelectionActive()) return;
 				if (this.scrollingActive) return;
@@ -356,7 +385,7 @@ export class SoTRenderPipeline {
 	): number {
 		const totalLines = lineRanges.length;
 		if (totalLines === 0) return -1;
-		const computed = window.getComputedStyle(rootEl);
+		const computed = getViewComputedStyle(rootEl);
 		const fontSize = Number.parseFloat(computed.fontSize) || 16;
 		const lineHeight =
 			Number.parseFloat(computed.lineHeight) || fontSize * 1.8;
@@ -410,7 +439,10 @@ export class SoTRenderPipeline {
 		const range = lineRanges[index];
 		if (!range) return index + 1;
 
-		const lineEl = document.createElement("div");
+		const lineEl = createViewElement(
+			this.context.getDerivedContentEl() ?? this.context.getDerivedRootEl(),
+			"div",
+		);
 		lineEl.className = "tategaki-sot-line";
 		lineEl.dataset.from = String(range.from);
 		lineEl.dataset.to = String(range.to);
@@ -447,10 +479,13 @@ export class SoTRenderPipeline {
 	private scheduleVirtualQueue(): void {
 		if (this.isSelectionActive()) return;
 		if (this.virtualQueueRaf !== null) return;
-		this.virtualQueueRaf = window.requestAnimationFrame(() => {
+		this.virtualQueueRaf = requestViewAnimationFrame(
+			this.getViewTarget(),
+			() => {
 			this.virtualQueueRaf = null;
 			this.flushVirtualQueue();
-		});
+			},
+		);
 	}
 
 	private scheduleVirtualizeDistantLines(
@@ -459,10 +494,13 @@ export class SoTRenderPipeline {
 		if (!this.virtualEnabled) return;
 		if (!allowDuringSelection && this.isSelectionActive()) return;
 		if (this.virtualizeRaf !== null) return;
-		this.virtualizeRaf = window.requestAnimationFrame(() => {
+		this.virtualizeRaf = requestViewAnimationFrame(
+			this.getViewTarget(),
+			() => {
 			this.virtualizeRaf = null;
 			this.virtualizeDistantLines(allowDuringSelection);
-		});
+			},
+		);
 	}
 
 	private virtualizeDistantLines(allowDuringSelection = false): void {
@@ -547,12 +585,15 @@ export class SoTRenderPipeline {
 		if (this.preciseScanTimer !== null || this.preciseScanRaf !== null) {
 			return;
 		}
-		this.preciseScanTimer = window.setTimeout(() => {
+		this.preciseScanTimer = setViewTimeout(this.getViewTarget(), () => {
 			this.preciseScanTimer = null;
-			this.preciseScanRaf = window.requestAnimationFrame(() => {
+			this.preciseScanRaf = requestViewAnimationFrame(
+				this.getViewTarget(),
+				() => {
 				this.preciseScanRaf = null;
 				this.runPreciseScan();
-			});
+				},
+			);
 		}, 80);
 	}
 
@@ -638,7 +679,7 @@ export class SoTRenderPipeline {
 		rootEl: HTMLElement,
 		totalLines: number
 	): { start: number; end: number } {
-		const computed = window.getComputedStyle(rootEl);
+		const computed = getViewComputedStyle(rootEl);
 		const fontSize = Number.parseFloat(computed.fontSize) || 16;
 		const lineHeight =
 			Number.parseFloat(computed.lineHeight) || fontSize * 1.8;
@@ -669,7 +710,8 @@ export class SoTRenderPipeline {
 			this.virtualQueue.length > 0 &&
 			performance.now() - start < budgetMs
 		) {
-			const job = this.virtualQueue.shift()!;
+			const job = this.virtualQueue.shift();
+			if (!job) break;
 			this.virtualQueued.delete(job.index);
 			const element = job.element;
 			// 監視を解除（重複レンダリング防止）
@@ -696,7 +738,10 @@ export class SoTRenderPipeline {
 
 	private cancelVirtualQueue(): void {
 		if (this.virtualQueueRaf !== null) {
-			window.cancelAnimationFrame(this.virtualQueueRaf);
+			cancelViewAnimationFrame(
+				this.getViewTarget(),
+				this.virtualQueueRaf,
+			);
 			this.virtualQueueRaf = null;
 		}
 		this.resetVirtualQueue();
@@ -704,7 +749,7 @@ export class SoTRenderPipeline {
 
 	private cancelVirtualize(): void {
 		if (this.virtualizeRaf !== null) {
-			window.cancelAnimationFrame(this.virtualizeRaf);
+			cancelViewAnimationFrame(this.getViewTarget(), this.virtualizeRaf);
 			this.virtualizeRaf = null;
 		}
 		this.virtualizeIndex = 0;
@@ -716,7 +761,9 @@ export class SoTRenderPipeline {
 	): void {
 		if (!allowDuringSelection && this.isSelectionActive()) return;
 		if (this.resumeAfterScrollRaf !== null) return;
-		this.resumeAfterScrollRaf = window.requestAnimationFrame(() => {
+		this.resumeAfterScrollRaf = requestViewAnimationFrame(
+			this.getViewTarget(),
+			() => {
 			this.resumeAfterScrollRaf = null;
 			const hasMore = this.renderVisibleVirtualLinesImmediate(
 				allowDuringSelection,
@@ -727,7 +774,8 @@ export class SoTRenderPipeline {
 			if (hasMore) {
 				this.scheduleResumeAfterScroll(allowDuringSelection, options);
 			}
-		});
+			},
+		);
 	}
 
 	onScrollSettled(): void {
@@ -833,11 +881,14 @@ export class SoTRenderPipeline {
 
 	private cancelChunkedRender(): void {
 		if (this.renderChunkRaf !== null) {
-			window.cancelAnimationFrame(this.renderChunkRaf);
+			cancelViewAnimationFrame(this.getViewTarget(), this.renderChunkRaf);
 			this.renderChunkRaf = null;
 		}
 		if (this.chunkedExtentHoldClearRaf !== null) {
-			window.cancelAnimationFrame(this.chunkedExtentHoldClearRaf);
+			cancelViewAnimationFrame(
+				this.getViewTarget(),
+				this.chunkedExtentHoldClearRaf,
+			);
 			this.chunkedExtentHoldClearRaf = null;
 		}
 	}
@@ -906,7 +957,7 @@ export class SoTRenderPipeline {
 				return;
 			}
 			const startTime = performance.now();
-			const fragment = document.createDocumentFragment();
+			const fragment = createViewDocumentFragment(nextContent);
 			while (index < total && performance.now() - startTime < budgetMs) {
 				index = this.appendRenderedEntry(
 					fragment,
@@ -917,21 +968,30 @@ export class SoTRenderPipeline {
 			}
 			nextContent.appendChild(fragment);
 			if (index < total) {
-				this.renderChunkRaf = window.requestAnimationFrame(step);
+				this.renderChunkRaf = requestViewAnimationFrame(
+					nextContent,
+					step,
+				);
 				return;
 			}
 			this.renderChunkRaf = null;
 			this.context.finalizeRender(scrollTop, scrollLeft, scrollAnchor);
 			if (this.chunkedExtentHoldClearRaf !== null) {
-				window.cancelAnimationFrame(this.chunkedExtentHoldClearRaf);
+				cancelViewAnimationFrame(
+					nextContent,
+					this.chunkedExtentHoldClearRaf,
+				);
 			}
-			this.chunkedExtentHoldClearRaf = window.requestAnimationFrame(() => {
+			this.chunkedExtentHoldClearRaf = requestViewAnimationFrame(
+				nextContent,
+				() => {
 				this.chunkedExtentHoldClearRaf = null;
 				if (generation !== this.renderGeneration) return;
 				this.clearChunkedExtentHold(nextContent);
-			});
+				},
+			);
 		};
 
-		this.renderChunkRaf = window.requestAnimationFrame(step);
+		this.renderChunkRaf = requestViewAnimationFrame(contentEl, step);
 	}
 }

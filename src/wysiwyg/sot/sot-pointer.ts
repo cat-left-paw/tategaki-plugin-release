@@ -557,11 +557,12 @@ export class SoTPointerHandler {
 			return true;
 		}
 		const rects = this.context.getLineVisualRects(lineEl);
-		if (rects.length === 0) return false;
+		const firstRect = rects[0];
+		if (!firstRect) return false;
 		const writingMode = window.getComputedStyle(rootEl).writingMode;
 		const isVertical = writingMode.startsWith("vertical");
 		const margin = 2;
-		let endRect = rects[0]!;
+		let endRect = firstRect;
 		if (isVertical) {
 			const isVerticalRL = writingMode !== "vertical-lr";
 			for (const rect of rects) {

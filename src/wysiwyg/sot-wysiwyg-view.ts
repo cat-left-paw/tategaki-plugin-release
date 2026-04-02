@@ -118,6 +118,8 @@ import {
 	DEFAULT_DOM_SELECTALL_TIMEOUT_MS,
 } from "./sot/selection-guard";
 import { SoTRenderPipeline } from "./sot/sot-render-pipeline";
+import { SoTSelectionChangeBinding } from "./sot/sot-selectionchange-binding";
+import { SoTPointerWindowBinding } from "./sot/sot-pointer-window-binding";
 import { OutlineJumpGuard } from "./sot/sot-outline-jump-guard";
 import { SoTChunkController } from "./sot/sot-chunk-controller";
 import {
@@ -147,8 +149,17 @@ import {
 	shouldActivateOnAutoScrollStart,
 	shouldDeactivateOnAutoScrollStop,
 	decideOnPointerDown,
+	shouldHandleNativeSelectionMouseUpFallback,
 	shouldDeactivateOnPointerEnd,
 } from "./sot/sot-native-selection-assist";
+import {
+	computeSoTCollapsePreviewTooltipPosition,
+	resolveSoTCollapsePreviewTooltipHost,
+} from "./sot/sot-collapse-preview-tooltip";
+import {
+	resolveSoTLinePointWritingMode,
+	shouldSnapPointToLineEnd,
+} from "./sot/sot-line-end-click";
 import { classifyPointerTarget } from "./sot/sot-pointer-strategy";
 import {
 	isNativeSelectionEnabled as policyIsNativeSelectionEnabled,
@@ -164,6 +175,7 @@ import {
 	isPhoneLikeMobile,
 	PHONE_MEDIA_QUERY,
 } from "./shared/device-profile";
+import { getViewComputedStyle } from "./sot/sot-view-local-dom";
 
 export const TATEGAKI_SOT_WYSIWYG_VIEW_TYPE = "tategaki-sot-wysiwyg-view";
 const LINE_DATASET_KEYS = [
@@ -306,6 +318,8 @@ export class SoTWysiwygView extends ItemView {
 	private scrollDebounceLastLeft = 0;
 	private scrollDebounceLastEventAt = 0;
 	private selectionChangeDebounceTimer: number | null = null;
+	private readonly selectionChangeBinding = new SoTSelectionChangeBinding();
+	private readonly pointerWindowBinding = new SoTPointerWindowBinding();
 	private pendingNativeSelectionSync = false;
 	private isScrolling = false;
 	private lineModelRecomputeDeferred = false;
@@ -392,6 +406,7 @@ export class SoTWysiwygView extends ItemView {
 	private softSelectionTo = 0;
 	private keepSoTActiveOnOutline = false;
 	private nativeSelectionPendingFocus = false;
+	private nativeSelectionPointerEndHandled = false;
 	private nativeSelectionPendingClick: {
 		lineEl: HTMLElement;
 		clientX: number;
@@ -550,27 +565,21 @@ export class SoTWysiwygView extends ItemView {
 	): void {
 		this.hideCollapsePreviewTooltip();
 
-		const tooltip = document.createElement("div");
+		const tooltipHost = resolveSoTCollapsePreviewTooltipHost(target);
+		const tooltip = tooltipHost.doc.createElement("div");
 		tooltip.className = "tategaki-collapse-preview-tooltip";
 		tooltip.textContent = text;
-		document.body.appendChild(tooltip);
+		tooltipHost.containerEl.appendChild(tooltip);
 		this.collapsePreviewTooltip = tooltip;
 
 		const rect = target.getBoundingClientRect();
 		const tooltipRect = tooltip.getBoundingClientRect();
-
-		// ツールチップの位置を計算（要素の下に表示）
-		let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
-		let top = rect.bottom + 8;
-
-		// 画面端からはみ出す場合の調整
-		if (left < 8) left = 8;
-		if (left + tooltipRect.width > window.innerWidth - 8) {
-			left = window.innerWidth - tooltipRect.width - 8;
-		}
-		if (top + tooltipRect.height > window.innerHeight - 8) {
-			top = rect.top - tooltipRect.height - 8;
-		}
+		const { left, top } = computeSoTCollapsePreviewTooltipPosition({
+			targetRect: rect,
+			tooltipRect,
+			viewportWidth: tooltipHost.viewportWidth,
+			viewportHeight: tooltipHost.viewportHeight,
+		});
 
 		tooltip.style.left = `${left}px`;
 		tooltip.style.top = `${top}px`;
@@ -784,6 +793,70 @@ export class SoTWysiwygView extends ItemView {
 		this.selectionChangeDebounceTimer = null;
 	}
 
+	private getSelectionChangeDocument(): Document | null {
+		return (
+			this.derivedContentEl?.ownerDocument ??
+			this.derivedRootEl?.ownerDocument ??
+			this.containerEl?.ownerDocument ??
+			null
+		);
+	}
+
+	private ensureSelectionChangeListenerBound(reason: string): void {
+		const document = this.getSelectionChangeDocument();
+		const rebound = this.selectionChangeBinding.bind(document, () =>
+			this.handleCeSelectionChange(),
+		);
+		if (!rebound) return;
+		this.debugNativeSelectionAssist("selectionchange-listener-bound", {
+			reason,
+			hasDocument: !!document,
+			viewWindowIsGlobal: (document?.defaultView ?? window) === window,
+		});
+	}
+
+	private getPointerBindingWindow(): Window | null {
+		return (
+			this.derivedRootEl?.ownerDocument.defaultView ??
+			this.derivedContentEl?.ownerDocument.defaultView ??
+			this.containerEl?.ownerDocument.defaultView ??
+			null
+		);
+	}
+
+	private ensurePointerWindowListenersBound(reason: string): void {
+		const viewWindow = this.getPointerBindingWindow();
+		const rebound = this.pointerWindowBinding.bind(viewWindow, {
+			onPointerMove: (event) => {
+				this.handleTouchScrollPointerMove(event);
+				if (this.touchScrollActive && event.pointerType === "touch") {
+					return;
+				}
+				this.pointerHandler?.handlePointerMove(event);
+			},
+			onPointerUp: (event) => {
+				this.handleNativeSelectionPointerEnd(
+					event,
+					"pointerup",
+					"pointer",
+				);
+			},
+			onPointerCancel: (event) => {
+				this.handleNativeSelectionPointerEnd(
+					event,
+					"pointercancel",
+					"pointer",
+				);
+			},
+		});
+		if (!rebound) return;
+		this.debugNativeSelectionAssist("pointer-window-listener-bound", {
+			reason,
+			hasWindow: !!viewWindow,
+			viewWindowIsGlobal: (viewWindow ?? window) === window,
+		});
+	}
+
 	private shouldDeferNativeSelectionSync(): boolean {
 		return policyShouldDeferNativeSelectionSync({
 			isScrolling: this.isScrolling,
@@ -888,6 +961,121 @@ export class SoTWysiwygView extends ItemView {
 			sourceModeEnabled: this.sourceModeEnabled,
 			...detail,
 		});
+	}
+
+	private debugNativeSelectionPointerEnd(
+		event: string,
+		pointerEvent: PointerEvent | MouseEvent,
+		detail: Record<string, unknown> = {},
+	): void {
+		const selection =
+			this.derivedContentEl?.ownerDocument.getSelection() ?? null;
+		const pointerId =
+			"pointerId" in pointerEvent ? pointerEvent.pointerId : null;
+		this.debugNativeSelectionAssist(event, {
+			button: pointerEvent.button,
+			pointerId,
+			pendingFocus: this.nativeSelectionPendingFocus,
+			hasPendingClick: this.nativeSelectionPendingClick !== null,
+			selectionMode:
+				this.plugin.settings.wysiwyg.sotSelectionMode ?? "native-drag",
+			line: this.nativeSelectionPendingClick?.lineEl.dataset.line ?? null,
+			inside: this.isSelectionInsideDerivedContent(selection),
+			collapsed: selection ? selection.isCollapsed : null,
+			...detail,
+		});
+	}
+
+	private handleNativeSelectionPointerEnd(
+		event: PointerEvent | MouseEvent,
+		reason: "pointerup" | "pointercancel" | "mouseup",
+		source: "pointer" | "mouse",
+	): void {
+		if (
+			source === "mouse" &&
+			!shouldHandleNativeSelectionMouseUpFallback({
+				button: event.button,
+				hasPendingClick: this.nativeSelectionPendingClick !== null,
+				pendingFocus: this.nativeSelectionPendingFocus,
+				assistActive: this.nativeSelectionAssistActive,
+				alreadyHandled: this.nativeSelectionPointerEndHandled,
+			})
+		) {
+			return;
+		}
+		if (
+			source === "pointer" &&
+			event.button === 0 &&
+			this.nativeSelectionPointerEndHandled
+		) {
+			return;
+		}
+		if (event.button === 0) {
+			this.nativeSelectionPointerEndHandled = true;
+		}
+		this.debugNativeSelectionPointerEnd("pointerend-enter", event, {
+			reason,
+			source,
+		});
+		if (this.scrollbarSelectionHold) {
+			this.scheduleSelectionOverlayUpdate();
+		}
+		if (event.button === 0 && this.nativeContextMenuHold.clear()) {
+			this.scheduleSelectionOverlayUpdate();
+		}
+		const pointerEvent = source === "pointer" ? (event as PointerEvent) : null;
+		const wasTouchScroll =
+			!!pointerEvent &&
+			this.touchScrollActive &&
+			pointerEvent.pointerType === "touch";
+		if (pointerEvent) {
+			this.handleTouchScrollPointerUp(pointerEvent);
+		}
+		if (wasTouchScroll) {
+			return;
+		}
+		if (pointerEvent) {
+			this.pointerHandler?.handlePointerUp(pointerEvent);
+		}
+		this.maybeHandleNativeSelectionWhitespaceClick(event);
+		this.debugNativeSelectionPointerEnd("pointerend-after-click", event, {
+			reason,
+			source,
+		});
+		this.debugNativeSelectionPointerEnd("pointerend-before-focus", event, {
+			reason,
+			source,
+		});
+		this.maybeFocusOverlayAfterNativeSelectionPointerUp();
+		this.debugNativeSelectionPointerEnd("pointerend-after-focus", event, {
+			reason,
+			source,
+		});
+		this.debugNativeSelectionPointerEnd("pointerend-before-flush", event, {
+			reason,
+			source,
+			pendingNativeSelectionSync: this.pendingNativeSelectionSync,
+		});
+		this.flushPendingNativeSelectionSync(true);
+		this.debugNativeSelectionPointerEnd("pointerend-after-flush", event, {
+			reason,
+			source,
+			pendingNativeSelectionSync: this.pendingNativeSelectionSync,
+		});
+		if (shouldDeactivateOnPointerEnd(event.button)) {
+			this.debugNativeSelectionPointerEnd(
+				"pointerend-before-assist-off",
+				event,
+				{ reason, source },
+			);
+			this.nativeSelectionAssistByAutoScroll = false;
+			this.setNativeSelectionAssistActive(false, reason);
+			this.debugNativeSelectionPointerEnd(
+				"pointerend-after-assist-off",
+				event,
+				{ reason, source },
+			);
+		}
 	}
 
 	private setNativeSelectionAssistActive(
@@ -1825,7 +2013,21 @@ export class SoTWysiwygView extends ItemView {
 		head: number,
 		options: { syncDom?: boolean } = {},
 	): void {
-		if (!this.sotEditor) return;
+		const shouldSyncDom = options.syncDom !== false;
+		this.debugNativeSelectionAssist("set-selection-enter", {
+			anchor,
+			head,
+			syncDom: shouldSyncDom,
+		});
+		if (!this.sotEditor) {
+			this.debugNativeSelectionAssist("set-selection-skip", {
+				reason: "missing-sot-editor",
+				anchor,
+				head,
+				syncDom: shouldSyncDom,
+			});
+			return;
+		}
 		const preferForward = head >= anchor;
 		const normalizedAnchor = this.normalizeOffsetToVisible(
 			anchor,
@@ -1839,6 +2041,14 @@ export class SoTWysiwygView extends ItemView {
 			if (this.isPointerSelecting) {
 				this.softSelectionPointerLock = true;
 			}
+			this.debugNativeSelectionAssist("set-selection-soft", {
+				reason: "autoscroll",
+				anchor,
+				head,
+				normalizedAnchor,
+				normalizedHead,
+				syncDom: shouldSyncDom,
+			});
 			this.setSoftSelection(normalizedAnchor, normalizedHead);
 			this.scheduleSelectionOverlayUpdate();
 			return;
@@ -1850,6 +2060,14 @@ export class SoTWysiwygView extends ItemView {
 			)
 		) {
 			this.softSelectionPointerLock = true;
+			this.debugNativeSelectionAssist("set-selection-soft", {
+				reason: "pointer",
+				anchor,
+				head,
+				normalizedAnchor,
+				normalizedHead,
+				syncDom: shouldSyncDom,
+			});
 			this.setSoftSelection(normalizedAnchor, normalizedHead);
 			this.scheduleSelectionOverlayUpdate();
 			return;
@@ -1864,11 +2082,22 @@ export class SoTWysiwygView extends ItemView {
 				this.clearSoftSelection();
 			}
 		}
+		this.debugNativeSelectionAssist("set-selection-editor", {
+			anchor,
+			head,
+			normalizedAnchor,
+			normalizedHead,
+			syncDom: shouldSyncDom,
+		});
 		this.sotEditor.setSelection({
 			anchor: normalizedAnchor,
 			head: normalizedHead,
 		});
-		const shouldSyncDom = options.syncDom !== false;
+		this.debugNativeSelectionAssist("set-selection-syncdom", {
+			normalizedAnchor,
+			normalizedHead,
+			syncDom: shouldSyncDom,
+		});
 		if (shouldSyncDom) {
 			this.nativeSelectionSupport?.syncDomSelectionFromSot(
 				normalizedAnchor,
@@ -4594,6 +4823,7 @@ export class SoTWysiwygView extends ItemView {
 		this.derivedContentEl = this.derivedRootEl.createDiv(
 			"tategaki-sot-derived-content",
 		);
+		this.ensurePointerWindowListenersBound("onopen");
 		this.selectionLayerEl = this.derivedRootEl.createDiv(
 			"tategaki-sot-selection-layer",
 		);
@@ -4684,13 +4914,7 @@ export class SoTWysiwygView extends ItemView {
 				this.handleCeKeydown(event as KeyboardEvent),
 			);
 		}
-		if (this.derivedContentEl?.ownerDocument) {
-			this.registerDomEvent(
-				this.derivedContentEl.ownerDocument,
-				"selectionchange",
-				() => this.handleCeSelectionChange(),
-			);
-		}
+		this.ensureSelectionChangeListenerBound("onopen");
 
 		this.applySettingsToView(this.plugin.settings);
 		this.registerWorkspacePairGuards();
@@ -4946,7 +5170,16 @@ export class SoTWysiwygView extends ItemView {
 		});
 
 		this.registerDomEvent(this.derivedRootEl, "pointerdown", (event) => {
+			this.ensureSelectionChangeListenerBound("pointerdown");
+			this.ensurePointerWindowListenersBound("pointerdown");
 			const pointerEvent = event as PointerEvent;
+			if (pointerEvent.button === 0) {
+				this.nativeSelectionPointerEndHandled = false;
+			}
+			const selectionMode =
+				this.plugin.settings.wysiwyg.sotSelectionMode ?? "native-drag";
+			const viewWindow =
+				this.derivedRootEl?.ownerDocument.defaultView ?? window;
 			const onScrollbar = this.isPointerOnScrollbar(
 				this.derivedRootEl,
 				pointerEvent,
@@ -4971,9 +5204,7 @@ export class SoTWysiwygView extends ItemView {
 					button: pointerEvent.button,
 					onScrollbar,
 					targetStrategy,
-					selectionMode:
-						this.plugin.settings.wysiwyg.sotSelectionMode ??
-						"native-drag",
+					selectionMode,
 				});
 				if (decision.action !== "none") {
 					this.debugNativeSelectionAssist("pointerdown-evaluated", {
@@ -4981,6 +5212,11 @@ export class SoTWysiwygView extends ItemView {
 						onScrollbar,
 						hugeDoc: this.isHugeDocSelection(),
 						useNativeAssist: decision.action === "activate",
+						selectionMode,
+						pointerId: pointerEvent.pointerId,
+						clientX: pointerEvent.clientX,
+						clientY: pointerEvent.clientY,
+						viewWindowIsGlobal: viewWindow === window,
 					});
 					this.setNativeSelectionAssistActive(
 						decision.action === "activate",
@@ -5034,6 +5270,7 @@ export class SoTWysiwygView extends ItemView {
 				pointerEvent.button === 0 &&
 				!onScrollbar
 			) {
+				let pendingLine: string | null = null;
 				let lineEl = (
 					pointerEvent.target as HTMLElement | null
 				)?.closest(".tategaki-sot-line") as HTMLElement | null;
@@ -5044,6 +5281,7 @@ export class SoTWysiwygView extends ItemView {
 						) ?? null;
 				}
 				if (lineEl) {
+					pendingLine = lineEl.dataset.line ?? null;
 					const lineIndex = Number.parseInt(
 						lineEl.dataset.line ?? "",
 						10,
@@ -5065,9 +5303,30 @@ export class SoTWysiwygView extends ItemView {
 				} else {
 					this.nativeSelectionPendingClick = null;
 				}
+				this.debugNativeSelectionAssist("pointerdown-pending-click", {
+					selectionMode,
+					pointerId: pointerEvent.pointerId,
+					clientX: pointerEvent.clientX,
+					clientY: pointerEvent.clientY,
+					line: pendingLine,
+					pendingClick: this.nativeSelectionPendingClick !== null,
+					pendingFocus: this.nativeSelectionPendingFocus,
+					viewWindowIsGlobal: viewWindow === window,
+				});
 			} else {
 				this.nativeSelectionPendingFocus = false;
 				this.nativeSelectionPendingClick = null;
+				this.debugNativeSelectionAssist("pointerdown-pending-click", {
+					selectionMode,
+					pointerId: pointerEvent.pointerId,
+					clientX: pointerEvent.clientX,
+					clientY: pointerEvent.clientY,
+					line: null,
+					pendingClick: false,
+					pendingFocus: false,
+					viewWindowIsGlobal: viewWindow === window,
+					reason: "pending-click-cleared",
+				});
 			}
 			this.handleTouchScrollPointerDown(pointerEvent);
 			this.pointerHandler?.handlePointerDown(pointerEvent);
@@ -5093,73 +5352,15 @@ export class SoTWysiwygView extends ItemView {
 			}
 			this.commandContextMenu.show(event as MouseEvent);
 		});
+		const viewWindow = this.derivedRootEl?.ownerDocument.defaultView ?? window;
 		this.registerClipboardHandlers();
-		this.registerDomEvent(window, "pointermove", (event) => {
-			this.handleTouchScrollPointerMove(event as PointerEvent);
-			if (
-				this.touchScrollActive &&
-				(event as PointerEvent).pointerType === "touch"
-			) {
-				return;
-			}
-			this.pointerHandler?.handlePointerMove(event as PointerEvent);
+		this.registerDomEvent(viewWindow, "mouseup", (event) => {
+			this.handleNativeSelectionPointerEnd(
+				event as MouseEvent,
+				"mouseup",
+				"mouse",
+			);
 		});
-		this.registerDomEvent(window, "pointerup", (event) => {
-			if (this.scrollbarSelectionHold) {
-				// this.scrollbarSelectionHold = false;
-				this.scheduleSelectionOverlayUpdate();
-			}
-			if ((event as PointerEvent).button === 0) {
-				if (this.nativeContextMenuHold.clear()) {
-					this.scheduleSelectionOverlayUpdate();
-				}
-			}
-			const wasTouchScroll =
-				this.touchScrollActive &&
-				(event as PointerEvent).pointerType === "touch";
-			this.handleTouchScrollPointerUp(event as PointerEvent);
-			if (wasTouchScroll) {
-				return;
-			}
-			this.pointerHandler?.handlePointerUp(event as PointerEvent);
-			this.maybeHandleNativeSelectionWhitespaceClick(
-				event as PointerEvent,
-			);
-				this.maybeFocusOverlayAfterNativeSelectionPointerUp();
-				this.flushPendingNativeSelectionSync(true);
-				if (shouldDeactivateOnPointerEnd((event as PointerEvent).button)) {
-					this.nativeSelectionAssistByAutoScroll = false;
-					this.setNativeSelectionAssistActive(false, "pointerup");
-				}
-			});
-		this.registerDomEvent(window, "pointercancel", (event) => {
-			if (this.scrollbarSelectionHold) {
-				// this.scrollbarSelectionHold = false;
-				this.scheduleSelectionOverlayUpdate();
-			}
-			if ((event as PointerEvent).button === 0) {
-				if (this.nativeContextMenuHold.clear()) {
-					this.scheduleSelectionOverlayUpdate();
-				}
-			}
-			const wasTouchScroll =
-				this.touchScrollActive &&
-				(event as PointerEvent).pointerType === "touch";
-			this.handleTouchScrollPointerUp(event as PointerEvent);
-			if (wasTouchScroll) {
-				return;
-			}
-			this.pointerHandler?.handlePointerUp(event as PointerEvent);
-			this.maybeHandleNativeSelectionWhitespaceClick(
-				event as PointerEvent,
-			);
-				this.maybeFocusOverlayAfterNativeSelectionPointerUp();
-				this.flushPendingNativeSelectionSync(true);
-				if (shouldDeactivateOnPointerEnd((event as PointerEvent).button)) {
-					this.nativeSelectionAssistByAutoScroll = false;
-					this.setNativeSelectionAssistActive(false, "pointercancel");
-				}
-			});
 			this.registerDomEvent(this.derivedRootEl, "keydown", (event) => {
 				const key = (event as KeyboardEvent).key;
 				const keyboardEvent = event as KeyboardEvent;
@@ -5292,6 +5493,12 @@ export class SoTWysiwygView extends ItemView {
 		this.registerEvent(
 			this.app.workspace.on("active-leaf-change", (leaf) => {
 				if (leaf === this.leaf) {
+					this.ensureSelectionChangeListenerBound(
+						"active-leaf-change",
+					);
+					this.ensurePointerWindowListenersBound(
+						"active-leaf-change",
+					);
 					if (this.ceImeSuspended) {
 						this.ceImeSuspended = false;
 						this.setCeImeMode(true);
@@ -5354,6 +5561,8 @@ export class SoTWysiwygView extends ItemView {
 	onClose(): Promise<void> {
 		this.clearPairedMarkdownBadge();
 		this.clearSoTTabBadge();
+		this.selectionChangeBinding.dispose();
+		this.pointerWindowBinding.dispose();
 		this.renderPipeline?.dispose();
 		this.renderPipeline = null;
 		this.resetTouchScrollState();
@@ -8145,37 +8354,129 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private maybeHandleNativeSelectionWhitespaceClick(
-		event: PointerEvent,
+		event: PointerEvent | MouseEvent,
 	): void {
-		if (!this.isNativeSelectionEnabled()) return;
-		if (this.ceImeMode) return;
-		if (this.sourceModeEnabled) return;
-		if (!this.nativeSelectionPendingClick) return;
+		const eventPointerId =
+			"pointerId" in event ? event.pointerId : null;
+		this.debugNativeSelectionAssist("whitespace-click-enter", {
+			pointerId: eventPointerId,
+			clientX: event.clientX,
+			clientY: event.clientY,
+			hasPendingClick: this.nativeSelectionPendingClick !== null,
+			pendingPointerId:
+				this.nativeSelectionPendingClick?.pointerId ?? null,
+			line: this.nativeSelectionPendingClick?.lineEl.dataset.line ?? null,
+		});
+		if (!this.isNativeSelectionEnabled()) {
+			this.debugNativeSelectionAssist("whitespace-click-skip", {
+				reason: "native-selection-disabled",
+				pointerId: eventPointerId,
+			});
+			return;
+		}
+		if (this.ceImeMode) {
+			this.debugNativeSelectionAssist("whitespace-click-skip", {
+				reason: "ce-ime-mode",
+				pointerId: eventPointerId,
+			});
+			return;
+		}
+		if (this.sourceModeEnabled) {
+			this.debugNativeSelectionAssist("whitespace-click-skip", {
+				reason: "source-mode",
+				pointerId: eventPointerId,
+			});
+			return;
+		}
+		if (!this.nativeSelectionPendingClick) {
+			this.debugNativeSelectionAssist("whitespace-click-skip", {
+				reason: "no-pending-click",
+				pointerId: eventPointerId,
+			});
+			return;
+		}
 		const pending = this.nativeSelectionPendingClick;
 		this.nativeSelectionPendingClick = null;
-		if (pending.pointerId !== event.pointerId) return;
-		if (!pending.lineEl.isConnected) return;
+		const pendingLine = pending.lineEl.dataset.line ?? null;
+		if (eventPointerId !== null && pending.pointerId !== eventPointerId) {
+			this.debugNativeSelectionAssist("whitespace-click-skip", {
+				reason: "pointer-id-mismatch",
+				pointerId: eventPointerId,
+				pendingPointerId: pending.pointerId,
+				line: pendingLine,
+			});
+			return;
+		}
+		if (!pending.lineEl.isConnected) {
+			this.debugNativeSelectionAssist("whitespace-click-skip", {
+				reason: "line-disconnected",
+				pointerId: eventPointerId,
+				pendingPointerId: pending.pointerId,
+				line: pendingLine,
+			});
+			return;
+		}
 		const clickMoveThresholdPx = 6;
 		const dx = event.clientX - pending.clientX;
 		const dy = event.clientY - pending.clientY;
 		// ドラッグ時はネイティブ範囲選択を優先し、単クリック時のみ SoT 側で確定する。
 		if (dx * dx + dy * dy > clickMoveThresholdPx * clickMoveThresholdPx) {
+			this.debugNativeSelectionAssist("whitespace-click-skip", {
+				reason: "moved-threshold",
+				pointerId: eventPointerId,
+				pendingPointerId: pending.pointerId,
+				line: pendingLine,
+				dx,
+				dy,
+				thresholdPx: clickMoveThresholdPx,
+				singleClick: false,
+			});
 			return;
 		}
 		this.ensureLineRendered(pending.lineEl);
 
 		const contentEl = this.derivedContentEl;
-		if (!contentEl) return;
+		if (!contentEl) {
+			this.debugNativeSelectionAssist("whitespace-click-skip", {
+				reason: "missing-content-el",
+				pointerId: eventPointerId,
+				pendingPointerId: pending.pointerId,
+				line: pendingLine,
+			});
+			return;
+		}
 		const selection = contentEl.ownerDocument.getSelection() ?? null;
 		const inside = this.isSelectionInsideDerivedContent(selection);
-		if (selection && inside && !selection.isCollapsed) return;
+		const collapsed = selection ? selection.isCollapsed : null;
+		if (selection && inside && !selection.isCollapsed) {
+			this.debugNativeSelectionAssist("whitespace-click-skip", {
+				reason: "dom-range-selection",
+				pointerId: eventPointerId,
+				pendingPointerId: pending.pointerId,
+				line: pendingLine,
+				inside,
+				collapsed,
+				singleClick: true,
+			});
+			return;
+		}
 
 		const lineFrom = Number.parseInt(
 			pending.lineEl.dataset.from ?? "0",
 			10,
 		);
 		const lineTo = Number.parseInt(pending.lineEl.dataset.to ?? "0", 10);
-		if (!Number.isFinite(lineFrom) || !Number.isFinite(lineTo)) return;
+		if (!Number.isFinite(lineFrom) || !Number.isFinite(lineTo)) {
+			this.debugNativeSelectionAssist("whitespace-click-skip", {
+				reason: "invalid-line-range",
+				pointerId: eventPointerId,
+				pendingPointerId: pending.pointerId,
+				line: pendingLine,
+				lineFrom,
+				lineTo,
+			});
+			return;
+		}
 		const lineLength = Math.max(0, lineTo - lineFrom);
 		const localOffset = this.getLocalOffsetFromPoint(
 			pending.lineEl,
@@ -8183,10 +8484,39 @@ export class SoTWysiwygView extends ItemView {
 			event.clientY,
 			lineLength,
 		);
-		if (localOffset === null) return;
+		if (localOffset === null) {
+			this.debugNativeSelectionAssist("whitespace-click-skip", {
+				reason: "local-offset-null",
+				pointerId: eventPointerId,
+				pendingPointerId: pending.pointerId,
+				line: pendingLine,
+				inside,
+				collapsed,
+				singleClick: true,
+			});
+			return;
+		}
 
 		const absolute = lineFrom + localOffset;
+		this.debugNativeSelectionAssist("whitespace-click-hit", {
+			pointerId: eventPointerId,
+			pendingPointerId: pending.pointerId,
+			line: pendingLine,
+			inside,
+			collapsed,
+			localOffset,
+			offset: absolute,
+			singleClick: true,
+		});
 		this.setSelectionNormalized(absolute, absolute);
+		this.debugNativeSelectionAssist("whitespace-click-commit", {
+			pointerId: eventPointerId,
+			pendingPointerId: pending.pointerId,
+			line: pendingLine,
+			localOffset,
+			offset: absolute,
+			reachedSetSelectionNormalized: true,
+		});
 		this.pendingCaretScroll = true;
 		this.scheduleCaretUpdate(true);
 	}
@@ -8790,13 +9120,30 @@ export class SoTWysiwygView extends ItemView {
 			this.ceImeMode &&
 			Date.now() < this.ceImeSelectionChangeSuppressedUntil
 		) {
+			this.debugNativeSelectionAssist("selectionchange-skip", {
+				reason: "ce-ime-suppressed",
+			});
 			return;
 		}
 		const useNativeSelection = this.isNativeSelectionEnabled();
-		if (!this.ceImeMode && !useNativeSelection) return;
+		if (!this.ceImeMode && !useNativeSelection) {
+			this.debugNativeSelectionAssist("selectionchange-skip", {
+				reason: "native-selection-disabled",
+				useNativeSelection,
+			});
+			return;
+		}
 
 		const domSelection =
 			this.derivedContentEl?.ownerDocument.getSelection() ?? null;
+		const inside = this.isSelectionInsideDerivedContent(domSelection);
+		const collapsed = domSelection ? domSelection.isCollapsed : null;
+		this.debugNativeSelectionAssist("selectionchange-enter", {
+			useNativeSelection,
+			inside,
+			collapsed,
+			pendingNativeSelectionSync: this.pendingNativeSelectionSync,
+		});
 		if (
 			!this.ceImeMode &&
 			useNativeSelection &&
@@ -8807,12 +9154,29 @@ export class SoTWysiwygView extends ItemView {
 					this.sotEditor?.getSelection() ?? null,
 				)
 			) {
+				this.debugNativeSelectionAssist("selectionchange-skip", {
+					reason: "contextmenu-hold",
+					useNativeSelection,
+					inside,
+					collapsed,
+				});
 				return;
 			}
 			if (this.suppressNativeSelectionCollapse) {
 				this.suppressNativeSelectionCollapse = false;
+				this.debugNativeSelectionAssist("selectionchange-skip", {
+					reason: "suppress-native-collapse",
+					useNativeSelection,
+					inside,
+					collapsed,
+				});
 				return;
 			}
+			this.debugNativeSelectionAssist("selectionchange-collapse-native", {
+				useNativeSelection,
+				inside,
+				collapsed,
+			});
 			this.collapseSelectionAfterNativeCancel("selectionchange");
 		}
 
@@ -8821,6 +9185,12 @@ export class SoTWysiwygView extends ItemView {
 				this.derivedContentEl?.ownerDocument.getSelection() ?? null;
 			const shouldDelaySync = !!selection && !selection.isCollapsed;
 			if (shouldDelaySync) {
+				this.debugNativeSelectionAssist("selectionchange-delay-sync", {
+					useNativeSelection,
+					inside: this.isSelectionInsideDerivedContent(selection),
+					collapsed: selection ? selection.isCollapsed : null,
+					pendingNativeSelectionSync: true,
+				});
 				this.schedulePendingNativeSelectionSync();
 				return;
 			}
@@ -8828,6 +9198,12 @@ export class SoTWysiwygView extends ItemView {
 			this.clearSelectionChangeDebounceTimer();
 		}
 
+		this.debugNativeSelectionAssist("selectionchange-run", {
+			useNativeSelection,
+			inside,
+			collapsed,
+			pendingNativeSelectionSync: this.pendingNativeSelectionSync,
+		});
 		this.runCeSelectionChange();
 	}
 
@@ -12442,11 +12818,8 @@ export class SoTWysiwygView extends ItemView {
 					ellipsis.setAttribute("data-preview", previewText);
 
 					// ツールチップ表示用のイベントハンドラ
-					ellipsis.addEventListener("mouseenter", (e) => {
-						this.showCollapsePreviewTooltip(
-							e.target as HTMLElement,
-							previewText,
-						);
+					ellipsis.addEventListener("mouseenter", () => {
+						this.showCollapsePreviewTooltip(ellipsis, previewText);
 					});
 					ellipsis.addEventListener("mouseleave", () => {
 						this.hideCollapsePreviewTooltip();
@@ -12671,6 +13044,7 @@ export class SoTWysiwygView extends ItemView {
 		lineRange: LineRange,
 		writingMode = "",
 	): DOMRect | null {
+		const doc = lineEl.ownerDocument;
 		const mdKind = lineEl.dataset.mdKind ?? "";
 		if (
 			mdKind === "image-widget" ||
@@ -12705,7 +13079,7 @@ export class SoTWysiwygView extends ItemView {
 					? (eol.firstChild as Text)
 					: null);
 			if (node) {
-				const range = document.createRange();
+				const range = doc.createRange();
 				range.setStart(node, 0);
 				range.setEnd(node, 0);
 				const rect = this.pickCaretRectFromRange(range, writingMode);
@@ -12723,7 +13097,7 @@ export class SoTWysiwygView extends ItemView {
 			const nodes = this.getLineTextNodes(lineEl);
 			const last = nodes[nodes.length - 1];
 			if (last) {
-				const range = document.createRange();
+				const range = doc.createRange();
 				range.setStart(last, last.length);
 				range.setEnd(last, last.length);
 				const rect = this.pickCaretRectFromRange(range, writingMode);
@@ -12741,7 +13115,7 @@ export class SoTWysiwygView extends ItemView {
 			const start = this.findTextNodeAtOffset(lineEl, offset);
 			const end = this.findTextNodeAtOffset(lineEl, offset + 1);
 			if (!start || !end) return null;
-			const range = document.createRange();
+			const range = doc.createRange();
 			range.setStart(start.node, start.offset);
 			range.setEnd(end.node, end.offset);
 			return (
@@ -12769,7 +13143,7 @@ export class SoTWysiwygView extends ItemView {
 		if (!target) {
 			return lineEl.getBoundingClientRect();
 		}
-		const range = document.createRange();
+		const range = doc.createRange();
 		range.setStart(target.node, target.offset);
 		range.setEnd(target.node, target.offset);
 		return (
@@ -12905,7 +13279,10 @@ export class SoTWysiwygView extends ItemView {
 
 	private getLineTextNodes(lineEl: HTMLElement): Text[] {
 		const nodes: Text[] = [];
-		const walker = document.createTreeWalker(lineEl, NodeFilter.SHOW_TEXT);
+		const walker = lineEl.ownerDocument.createTreeWalker(
+			lineEl,
+			NodeFilter.SHOW_TEXT,
+		);
 		let current = walker.nextNode() as Text | null;
 		while (current) {
 			if (
@@ -12944,7 +13321,7 @@ export class SoTWysiwygView extends ItemView {
 			".tategaki-sot-ce-input-placeholder",
 		) as HTMLElement | null;
 		if (!placeholder) {
-			placeholder = document.createElement("span");
+			placeholder = lineEl.ownerDocument.createElement("span");
 			placeholder.className = "tategaki-sot-ce-input-placeholder";
 			placeholder.textContent = "\u200b";
 			const eol = lineEl.querySelector(
@@ -13382,9 +13759,10 @@ export class SoTWysiwygView extends ItemView {
 	): number {
 		if (lineLength <= 0) return 0;
 		const baseRect = getRectUnion(rects, lineEl.getBoundingClientRect());
-		const writingMode = window.getComputedStyle(
-			this.derivedRootEl ?? lineEl,
-		).writingMode;
+		const writingMode = resolveSoTLinePointWritingMode(
+			this.derivedRootEl,
+			lineEl,
+		);
 		if (writingMode.startsWith("vertical")) {
 			const isVerticalRL = writingMode !== "vertical-lr";
 			if (isVerticalRL) {
@@ -13408,6 +13786,22 @@ export class SoTWysiwygView extends ItemView {
 		if (lineLength <= 0) return 0;
 		const doc = lineEl.ownerDocument;
 		if (!doc) return null;
+		const rects = this.getLineVisualRects(lineEl);
+		const writingMode = resolveSoTLinePointWritingMode(
+			this.derivedRootEl,
+			lineEl,
+		);
+
+		if (
+			shouldSnapPointToLineEnd({
+				rects,
+				writingMode,
+				clientX,
+				clientY,
+			})
+		) {
+			return lineLength;
+		}
 
 		const directOffset = this.resolveOffsetFromCaretPosition(
 			lineEl,
@@ -13418,7 +13812,6 @@ export class SoTWysiwygView extends ItemView {
 			return Math.max(0, Math.min(directOffset, lineLength));
 		}
 
-		const rects = this.getLineVisualRects(lineEl);
 		const targetRect =
 			rects.length > 0
 				? rects[this.findClosestRectIndex(rects, clientX, clientY)]
@@ -13830,7 +14223,7 @@ export class SoTWysiwygView extends ItemView {
 				eol?.getBoundingClientRect() ?? lineEl.getBoundingClientRect();
 			return [rect];
 		}
-		const range = document.createRange();
+		const range = lineEl.ownerDocument.createRange();
 		range.setStart(nodes[0], 0);
 		const last = nodes[nodes.length - 1];
 		range.setEnd(last, last.length);
@@ -13853,8 +14246,12 @@ export class SoTWysiwygView extends ItemView {
 				unique.push(rect);
 			}
 		}
+		const writingMode = resolveSoTLinePointWritingMode(
+			this.derivedRootEl,
+			lineEl,
+		);
 		// 同一視覚行のrectをマージ（ルビ等のinline-block要素による分断を解消）
-		return this.mergeVisualLineRects(unique);
+		return this.mergeVisualLineRects(unique, writingMode);
 	}
 
 	/**
@@ -13862,9 +14259,9 @@ export class SoTWysiwygView extends ItemView {
 	 * 縦書き: left座標が近いものを同一行とみなしマージ
 	 * 横書き: top座標が近いものを同一行とみなしマージ
 	 */
-	private mergeVisualLineRects(rects: DOMRect[]): DOMRect[] {
+	private mergeVisualLineRects(rects: DOMRect[], writingMode: string): DOMRect[] {
 		if (rects.length <= 1) return rects;
-		const isVertical = this.writingMode.startsWith("vertical");
+		const isVertical = writingMode.startsWith("vertical");
 		// 行判定の閾値（フォントサイズの半分程度）
 		const threshold = Math.max(
 			8,
@@ -13920,7 +14317,7 @@ export class SoTWysiwygView extends ItemView {
 
 	private getEffectiveFontSize(): number | null {
 		if (!this.derivedRootEl) return null;
-		const computed = window.getComputedStyle(this.derivedRootEl);
+		const computed = getViewComputedStyle(this.derivedRootEl);
 		return parseFloat(computed.fontSize) || null;
 	}
 
