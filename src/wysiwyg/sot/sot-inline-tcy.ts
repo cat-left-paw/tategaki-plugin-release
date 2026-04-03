@@ -1,4 +1,5 @@
 import {
+	type AutoTcyDigitRange,
 	collectAutoTcyRanges,
 	createAozoraTcyRegExp,
 	isValidAozoraTcyBody,
@@ -25,6 +26,7 @@ export type TcyRange = SoTRange;
 
 export type SoTCollectTcyOptions = {
 	enableAutoTcy?: boolean;
+	autoTcyDigitRange?: AutoTcyDigitRange;
 	rubyRanges?: SoTRange[];
 };
 
@@ -129,6 +131,7 @@ export function collectRenderableTcyRangesForLine(
 		styles,
 		tcyRanges,
 		rubyRanges,
+		options?.autoTcyDigitRange,
 	);
 }
 
@@ -186,6 +189,7 @@ function collectAutoTcyRangesForLine(
 	styles: SoTInlineStyleRange[],
 	tcyRanges: TcyRange[],
 	rubyRanges: SoTRange[],
+	autoTcyDigitRange?: AutoTcyDigitRange,
 ): void {
 	const blockedStyleRanges = styles
 		.filter((style) =>
@@ -196,7 +200,7 @@ function collectAutoTcyRangesForLine(
 			style.className === "tategaki-md-math",
 		)
 		.map((style) => ({ from: style.from, to: style.to }));
-	const autoRanges = collectAutoTcyRanges(lineText);
+	const autoRanges = collectAutoTcyRanges(lineText, autoTcyDigitRange);
 	for (const range of autoRanges) {
 		const from = absFrom + range.from;
 		const to = absFrom + range.to;

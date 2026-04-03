@@ -2,6 +2,7 @@
  * 回帰テストとバリデーション機能
  */
 
+import { createRequire } from "module";
 import {
 	DEFAULT_V2_SETTINGS,
 	resolveEffectiveBookHeadingPagination,
@@ -14,6 +15,7 @@ import {
 	htmlToDocument,
 	markdownToDocument,
 } from "./wysiwyg/contenteditable-block/converters/markdown-parser";
+import { resolveSelectionModeSettingUiState } from "./wysiwyg/contenteditable/settings-panel-state";
 	import { MarkdownConverter } from "./wysiwyg/contenteditable/markdown-converter";
 	import { applyAozoraRubyToElement } from "./shared/aozora-ruby";
 	import { Editor } from "@tiptap/core";
@@ -23,12 +25,22 @@ import {
 	import Blockquote from "@tiptap/extension-blockquote";
 	import HardBreak from "@tiptap/extension-hard-break";
 	import { TextSelection } from "@tiptap/pm/state";
-	import {
-		createTipTapMarkdownAdapter,
-		normalizeMarkdownForTipTap,
-		protectIndentation,
-		restoreIndentation,
-	} from "./wysiwyg/tiptap-compat/markdown-adapter";
+import {
+	createTipTapMarkdownAdapter,
+	normalizeMarkdownForTipTap,
+	protectIndentation,
+	restoreIndentation,
+} from "./wysiwyg/tiptap-compat/markdown-adapter";
+import { COMPAT_TOOLBAR_LIST_BUTTONS } from "./wysiwyg/tiptap-compat/toolbar-list-buttons";
+import { resolveFoldRange, headingFoldPluginKey } from "./wysiwyg/tiptap-compat/heading-fold";
+import { buildCompatHeadingFoldPreviewText } from "./wysiwyg/tiptap-compat/heading-fold-preview";
+import { resolveCompatHeadingFoldUiState } from "./wysiwyg/tiptap-compat/heading-fold-ui";
+import { HeadingFoldExtension } from "./wysiwyg/tiptap-compat/extensions/heading-fold-extension";
+import { VerticalWritingExtension } from "./wysiwyg/tiptap-compat/extensions/vertical-writing";
+import BulletList from "@tiptap/extension-bullet-list";
+import OrderedList from "@tiptap/extension-ordered-list";
+import { ChecklistListItem } from "./wysiwyg/tiptap-compat/extensions/checklist-list-item";
+import Heading from "@tiptap/extension-heading";
 import {
 	canUseCompatHardBreak,
 	COMPAT_HARD_BREAK_MARKDOWN,
@@ -99,6 +111,7 @@ import {
 	buildSoTAozoraRubyText,
 	findSoTAozoraRubyMatchForSelection,
 } from "./wysiwyg/sot/sot-ruby";
+import { t } from "./shared/i18n";
 import { SoTChunkController } from "./wysiwyg/sot/sot-chunk-controller";
 import { probeChunkSnapshot } from "./wysiwyg/sot/sot-chunk-read-probe";
 import {
@@ -121,11 +134,33 @@ import {
 	resolveSoTLinePointWritingMode,
 	shouldSnapPointToLineEnd,
 } from "./wysiwyg/sot/sot-line-end-click";
+import { resolveSoTNavigationOffset } from "./wysiwyg/sot/sot-navigation";
+import { resolveSoTPlainEditHomeEndSelection } from "./wysiwyg/sot/sot-plain-edit-navigation";
+import {
+	resolveSoTPageNavigationOffsetCandidate,
+	resolveSoTPageNavigationPlan,
+} from "./wysiwyg/sot/sot-page-navigation";
+import {
+	resolveSoTPreviousLogicalLineVisualStartOffset,
+	resolveSoTVisualBoundarySnapOffset,
+	sortSoTVisualLineRects,
+} from "./wysiwyg/sot/sot-visual-navigation";
 import { SoTPointerWindowBinding } from "./wysiwyg/sot/sot-pointer-window-binding";
-import { collectAutoTcyRanges } from "./shared/aozora-tcy";
+import {
+	collectAutoTcyRanges,
+	convertAozoraTcySyntaxToHtml,
+	createAozoraTcyRegExp,
+	DEFAULT_AUTO_TCY_MAX_DIGITS,
+	DEFAULT_AUTO_TCY_MIN_DIGITS,
+	isValidAozoraTcyBody,
+	resolveAutoTcyDigitRange,
+} from "./shared/aozora-tcy";
+import { PlainEditMode } from "./wysiwyg/tiptap-compat/plain-edit-mode";
 import { SoTRenderPipeline, type SoTRenderPipelineContext } from "./wysiwyg/sot/sot-render-pipeline";
 import { normalizeParsed, parseFrontmatterBlock } from "./shared/frontmatter";
 import { Window } from "happy-dom";
+
+const requireFromTests = createRequire(__filename);
 
 /**
  * テスト結果の型
@@ -150,17 +185,21 @@ export class TategakiTestSuite {
 		this.results = [];
 		
 		await this.testSettingsValidation();
+		await this.testSelectionModeSettingUiState();
 		await this.testDefaultSettings();
 		await this.testCSSVariables();
 		await this.testDOMElements();
 		await this.testAozoraRubyConversion();
 		await this.testBlockEditorConversion();
 			await this.testPreviewHeadingSpacing();
-			await this.testTipTapCompatStrictLineNormalization();
-			await this.testTipTapCompatHeadingIndentationPreserved();
-			await this.testTipTapCompatRubyDisabledFlattensRuby();
+		await this.testTipTapCompatStrictLineNormalization();
+		await this.testTipTapCompatHeadingIndentationPreserved();
+		await this.testTipTapCompatRubyDisabledFlattensRuby();
+		await this.testExplicitTcyValidation();
 		await this.testTipTapCompatTcyRoundTrip();
+		await this.testExplicitTcyCommandAcceptsSingleChar();
 			await this.testAutoTcyRangeDetection();
+			await this.testAutoTcySettingsDriveSharedHelper();
 			await this.testTipTapCompatBlockquoteSerializationAddsBlankLine();
 			await this.testTipTapCompatHardBreakSerializationUsesMarkdownBreak();
 			await this.testTipTapCompatHardBreakPolicy();
@@ -198,6 +237,14 @@ export class TategakiTestSuite {
 				await this.testSoTChunkReadProbe();
 				await this.testSoTViewLocalDomUsesPopoutWindow();
 				await this.testSoTLineEndClickHelper();
+				await this.testSoTHomeEndNavigationHelper();
+				await this.testSoTPageNavigationHelper();
+				await this.testSoTPageNavigationHelperSafety();
+				await this.testSoTPlainEditHomeEndNavigationHelper();
+				await this.testSoTPlainEditShiftHomeEndSelectionHelper();
+				await this.testSoTPlainEditModifiedHomeEndIsIgnored();
+				await this.testSoTVerticalPreviousLineNavigationHelper();
+				await this.testSoTVisualBoundaryNavigationHelper();
 				await this.testSoTPointerWindowBindingRebindsWindow();
 				await this.testSoTNativeSelectionAssistPointerdownPolicy();
 				await this.testSoTSelectionChangeBindingRebindsDocument();
@@ -205,6 +252,26 @@ export class TategakiTestSuite {
 				await this.testVersionCompare();
 				await this.testOnScrollSettledPreciseFirst();
 				await this.testFrontmatterParsing();
+			await this.testCompatTaskListHtmlGeneration();
+			await this.testCompatTaskListRoundTrip();
+			await this.testCompatTaskListDoesNotBreakBulletList();
+			await this.testCompatToolbarTaskListButton();
+			await this.testCompatHeadingFoldTooltipHelperReuse();
+			await this.testCompatHeadingFoldUiHelper();
+			await this.testCompatHeadingFoldPreviewTextHelper();
+			await this.testCompatHeadingFoldRangeResolution();
+			await this.testCompatHeadingFoldRangeNested();
+			await this.testCompatHeadingFoldRangeIsolation();
+			await this.testCompatFoldStateClearedOnSetMarkdown();
+			await this.testCompatTaskListContinuationLineNotDropped();
+			await this.testCompatTaskListMixedListNotDropped();
+			await this.testCompatTaskListFullRoundTrip();
+			await this.testCompatTaskListCheckedStateRoundTrip();
+			await this.testCompatTaskListNormalizeHtmlStructure();
+			await this.testCompatChecklistSerializeIndent();
+			await this.testCompatChecklistToolbarFromParagraph();
+			await this.testCompatOrderedChecklistRoundTrip();
+			await this.testCompatMixedChecklistMarkersFallback();
 
 			return this.results;
 		}
@@ -504,6 +571,795 @@ export class TategakiTestSuite {
 				name: testName,
 				success: false,
 				message: `line end helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTHomeEndNavigationHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: Home/End navigation helper は writing mode ごとに行頭/行末を返す";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const doc = "alpha\nbeta\ncharlie";
+			const alphaStart = 0;
+			const alphaEnd = 5;
+			const betaStart = 6;
+			const betaEnd = 10;
+			const charlieStart = 11;
+			const charlieEnd = 18;
+
+			const verifyLineBoundaryOffsets = (
+				writingMode: "horizontal-tb" | "vertical-rl" | "vertical-lr",
+			) => {
+				assert(
+					resolveSoTNavigationOffset(doc, betaStart + 2, "Home", writingMode) ===
+						betaStart,
+					`${writingMode}: Home が現在行の行頭を返しません`,
+				);
+				assert(
+					resolveSoTNavigationOffset(doc, betaStart + 2, "End", writingMode) ===
+						betaEnd,
+					`${writingMode}: End が現在行の行末を返しません`,
+				);
+			};
+
+			verifyLineBoundaryOffsets("horizontal-tb");
+			verifyLineBoundaryOffsets("vertical-rl");
+			verifyLineBoundaryOffsets("vertical-lr");
+
+			assert(
+				resolveSoTNavigationOffset(doc, alphaStart, "Home", "horizontal-tb") ===
+					alphaStart,
+				"行頭での Home がそのままになりません",
+			);
+			assert(
+				resolveSoTNavigationOffset(doc, charlieEnd, "End", "vertical-rl") ===
+					charlieEnd,
+				"行末での End がそのままになりません",
+			);
+			assert(
+				resolveSoTNavigationOffset(doc, alphaEnd, "End", "vertical-lr") ===
+					alphaEnd,
+				"改行直前の End が現在行の行末を返しません",
+			);
+			assert(
+				resolveSoTNavigationOffset(doc, charlieStart + 3, "Home", "vertical-rl") ===
+					charlieStart,
+				"最終行の Home が現在行の行頭を返しません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "Home/End helper が writing mode ごとの論理行境界を返します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `Home/End navigation helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTPageNavigationHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: PageUp/PageDown helper は writing mode ごとに viewport 単位の移動先を計算する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const viewportRect = {
+				left: 100,
+				top: 50,
+				width: 400,
+				height: 300,
+			};
+			const caretRect = {
+				left: 220,
+				top: 140,
+				width: 12,
+				height: 24,
+			};
+
+			const horizontalPageDown = resolveSoTPageNavigationPlan({
+				key: "PageDown",
+				writingMode: "horizontal-tb",
+				caretRect,
+				viewportRect,
+			});
+			assert(
+				horizontalPageDown?.scrollAxis === "y",
+				"横書きで scroll axis が y になりません",
+			);
+			assert(
+				horizontalPageDown?.scrollDeltaY === 300,
+				"横書きの PageDown が 1 viewport 分進みません",
+			);
+			assert(
+				horizontalPageDown?.scrollDeltaX === 0,
+				"横書きで x 軸 scroll が混入しています",
+			);
+			assert(
+				horizontalPageDown?.targetPoint.x === 226,
+				"横書きで cross-axis の x が維持されません",
+			);
+			assert(
+				horizontalPageDown?.targetPoint.y === 152,
+				"横書きで target point の y が不正です",
+			);
+
+			const horizontalPageUp = resolveSoTPageNavigationPlan({
+				key: "PageUp",
+				writingMode: "horizontal-tb",
+				caretRect,
+				viewportRect,
+			});
+			assert(
+				horizontalPageUp?.scrollDeltaY === -300,
+				"横書きの PageUp が逆方向に 1 viewport 分戻りません",
+			);
+
+			const verticalRlPageDown = resolveSoTPageNavigationPlan({
+				key: "PageDown",
+				writingMode: "vertical-rl",
+				caretRect,
+				viewportRect,
+			});
+			assert(
+				verticalRlPageDown?.scrollAxis === "x",
+				"vertical-rl で scroll axis が x になりません",
+			);
+			assert(
+				verticalRlPageDown?.scrollDeltaX === -400,
+				"vertical-rl の PageDown が左方向へ 1 viewport 分進みません",
+			);
+			assert(
+				verticalRlPageDown?.scrollDeltaY === 0,
+				"vertical-rl で y 軸 scroll が混入しています",
+			);
+			assert(
+				verticalRlPageDown?.targetPoint.x === 226,
+				"vertical-rl で target point の x が不正です",
+			);
+			assert(
+				verticalRlPageDown?.targetPoint.y === 152,
+				"vertical-rl で cross-axis の y が維持されません",
+			);
+
+			const verticalLrPageDown = resolveSoTPageNavigationPlan({
+				key: "PageDown",
+				writingMode: "vertical-lr",
+				caretRect,
+				viewportRect,
+			});
+			assert(
+				verticalLrPageDown?.scrollDeltaX === 400,
+				"vertical-lr の PageDown が右方向へ 1 viewport 分進みません",
+			);
+
+			const verticalRlPageUp = resolveSoTPageNavigationPlan({
+				key: "PageUp",
+				writingMode: "vertical-rl",
+				caretRect,
+				viewportRect,
+			});
+			assert(
+				verticalRlPageUp?.scrollDeltaX === 400,
+				"vertical-rl の PageUp が PageDown と逆方向になりません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "PageUp/PageDown helper が writing mode ごとの page 移動計画を返します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `PageUp/PageDown helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTPageNavigationHelperSafety(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: PageUp/PageDown helper は不正入力や point-to-offset 失敗でも安全に扱える";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			assert(
+				resolveSoTPageNavigationPlan({
+					key: "PageDown",
+					writingMode: "horizontal-tb",
+					caretRect: {
+						left: Number.NaN,
+						top: 0,
+						width: 10,
+						height: 20,
+					},
+					viewportRect: {
+						left: 0,
+						top: 0,
+						width: 300,
+						height: 200,
+					},
+				}) === null,
+				"caret rect が不正でも helper が null を返しません",
+			);
+			assert(
+				resolveSoTPageNavigationPlan({
+					key: "PageUp",
+					writingMode: "vertical-rl",
+					caretRect: {
+						left: 20,
+						top: 30,
+						width: 10,
+						height: 20,
+					},
+					viewportRect: {
+						left: 0,
+						top: 0,
+						width: 0,
+						height: 200,
+					},
+				}) === null,
+				"viewport が不正でも helper が null を返しません",
+			);
+			assert(
+				resolveSoTPageNavigationOffsetCandidate(null, 42) === 42,
+				"point-to-offset 失敗時に fallback offset を返しません",
+			);
+			assert(
+				resolveSoTPageNavigationOffsetCandidate(null, null) === null,
+				"target/fallback ともに失敗したとき null を返しません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "PageUp/PageDown helper が不正入力と offset 解決失敗を安全に扱います",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `PageUp/PageDown helper safety テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTVerticalPreviousLineNavigationHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: vertical logical navigation helper は短い行や空行の先頭から前の論理行先頭を返す";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const shortDoc = "alpha\nb\ncharlie";
+			const alphaStart = 0;
+			const alphaEnd = 5;
+			const shortLineStart = 6;
+			const shortLineEnd = 7;
+			const thirdLineStart = 8;
+			const emptyDoc = "alpha\n\ncharlie";
+			const emptyLineStart = 6;
+
+			assert(
+				resolveSoTNavigationOffset(
+					shortDoc,
+					thirdLineStart,
+					"ArrowRight",
+					"vertical-rl",
+				) === shortLineStart,
+				"vertical-rl で短い行の先頭から前の論理行先頭へ移動しません",
+			);
+			assert(
+				resolveSoTNavigationOffset(
+					shortDoc,
+					thirdLineStart,
+					"ArrowRight",
+					"vertical-rl",
+				) !== shortLineEnd,
+				"vertical-rl で短い行の先頭から前の論理行末へ移動しています",
+			);
+			assert(
+				resolveSoTNavigationOffset(
+					shortDoc,
+					thirdLineStart,
+					"ArrowLeft",
+					"vertical-lr",
+				) === shortLineStart,
+				"vertical-lr で短い行の先頭から前の論理行先頭へ移動しません",
+			);
+			assert(
+				resolveSoTNavigationOffset(
+					shortDoc,
+					thirdLineStart,
+					"ArrowLeft",
+					"vertical-lr",
+				) !== shortLineEnd,
+				"vertical-lr で短い行の先頭から前の論理行末へ移動しています",
+			);
+			assert(
+				resolveSoTNavigationOffset(
+					emptyDoc,
+					emptyLineStart,
+					"ArrowRight",
+					"vertical-rl",
+				) === alphaStart,
+				"空行の先頭から前の論理行先頭へ移動しません",
+			);
+			assert(
+				resolveSoTNavigationOffset(
+					emptyDoc,
+					emptyLineStart,
+					"ArrowRight",
+					"vertical-rl",
+				) !== alphaEnd,
+				"空行の先頭から前の論理行末へ移動しています",
+			);
+			assert(
+				resolveSoTNavigationOffset(
+					emptyDoc,
+					emptyLineStart,
+					"ArrowLeft",
+					"vertical-lr",
+				) === alphaStart,
+				"vertical-lr で空行の先頭から前の論理行先頭へ移動しません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "縦書きの前行移動が短い行と空行の先頭で前の論理行先頭へ安定します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `vertical logical navigation helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTPlainEditHomeEndNavigationHelper(): Promise<void> {
+		const testName =
+			"SoT段落単位ソース編集: Home/End は論理行境界へ移動する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const text = "alpha\nbeta\n\ndelta";
+
+			const middleHome = resolveSoTPlainEditHomeEndSelection({
+				text,
+				key: "Home",
+				selectionStart: 8,
+				selectionEnd: 8,
+				selectionDirection: "none",
+				shiftKey: false,
+				altKey: false,
+				metaKey: false,
+				ctrlKey: false,
+			});
+			assert(middleHome?.start === 6 && middleHome.end === 6, "Home が現在行の論理行先頭へ移動しません");
+
+			const middleEnd = resolveSoTPlainEditHomeEndSelection({
+				text,
+				key: "End",
+				selectionStart: 8,
+				selectionEnd: 8,
+				selectionDirection: "none",
+				shiftKey: false,
+				altKey: false,
+				metaKey: false,
+				ctrlKey: false,
+			});
+			assert(middleEnd?.start === 10 && middleEnd.end === 10, "End が現在行の論理行末尾へ移動しません");
+
+			const firstLineHome = resolveSoTPlainEditHomeEndSelection({
+				text,
+				key: "Home",
+				selectionStart: 2,
+				selectionEnd: 2,
+				selectionDirection: "none",
+				shiftKey: false,
+				altKey: false,
+				metaKey: false,
+				ctrlKey: false,
+			});
+			assert(firstLineHome?.start === 0 && firstLineHome.end === 0, "先頭行での Home が壊れています");
+
+			const lastLineEnd = resolveSoTPlainEditHomeEndSelection({
+				text,
+				key: "End",
+				selectionStart: 14,
+				selectionEnd: 14,
+				selectionDirection: "none",
+				shiftKey: false,
+				altKey: false,
+				metaKey: false,
+				ctrlKey: false,
+			});
+			assert(lastLineEnd?.start === text.length && lastLineEnd.end === text.length, "最終行での End が壊れています");
+
+			const emptyLineHome = resolveSoTPlainEditHomeEndSelection({
+				text,
+				key: "Home",
+				selectionStart: 11,
+				selectionEnd: 11,
+				selectionDirection: "none",
+				shiftKey: false,
+				altKey: false,
+				metaKey: false,
+				ctrlKey: false,
+			});
+			assert(emptyLineHome?.start === 11 && emptyLineHome.end === 11, "空行での Home が壊れています");
+
+			const emptyLineEnd = resolveSoTPlainEditHomeEndSelection({
+				text,
+				key: "End",
+				selectionStart: 11,
+				selectionEnd: 11,
+				selectionDirection: "none",
+				shiftKey: false,
+				altKey: false,
+				metaKey: false,
+				ctrlKey: false,
+			});
+			assert(emptyLineEnd?.start === 11 && emptyLineEnd.end === 11, "空行での End が壊れています");
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "Home/End が論理行ベースで安定して移動します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `plain edit Home/End テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTPlainEditShiftHomeEndSelectionHelper(): Promise<void> {
+		const testName =
+			"SoT段落単位ソース編集: Shift+Home/End は論理行境界まで選択拡張する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const text = "alpha\nbeta\ngamma";
+
+			const shiftHomeCollapsed = resolveSoTPlainEditHomeEndSelection({
+				text,
+				key: "Home",
+				selectionStart: 8,
+				selectionEnd: 8,
+				selectionDirection: "none",
+				shiftKey: true,
+				altKey: false,
+				metaKey: false,
+				ctrlKey: false,
+			});
+			assert(
+				shiftHomeCollapsed?.start === 6 &&
+					shiftHomeCollapsed.end === 8 &&
+					shiftHomeCollapsed.direction === "backward",
+				"collapsed selection の Shift+Home が論理行先頭まで拡張しません",
+			);
+
+			const shiftEndCollapsed = resolveSoTPlainEditHomeEndSelection({
+				text,
+				key: "End",
+				selectionStart: 7,
+				selectionEnd: 7,
+				selectionDirection: "none",
+				shiftKey: true,
+				altKey: false,
+				metaKey: false,
+				ctrlKey: false,
+			});
+			assert(
+				shiftEndCollapsed?.start === 7 &&
+					shiftEndCollapsed.end === 10 &&
+					shiftEndCollapsed.direction === "forward",
+				"collapsed selection の Shift+End が論理行末尾まで拡張しません",
+			);
+
+			const shiftHomeForward = resolveSoTPlainEditHomeEndSelection({
+				text,
+				key: "Home",
+				selectionStart: 6,
+				selectionEnd: 9,
+				selectionDirection: "forward",
+				shiftKey: true,
+				altKey: false,
+				metaKey: false,
+				ctrlKey: false,
+			});
+			assert(
+				shiftHomeForward?.start === 6 &&
+					shiftHomeForward.end === 6 &&
+					shiftHomeForward.direction === "none",
+				"forward selection の Shift+Home が anchor/head を壊しています",
+			);
+
+			const shiftEndBackward = resolveSoTPlainEditHomeEndSelection({
+				text,
+				key: "End",
+				selectionStart: 7,
+				selectionEnd: 10,
+				selectionDirection: "backward",
+				shiftKey: true,
+				altKey: false,
+				metaKey: false,
+				ctrlKey: false,
+			});
+			assert(
+				shiftEndBackward?.start === 10 &&
+					shiftEndBackward.end === 10 &&
+					shiftEndBackward.direction === "none",
+				"backward selection の Shift+End が anchor/head を壊しています",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "Shift+Home/End が論理行境界まで selection を安定して拡張します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `plain edit Shift+Home/End テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTPlainEditModifiedHomeEndIsIgnored(): Promise<void> {
+		const testName =
+			"SoT段落単位ソース編集: Ctrl/Command 付き Home/End は今回の helper 対象外";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const text = "alpha\nbeta";
+
+			assert(
+				resolveSoTPlainEditHomeEndSelection({
+					text,
+					key: "Home",
+					selectionStart: 7,
+					selectionEnd: 7,
+					selectionDirection: "none",
+					shiftKey: false,
+					altKey: false,
+					metaKey: false,
+					ctrlKey: true,
+				}) === null,
+				"Ctrl+Home が helper 対象になっています",
+			);
+			assert(
+				resolveSoTPlainEditHomeEndSelection({
+					text,
+					key: "End",
+					selectionStart: 7,
+					selectionEnd: 7,
+					selectionDirection: "none",
+					shiftKey: false,
+					altKey: false,
+					metaKey: false,
+					ctrlKey: true,
+				}) === null,
+				"Ctrl+End が helper 対象になっています",
+			);
+			assert(
+				resolveSoTPlainEditHomeEndSelection({
+					text,
+					key: "Home",
+					selectionStart: 7,
+					selectionEnd: 7,
+					selectionDirection: "none",
+					shiftKey: false,
+					altKey: false,
+					metaKey: true,
+					ctrlKey: false,
+				}) === null,
+				"Command+Home が helper 対象になっています",
+			);
+			assert(
+				resolveSoTPlainEditHomeEndSelection({
+					text,
+					key: "End",
+					selectionStart: 7,
+					selectionEnd: 7,
+					selectionDirection: "none",
+					shiftKey: false,
+					altKey: false,
+					metaKey: true,
+					ctrlKey: false,
+				}) === null,
+				"Command+End が helper 対象になっています",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "修飾付き Home/End は今回の helper で奪いません",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `modified Home/End テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTVisualBoundaryNavigationHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: vertical boundary navigation helper は折り返し行先頭から前の visual line start を返す";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const visualLineStartOffsets = [2, 7, 11];
+
+			assert(
+				resolveSoTVisualBoundarySnapOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowRight",
+					currentLocalOffset: 7,
+					visualLineStartOffsets,
+				}) === 2,
+				"vertical-rl で前の折り返し行先頭を返しません",
+			);
+			assert(
+				resolveSoTVisualBoundarySnapOffset({
+					writingMode: "vertical-lr",
+					key: "ArrowLeft",
+					currentLocalOffset: 11,
+					visualLineStartOffsets,
+				}) === 7,
+				"vertical-lr で前の折り返し行先頭を返しません",
+			);
+			assert(
+				resolveSoTVisualBoundarySnapOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowRight",
+					currentLocalOffset: 8,
+					visualLineStartOffsets,
+				}) === null,
+				"行頭以外でも boundary snap helper が発火しています",
+			);
+			assert(
+				resolveSoTVisualBoundarySnapOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowRight",
+					currentLocalOffset: 2,
+					visualLineStartOffsets,
+				}) === null,
+				"前の visual line がないのに helper が発火しています",
+			);
+			assert(
+				resolveSoTVisualBoundarySnapOffset({
+					writingMode: "horizontal-tb",
+					key: "ArrowUp",
+					currentLocalOffset: 7,
+					visualLineStartOffsets,
+				}) === null,
+				"横書きでも boundary snap helper が発火しています",
+			);
+			assert(
+				resolveSoTPreviousLogicalLineVisualStartOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowRight",
+					currentLocalOffset: 4,
+					currentFirstVisibleStartOffset: 4,
+					targetVisualLineStartOffsets: [0, 6, 12],
+				}) === 12,
+				"raw offset 0 でなくても表示上の行頭なら最後の visual line start を返しません",
+			);
+			assert(
+				resolveSoTPreviousLogicalLineVisualStartOffset({
+					writingMode: "vertical-lr",
+					key: "ArrowLeft",
+					currentLocalOffset: 5,
+					currentFirstVisibleStartOffset: 5,
+					targetVisualLineStartOffsets: [0, 5],
+				}) === 5,
+				"vertical-lr の跨ぎ移動で最後の visual line start を返しません",
+			);
+			assert(
+				resolveSoTPreviousLogicalLineVisualStartOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowRight",
+					currentLocalOffset: 3,
+					currentFirstVisibleStartOffset: 4,
+					targetVisualLineStartOffsets: [0, 6, 12],
+				}) === null,
+				"表示上の行頭と一致しないのに跨ぎ用 helper が発火しています",
+			);
+			const unsortedRects = [
+				DOMRect.fromRect({ x: 90, y: 0, width: 10, height: 20 }),
+				DOMRect.fromRect({ x: 110, y: 0, width: 10, height: 20 }),
+				DOMRect.fromRect({ x: 100, y: 0, width: 10, height: 20 }),
+			];
+			const sortedRects = sortSoTVisualLineRects(
+				unsortedRects,
+				"vertical-rl",
+			);
+			assert(
+				sortedRects.map((rect) => rect.left).join(",") === "90,100,110",
+				"targetVisualLineStartOffsets を作る rect 順が visual order になっていません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "折り返し行先頭から前の visual line start への補正だけを行います",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `vertical boundary navigation helper テスト失敗: ${error.message}`,
 				duration,
 			});
 		}
@@ -3759,6 +4615,32 @@ export class TategakiTestSuite {
 				throw new Error("sotSelectionModeの有効値native-dragが保持されない");
 			}
 
+			const correctedAutoTcyDigits = validateV2Settings({
+				wysiwyg: {
+					autoTcyMinDigits: 0,
+					autoTcyMaxDigits: 9,
+				},
+			});
+			if (correctedAutoTcyDigits.wysiwyg.autoTcyMinDigits !== 1) {
+				throw new Error("autoTcyMinDigits の下限補正に失敗");
+			}
+			if (correctedAutoTcyDigits.wysiwyg.autoTcyMaxDigits !== 4) {
+				throw new Error("autoTcyMaxDigits の上限補正に失敗");
+			}
+
+			const swappedAutoTcyDigits = validateV2Settings({
+				wysiwyg: {
+					autoTcyMinDigits: 4,
+					autoTcyMaxDigits: 1,
+				},
+			});
+			if (swappedAutoTcyDigits.wysiwyg.autoTcyMinDigits !== 1) {
+				throw new Error("autoTcyMinDigits の min > max 補正に失敗");
+			}
+			if (swappedAutoTcyDigits.wysiwyg.autoTcyMaxDigits !== 4) {
+				throw new Error("autoTcyMaxDigits の min > max 補正に失敗");
+			}
+
 			const forcedFrontmatterMode =
 				resolveEffectiveBookFrontmatterDisplayMode({
 					bookFrontmatterDisplayMode: "inline",
@@ -3818,6 +4700,49 @@ export class TategakiTestSuite {
 		}
 	}
 
+	private async testSelectionModeSettingUiState(): Promise<void> {
+		const testName = "表示設定: 選択モードは互換モードで disabled になる";
+		const startTime = performance.now();
+
+		try {
+			const compatState = resolveSelectionModeSettingUiState("compat");
+			if (compatState.disabled !== true) {
+				throw new Error("compat の disabled 判定が false です");
+			}
+			if (compatState.disabledReason !== "互換モードでは反映されません") {
+				throw new Error(
+					`compat の disabled reason が不正です: ${compatState.disabledReason}`,
+				);
+			}
+
+			const sotState = resolveSelectionModeSettingUiState("sot");
+			if (sotState.disabled !== false) {
+				throw new Error("SoT の disabled 判定が true です");
+			}
+			if (sotState.disabledReason !== undefined) {
+				throw new Error(
+					`SoT に disabled reason が残っています: ${sotState.disabledReason}`,
+				);
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "選択モード設定の互換モード無効化判定が期待通り",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `選択モード設定 UI 状態テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
 	/**
 	 * デフォルト設定のテスト
 	 */
@@ -3845,6 +4770,18 @@ export class TategakiTestSuite {
 			}
 			if (defaults.wysiwyg.sotSelectionMode !== "native-drag") {
 				throw new Error("sotSelectionModeのデフォルトがnative-dragでない");
+			}
+			if (
+				defaults.wysiwyg.autoTcyMinDigits !==
+				DEFAULT_AUTO_TCY_MIN_DIGITS
+			) {
+				throw new Error("autoTcyMinDigits のデフォルトが 2 でない");
+			}
+			if (
+				defaults.wysiwyg.autoTcyMaxDigits !==
+				DEFAULT_AUTO_TCY_MAX_DIGITS
+			) {
+				throw new Error("autoTcyMaxDigits のデフォルトが 4 でない");
 			}
 			
 			const duration = performance.now() - startTime;
@@ -4208,6 +5145,53 @@ export class TategakiTestSuite {
 			}
 		}
 
+		private async testExplicitTcyValidation(): Promise<void> {
+			const testName = "明示TCY: 1〜4文字の妥当性判定と文言更新";
+			const startTime = performance.now();
+
+			try {
+				const assert = (condition: boolean, message: string) => {
+					if (!condition) throw new Error(message);
+				};
+
+				const regex = createAozoraTcyRegExp();
+				const match = regex.exec("前｟1｠後");
+				assert(
+					match?.groups?.body === "1",
+					"｟1｠ が正規表現で抽出されません",
+				);
+				assert(isValidAozoraTcyBody("A"), "1文字英字が妥当扱いされません");
+				assert(isValidAozoraTcyBody("1"), "1文字数字が妥当扱いされません");
+				assert(isValidAozoraTcyBody("12"), "2文字TCYが妥当扱いされません");
+				assert(isValidAozoraTcyBody("ABCD"), "4文字TCYが妥当扱いされません");
+				assert(!isValidAozoraTcyBody(""), "0文字TCYが妥当扱いされています");
+				assert(
+					!isValidAozoraTcyBody("ABCDE"),
+					"5文字TCYが妥当扱いされています",
+				);
+				assert(
+					t("notice.tcy.invalidSelection").includes("1〜4文字"),
+					`invalid selection 文言が更新されていません: ${t("notice.tcy.invalidSelection")}`,
+				);
+
+				const duration = performance.now() - startTime;
+				this.results.push({
+					name: testName,
+					success: true,
+					message: "明示TCYの1〜4文字判定と文言更新が期待通り",
+					duration,
+				});
+			} catch (error) {
+				const duration = performance.now() - startTime;
+				this.results.push({
+					name: testName,
+					success: false,
+					message: `明示TCY妥当性テスト失敗: ${error.message}`,
+					duration,
+				});
+			}
+		}
+
 		private async testTipTapCompatTcyRoundTrip(): Promise<void> {
 			const testName = "TipTap開発版の縦中横（｟..｠）往復";
 			const startTime = performance.now();
@@ -4222,12 +5206,16 @@ export class TategakiTestSuite {
 			`;
 
 			try {
-				const markdown = "時刻は｟12｠です";
+				const markdown = "時刻は｟1｠です";
 				const normalized = normalizeMarkdownForTipTap(
 					protectIndentation(markdown)
 				);
 				if (!normalized.includes('data-tategaki-tcy="1"')) {
 					throw new Error("｟..｠ がTCY spanに変換されていません");
+				}
+				const html = convertAozoraTcySyntaxToHtml("時刻は｟1｠です");
+				if (!html.includes(">1</span>")) {
+					throw new Error(`｟1｠ が HTML 変換されていません: ${html}`);
 				}
 
 				document.body.appendChild(host);
@@ -4235,13 +5223,13 @@ export class TategakiTestSuite {
 					element: host,
 					extensions: [Document, Paragraph, Text, AozoraTcyNode],
 					content:
-						'<p>時刻は<span class="tategaki-md-tcy" data-tategaki-tcy="1">12</span>です</p>',
+						'<p>時刻は<span class="tategaki-md-tcy" data-tategaki-tcy="1">1</span>です</p>',
 				});
 
 				try {
 					const adapter = createTipTapMarkdownAdapter(editor);
 					const roundTrip = adapter.getMarkdown();
-					if (!roundTrip.includes("｟12｠")) {
+					if (!roundTrip.includes("｟1｠")) {
 						throw new Error(`TCYがMarkdownへ戻っていません: ${JSON.stringify(roundTrip)}`);
 					}
 				} finally {
@@ -4306,6 +5294,137 @@ export class TategakiTestSuite {
 					name: testName,
 					success: false,
 					message: `見出し字下げテスト失敗: ${error.message}`,
+					duration,
+				});
+			}
+		}
+
+		private async testExplicitTcyCommandAcceptsSingleChar(): Promise<void> {
+			const testName = "明示TCYコマンド: SoTとcompat plain editで1文字選択を受け付ける";
+			const startTime = performance.now();
+
+			try {
+				const assert = (condition: boolean, message: string) => {
+					if (!condition) throw new Error(message);
+				};
+
+				const sotOverlay = document.createElement("textarea");
+				sotOverlay.value = "A";
+				sotOverlay.selectionStart = 0;
+				sotOverlay.selectionEnd = 1;
+
+				const invalidSotOverlay = document.createElement("textarea");
+				invalidSotOverlay.value = "ABCDE";
+				invalidSotOverlay.selectionStart = 0;
+				invalidSotOverlay.selectionEnd = 5;
+
+				const moduleLoader = requireFromTests("module") as unknown as {
+					_load: (
+						request: string,
+						parent: unknown,
+						isMain: boolean,
+					) => unknown;
+				};
+				const originalLoad = moduleLoader._load;
+				moduleLoader._load = (
+					request: string,
+					parent: unknown,
+					isMain: boolean,
+				) => {
+					if (request === "obsidian") {
+						return {
+							Notice: class NoticeMock {
+								constructor(_message?: string, _timeout?: number) {}
+							},
+						};
+					}
+					return originalLoad(request, parent, isMain);
+				};
+
+				try {
+					const { runInsertTcyCommand } = await import(
+						"./wysiwyg/sot/sot-inline-tcy-commands"
+					);
+					const sotHost = {
+						sourceModeEnabled: true,
+						plainEditOverlayEl: sotOverlay,
+						sotEditor: null,
+						lineRanges: [],
+						immediateRender: false,
+						adjustPlainEditOverlaySize: () => {},
+						findLineIndex: () => null,
+						updatePendingText: () => {},
+						runCeMutation: () => {},
+						setSelectionNormalized: () => {},
+						focusInputSurface: () => {},
+						mergeRanges: (ranges: Array<{ from: number; to: number }>) =>
+							ranges,
+					};
+					runInsertTcyCommand(sotHost);
+					assert(
+						sotOverlay.value === "｟A｠",
+						`SoT command が 1文字TCY を挿入しません: ${sotOverlay.value}`,
+					);
+
+					const invalidSotHost = {
+						...sotHost,
+						plainEditOverlayEl: invalidSotOverlay,
+					};
+					runInsertTcyCommand(invalidSotHost);
+					assert(
+						invalidSotOverlay.value === "ABCDE",
+						`SoT command が 5文字選択を拒否していません: ${invalidSotOverlay.value}`,
+					);
+				} finally {
+					moduleLoader._load = originalLoad;
+				}
+
+				const plainEdit = new PlainEditMode({
+					editor: {} as Editor,
+				}) as unknown as {
+					isActive: boolean;
+					overlayEl: HTMLTextAreaElement | null;
+					applyInlineCommand: (
+						command: { type: "tcy"; text?: string },
+					) => boolean;
+				};
+
+				const compatOverlay = document.createElement("textarea");
+				compatOverlay.value = "1";
+				compatOverlay.selectionStart = 0;
+				compatOverlay.selectionEnd = 1;
+				plainEdit.isActive = true;
+				plainEdit.overlayEl = compatOverlay;
+				plainEdit.applyInlineCommand({ type: "tcy" });
+				assert(
+					compatOverlay.value === "｟1｠",
+					`compat plain edit が 1文字TCY を挿入しません: ${compatOverlay.value}`,
+				);
+
+				const invalidCompatOverlay = document.createElement("textarea");
+				invalidCompatOverlay.value = "ABCDE";
+				invalidCompatOverlay.selectionStart = 0;
+				invalidCompatOverlay.selectionEnd = 5;
+				plainEdit.overlayEl = invalidCompatOverlay;
+				plainEdit.applyInlineCommand({ type: "tcy" });
+				assert(
+					invalidCompatOverlay.value === "ABCDE",
+					`compat plain edit が 5文字選択を拒否していません: ${invalidCompatOverlay.value}`,
+				);
+
+				const duration = performance.now() - startTime;
+				this.results.push({
+					name: testName,
+					success: true,
+					message: "SoT / compat の明示TCYコマンドが1文字選択を受け付けます",
+					duration,
+				});
+			} catch (error) {
+				const duration = performance.now() - startTime;
+				this.results.push({
+					name: testName,
+					success: false,
+					message: `明示TCYコマンドテスト失敗: ${error.message}`,
 					duration,
 				});
 			}
@@ -4743,7 +5862,7 @@ export class TategakiTestSuite {
 	}
 
 	private async testAutoTcyRangeDetection(): Promise<void> {
-		const testName = "自動TCY抽出（英数字2-4文字 + !!/!?/??）";
+		const testName = "自動TCY抽出は桁数設定と記号ペアルールを反映する";
 		const startTime = performance.now();
 
 		try {
@@ -4751,24 +5870,47 @@ export class TategakiTestSuite {
 				if (!condition) throw new Error(message);
 			};
 
-			const sample = "A 12 !! !? ?? ABCD HELLO ｟34｠ B9";
-			const ranges = collectAutoTcyRanges(sample);
-			const bodies = ranges.map((range) => range.text);
+			const sample = "A 12 B 123 1234 HELLO ｟34｠ !! !? ??";
+			const defaultBodies = collectAutoTcyRanges(sample).map(
+				(range) => range.text,
+			);
+			const oneToFourBodies = collectAutoTcyRanges(sample, {
+				minDigits: 1,
+				maxDigits: 4,
+			}).map((range) => range.text);
+			const oneToTwoBodies = collectAutoTcyRanges(sample, {
+				minDigits: 1,
+				maxDigits: 2,
+			}).map((range) => range.text);
 
-			assert(bodies.includes("12"), "12 が抽出されていません");
-			assert(bodies.includes("!!"), "!! が抽出されていません");
-			assert(bodies.includes("!?"), "!? が抽出されていません");
-			assert(bodies.includes("??"), "?? が抽出されていません");
-			assert(bodies.includes("ABCD"), "ABCD が抽出されていません");
-			assert(bodies.includes("B9"), "B9 が抽出されていません");
-			assert(!bodies.includes("HELLO"), "5文字英字は抽出対象外です");
-			assert(!bodies.includes("34"), "明示TCY内の本文は抽出対象外です");
+			assert(defaultBodies.includes("12"), "既定設定で 12 が抽出されていません");
+			assert(defaultBodies.includes("123"), "既定設定で 123 が抽出されていません");
+			assert(defaultBodies.includes("1234"), "既定設定で 1234 が抽出されていません");
+			assert(!defaultBodies.includes("A"), "既定設定で 1 桁英数字が抽出されています");
+			assert(!defaultBodies.includes("B"), "既定設定で 1 桁英数字が抽出されています");
+			assert(!defaultBodies.includes("HELLO"), "既定設定で 5 文字英字が抽出されています");
+			assert(!defaultBodies.includes("34"), "明示TCY内の本文は抽出対象外です");
+
+			assert(oneToFourBodies.includes("A"), "1〜4 設定で A が抽出されていません");
+			assert(oneToFourBodies.includes("B"), "1〜4 設定で B が抽出されていません");
+			assert(oneToFourBodies.includes("1234"), "1〜4 設定で 1234 が抽出されていません");
+
+			assert(oneToTwoBodies.includes("A"), "1〜2 設定で A が抽出されていません");
+			assert(oneToTwoBodies.includes("12"), "1〜2 設定で 12 が抽出されていません");
+			assert(!oneToTwoBodies.includes("123"), "1〜2 設定で 3 桁英数字が抽出されています");
+			assert(!oneToTwoBodies.includes("1234"), "1〜2 設定で 4 桁英数字が抽出されています");
+
+			for (const bodies of [defaultBodies, oneToFourBodies, oneToTwoBodies]) {
+				assert(bodies.includes("!!"), "!! が抽出されていません");
+				assert(bodies.includes("!?"), "!? が抽出されていません");
+				assert(bodies.includes("??"), "?? が抽出されていません");
+			}
 
 			const duration = performance.now() - startTime;
 			this.results.push({
 				name: testName,
 				success: true,
-				message: "自動TCYの抽出条件が期待通りです",
+				message: "自動TCYの抽出条件が桁数設定ごとに期待通りです",
 				duration,
 			});
 		} catch (error) {
@@ -4777,6 +5919,86 @@ export class TategakiTestSuite {
 				name: testName,
 				success: false,
 				message: `自動TCY抽出テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testAutoTcySettingsDriveSharedHelper(): Promise<void> {
+		const testName = "自動TCY共通helperは settings に応じて桁数判定を変える";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const defaultSettings = validateV2Settings({});
+			const oneToTwoSettings = validateV2Settings({
+				wysiwyg: {
+					autoTcyMinDigits: 1,
+					autoTcyMaxDigits: 2,
+				},
+			});
+
+			const defaultDigitRange = resolveAutoTcyDigitRange(
+				defaultSettings.wysiwyg,
+			);
+			const oneToTwoDigitRange = resolveAutoTcyDigitRange(
+				oneToTwoSettings.wysiwyg,
+			);
+
+			assert(
+				defaultDigitRange.minDigits === 2 &&
+					defaultDigitRange.maxDigits === 4,
+				`既定の桁数レンジが不正です: ${JSON.stringify(defaultDigitRange)}`,
+			);
+			assert(
+				oneToTwoDigitRange.minDigits === 1 &&
+					oneToTwoDigitRange.maxDigits === 2,
+				`1〜2 の桁数レンジが不正です: ${JSON.stringify(oneToTwoDigitRange)}`,
+			);
+
+			const sample = "A 12 123";
+			const defaultBodies = collectAutoTcyRanges(
+				sample,
+				defaultSettings.wysiwyg,
+			).map((range) => range.text);
+			const oneToTwoBodies = collectAutoTcyRanges(
+				sample,
+				oneToTwoSettings.wysiwyg,
+			).map((range) => range.text);
+
+			assert(
+				!defaultBodies.includes("A"),
+				"既定 settings で 1 桁英数字が抽出されています",
+			);
+			assert(
+				oneToTwoBodies.includes("A"),
+				"1〜2 settings で 1 桁英数字が抽出されていません",
+			);
+			assert(
+				defaultBodies.includes("123"),
+				"既定 settings で 3 桁英数字が抽出されていません",
+			);
+			assert(
+				!oneToTwoBodies.includes("123"),
+				"1〜2 settings で 3 桁英数字が抽出されています",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "共通helperの桁数判定が settings に応じて変化します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `自動TCY共通helperテスト失敗: ${error.message}`,
 				duration,
 			});
 		}
@@ -5284,6 +6506,1455 @@ export class TategakiTestSuite {
 	 */
 	logResults(): void {
 		// 以前はログ出力していたが、現在はコンソール出力を行わない
+	}
+	// ─── compat チェックリストテスト ──────────────────────────────────────────────
+
+	private async testCompatTaskListHtmlGeneration(): Promise<void> {
+		const testName = "compat チェックリスト: Markdown → TipTap HTML 変換";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			// 未チェック・チェック済みの両方が HTML に変換されること
+			const md = "- [ ] 未完了\n- [x] 完了済み";
+			const html = normalizeMarkdownForTipTap(md);
+
+			assert(
+				html.includes('data-checked="false"'),
+				`unchecked item が生成されていません: ${html}`,
+			);
+			assert(
+				html.includes('data-checked="true"'),
+				`checked item が生成されていません: ${html}`,
+			);
+
+			// チェックリストでない行は通常リストで処理されること
+			const normalMd = "- 通常リスト\n- 別項目";
+			const normalHtml = normalizeMarkdownForTipTap(normalMd);
+			assert(
+				!normalHtml.includes('data-checked'),
+				`通常リストが checklist に誤変換されています: ${normalHtml}`,
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "チェックリストが正しく HTML 変換されます",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat チェックリスト HTML 生成テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testCompatTaskListRoundTrip(): Promise<void> {
+		const testName = "compat チェックリスト: Markdown round-trip";
+		const startTime = performance.now();
+
+		const host = document.createElement("div");
+		host.style.cssText =
+			"position:absolute;left:-9999px;top:-9999px;width:400px;height:200px;";
+
+		try {
+			document.body.appendChild(host);
+
+			const editor = new Editor({
+				element: host,
+				extensions: [
+					Document,
+					Paragraph,
+					Text,
+					BulletList,
+					ChecklistListItem,
+				],
+				content:
+					"<ul>" +
+					'<li data-checked="false"><p>未完了</p></li>' +
+					'<li data-checked="true"><p>完了済み</p></li>' +
+					"</ul>",
+			});
+
+			try {
+				const adapter = createTipTapMarkdownAdapter(editor);
+				const markdown = adapter.getMarkdown();
+
+				if (!markdown.includes("- [ ] 未完了")) {
+					throw new Error(
+						`unchecked item が Markdown に戻っていません: ${JSON.stringify(markdown)}`,
+					);
+				}
+				if (!markdown.includes("- [x] 完了済み")) {
+					throw new Error(
+						`checked item が Markdown に戻っていません: ${JSON.stringify(markdown)}`,
+					);
+				}
+			} finally {
+				editor.destroy();
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "チェックリストが Markdown round-trip で保持されます",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat チェックリスト round-trip テスト失敗: ${error.message}`,
+				duration,
+			});
+		} finally {
+			try {
+				if (host.parentElement) host.parentElement.removeChild(host);
+			} catch {
+				// noop
+			}
+		}
+	}
+
+	private async testCompatTaskListDoesNotBreakBulletList(): Promise<void> {
+		const testName = "compat チェックリスト: 通常リストを破壊しない";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			// 通常の bullet list が checklist に変換されないこと
+			const md = "- 項目A\n- 項目B\n- 項目C";
+			const html = normalizeMarkdownForTipTap(md);
+			assert(
+				html.includes("<ul>") || html.includes("<li>"),
+				`通常リストの ul/li が生成されていません: ${html}`,
+			);
+			assert(
+				!html.includes('data-checked'),
+				`通常リストが checklist に誤変換されています: ${html}`,
+			);
+
+			// ordered list も壊れないこと
+			const olMd = "1. 一番目\n2. 二番目";
+			const olHtml = normalizeMarkdownForTipTap(olMd);
+			assert(
+				olHtml.includes("<ol>") || olHtml.includes("<li>"),
+				`順序付きリストが生成されていません: ${olHtml}`,
+			);
+			assert(
+				!olHtml.includes('data-checked'),
+				`順序付きリストが checklist に誤変換されています: ${olHtml}`,
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "通常リストはチェックリストに誤変換されません",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat 通常リスト破壊テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testCompatToolbarTaskListButton(): Promise<void> {
+		const testName =
+			"compat toolbar: checklist ボタン定義は bullet と ordered の間にあり active state を持つ";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const labels = COMPAT_TOOLBAR_LIST_BUTTONS.map((button) => button.label);
+			const icons = COMPAT_TOOLBAR_LIST_BUTTONS.map((button) => button.icon);
+			const bulletIndex = labels.indexOf(t("toolbar.bulletList"));
+			const taskIndex = labels.indexOf(t("toolbar.taskList"));
+			const orderedIndex = labels.indexOf(t("toolbar.orderedList"));
+
+			assert(taskIndex >= 0, "checklist ボタン定義がありません");
+			assert(
+				taskIndex === bulletIndex + 1,
+				`checklist ボタンが bullet list の直後にありません: ${labels.join(" / ")}`,
+			);
+			assert(
+				orderedIndex === taskIndex + 1,
+				`checklist ボタンが ordered list の直前にありません: ${labels.join(" / ")}`,
+			);
+
+			const taskButton = COMPAT_TOOLBAR_LIST_BUTTONS[taskIndex];
+			assert(
+				taskButton.label === t("toolbar.taskList"),
+				`aria-label 相当の label が不正です: ${taskButton.label}`,
+			);
+			assert(
+				taskButton.icon === "check-square",
+				`icon 識別子が不正です: ${icons.join(" / ")}`,
+			);
+			assert(
+				taskButton.buttonKey === "check-square",
+				`button key が不正です: ${taskButton.buttonKey}`,
+			);
+
+			assert(
+				labels.includes(t("toolbar.bulletList")) &&
+					labels.includes(t("toolbar.orderedList")),
+				"既存の bullet list / ordered list ボタン定義が失われています",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "compat toolbar の checklist ボタン定義は順序を満たします",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat toolbar checklist ボタンテスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	// ─── compat 見出し折りたたみテスト ───────────────────────────────────────────
+
+	private async testCompatHeadingFoldTooltipHelperReuse(): Promise<void> {
+		const testName =
+			"compat 見出し折りたたみ: tooltip helper は ownerDocument 基準で host と位置を解決する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const popoutWindow = new Window();
+			const target = popoutWindow.document.createElement("span");
+			popoutWindow.document.body.appendChild(target);
+			Object.defineProperty(target, "getBoundingClientRect", {
+				value: () => ({
+					left: 20,
+					top: 30,
+					bottom: 50,
+					width: 40,
+				}),
+			});
+
+			const host = resolveSoTCollapsePreviewTooltipHost(
+				target as unknown as HTMLElement,
+			);
+			assert(
+				host.doc === (popoutWindow.document as unknown as Document),
+				"tooltip host が target.ownerDocument を使っていません",
+			);
+			assert(
+				host.containerEl ===
+					(popoutWindow.document.body as unknown as HTMLElement),
+				"tooltip host の container が body になっていません",
+			);
+
+			const position = computeSoTCollapsePreviewTooltipPosition({
+				targetRect: target.getBoundingClientRect() as DOMRect,
+				tooltipRect: { width: 120, height: 60 },
+				viewportWidth: 200,
+				viewportHeight: 140,
+			});
+			assert(
+				position.left >= 8 && position.top >= 8,
+				"tooltip position が viewport 内に収まりません",
+			);
+			assert(
+				position.left <= 72 && position.top <= 72,
+				"tooltip position が viewport からはみ出しています",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "compat 側でも SoT tooltip helper を ownerDocument 基準で再利用できます",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat tooltip helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testCompatHeadingFoldUiHelper(): Promise<void> {
+		const testName =
+			"compat 見出し折りたたみ: UI helper は writing mode ごとの aria と icon state を返す";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const horizontalCollapsed = resolveCompatHeadingFoldUiState({
+				collapsed: true,
+				writingMode: "horizontal-tb",
+			});
+			assert(
+				horizontalCollapsed.ariaExpanded === "false",
+				"collapsed の aria-expanded が false になりません",
+			);
+			assert(
+				horizontalCollapsed.iconName === "circle-chevron-right",
+				"horizontal collapsed の icon state が不正です",
+			);
+			assert(
+				horizontalCollapsed.showEllipsis,
+				"collapsed で ellipsis が有効になりません",
+			);
+
+			const horizontalExpanded = resolveCompatHeadingFoldUiState({
+				collapsed: false,
+				writingMode: "horizontal-tb",
+			});
+			assert(
+				horizontalExpanded.ariaExpanded === "true",
+				"expanded の aria-expanded が true になりません",
+			);
+			assert(
+				horizontalExpanded.iconName === "circle-chevron-down",
+				"horizontal expanded の icon state が不正です",
+			);
+			assert(
+				!horizontalExpanded.showEllipsis,
+				"expanded でも ellipsis が表示扱いになっています",
+			);
+
+			const verticalRlCollapsed = resolveCompatHeadingFoldUiState({
+				collapsed: true,
+				writingMode: "vertical-rl",
+			});
+			assert(
+				verticalRlCollapsed.iconName === "circle-chevron-down",
+				"vertical-rl collapsed の icon state が不正です",
+			);
+
+			const verticalLrExpanded = resolveCompatHeadingFoldUiState({
+				collapsed: false,
+				writingMode: "vertical-lr",
+			});
+			assert(
+				verticalLrExpanded.iconName === "circle-chevron-left",
+				"vertical-lr expanded の icon state が不正です",
+			);
+			assert(
+				verticalRlCollapsed.ariaLabel !== horizontalExpanded.ariaLabel,
+				"collapsed/expanded の aria-label が切り替わっていません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "compat heading fold UI helper が aria と icon state を正しく返します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat UI helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testCompatHeadingFoldPreviewTextHelper(): Promise<void> {
+		const testName =
+			"compat 見出し折りたたみ: preview text helper は fold range から安全に preview を作る";
+		const startTime = performance.now();
+
+		const host = document.createElement("div");
+		host.style.cssText =
+			"position:absolute;left:-9999px;top:-9999px;width:400px;height:200px;";
+
+		try {
+			document.body.appendChild(host);
+			const editor = new Editor({
+				element: host,
+				extensions: [
+					Document,
+					Paragraph,
+					Text,
+					Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
+				],
+				content:
+					"<h1>見出し</h1><p>最初の段落は十分に長いプレビュー文字列を生成するためのテキストです。</p><p>二行目のプレビューです。</p>",
+			});
+
+			try {
+				const assert = (condition: boolean, message: string) => {
+					if (!condition) throw new Error(message);
+				};
+				const range = resolveFoldRange(editor.state.doc, 0);
+				const preview = buildCompatHeadingFoldPreviewText(
+					editor.state.doc,
+					range,
+					{ maxLines: 2, maxChars: 30 },
+				);
+				assert(preview !== null, "preview が null です");
+				assert(
+					preview!.includes("最初の段落"),
+					"preview に配下テキストが含まれません",
+				);
+				assert(
+					preview!.length <= 33,
+					"preview が長すぎます",
+				);
+				assert(
+					buildCompatHeadingFoldPreviewText(editor.state.doc, null) === null,
+					"null range で null を返しません",
+				);
+				assert(
+					buildCompatHeadingFoldPreviewText(
+						editor.state.doc,
+						{ from: range?.from ?? 0, to: range?.from ?? 0 },
+					) === null,
+					"空 range で null を返しません",
+				);
+			} finally {
+				editor.destroy();
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "compat preview text helper が fold range から安全に preview を作ります",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat preview text helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		} finally {
+			try {
+				if (host.parentElement) host.parentElement.removeChild(host);
+			} catch {
+				// noop
+			}
+		}
+	}
+
+	private async testCompatHeadingFoldRangeResolution(): Promise<void> {
+		const testName = "compat 見出し折りたたみ: 基本的な範囲解決";
+		const startTime = performance.now();
+
+		const host = document.createElement("div");
+		host.style.cssText =
+			"position:absolute;left:-9999px;top:-9999px;width:400px;height:200px;";
+
+		try {
+			document.body.appendChild(host);
+
+			// H1 → P → H2 → P → H1 (end) という構造
+			const editor = new Editor({
+				element: host,
+				extensions: [
+					Document,
+					Paragraph,
+					Text,
+					Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
+				],
+				content:
+					"<h1>見出し1</h1><p>段落1</p><h2>見出し2</h2><p>段落2</p><h1>見出し1-2</h1>",
+			});
+
+			try {
+				const assert = (condition: boolean, message: string) => {
+					if (!condition) throw new Error(message);
+				};
+
+				const { doc } = editor.state;
+				// H1 (見出し1) の pos = 0、size = 1(open) + textSize + 1(close)
+				// "見出し1" は 4文字なので nodeSize = 6
+				const h1Pos = 0;
+				const h1Node = doc.nodeAt(h1Pos);
+				assert(
+					h1Node?.type.name === "heading",
+					`pos 0 が見出しではありません: ${h1Node?.type.name}`,
+				);
+
+				const range = resolveFoldRange(doc, h1Pos);
+				assert(
+					range !== null,
+					"H1 の折りたたみ範囲が null です",
+				);
+
+				// 範囲は H1 直後から次の H1 の直前まで（段落1 と H2 と 段落2 を含む）
+				assert(
+					range!.from > h1Pos,
+					`range.from (${range!.from}) が headingPos (${h1Pos}) 以下です`,
+				);
+
+				// 範囲の終端は次の H1 の直前であること
+				// range.to は次の H1 の開始位置のはずなので、その位置にあるノードを確認
+				// range.to は「最後に含まれるノードの終端」なので、次のノードの開始位置を確認
+				let pos = 0;
+				let foundNextH1 = false;
+				for (let i = 0; i < doc.childCount; i++) {
+					const node = doc.child(i);
+					if (pos >= range!.to) {
+						// range.to 以降の最初のノードが H1 かどうか（= 次の H1 で範囲が区切られた）
+						if (node.type.name === "heading" && node.attrs["level"] === 1) {
+							foundNextH1 = true;
+						}
+						break;
+					}
+					pos += node.nodeSize;
+				}
+				// range の外に H1 が存在するということを確認（範囲が適切に区切られた）
+				assert(
+					foundNextH1,
+					"range の後に次の H1 が存在しないか、範囲が適切に区切られていません",
+				);
+			} finally {
+				editor.destroy();
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "見出し折りたたみ範囲が正しく解決されます",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat 見出し折りたたみ範囲テスト失敗: ${error.message}`,
+				duration,
+			});
+		} finally {
+			try {
+				if (host.parentElement) host.parentElement.removeChild(host);
+			} catch {
+				// noop
+			}
+		}
+	}
+
+	private async testCompatHeadingFoldRangeNested(): Promise<void> {
+		const testName = "compat 見出し折りたたみ: H2 折りたたみは H1 で止まる";
+		const startTime = performance.now();
+
+		const host = document.createElement("div");
+		host.style.cssText =
+			"position:absolute;left:-9999px;top:-9999px;width:400px;height:200px;";
+
+		try {
+			document.body.appendChild(host);
+
+			// H2 → P → H3 → P → H1 という構造
+			const editor = new Editor({
+				element: host,
+				extensions: [
+					Document,
+					Paragraph,
+					Text,
+					Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
+				],
+				content:
+					"<h2>見出し2</h2><p>段落A</p><h3>見出し3</h3><p>段落B</p><h1>見出し1</h1>",
+			});
+
+			try {
+				const assert = (condition: boolean, message: string) => {
+					if (!condition) throw new Error(message);
+				};
+
+				const { doc } = editor.state;
+				const h2Pos = 0;
+				const range = resolveFoldRange(doc, h2Pos);
+				assert(range !== null, "H2 の折りたたみ範囲が null です");
+
+				// H1 は H2 より上位なので、H2 の範囲に H1 は含まれない
+				let walkPos = range!.from;
+				while (walkPos < range!.to) {
+					const node = doc.nodeAt(walkPos);
+					if (!node) break;
+					assert(
+						!(node.type.name === "heading" && (node.attrs["level"] as number) < 2),
+						`H2 の折りたたみ範囲内に H1 が含まれています (pos=${walkPos})`,
+					);
+					walkPos += node.nodeSize;
+				}
+			} finally {
+				editor.destroy();
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "H2 の折りたたみは H1 で正しく止まります",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat 見出し折りたたみネストテスト失敗: ${error.message}`,
+				duration,
+			});
+		} finally {
+			try {
+				if (host.parentElement) host.parentElement.removeChild(host);
+			} catch {
+				// noop
+			}
+		}
+	}
+
+	private async testCompatHeadingFoldRangeIsolation(): Promise<void> {
+		const testName = "compat 見出し折りたたみ: 別見出しの折りたたみと干渉しない";
+		const startTime = performance.now();
+
+		const host = document.createElement("div");
+		host.style.cssText =
+			"position:absolute;left:-9999px;top:-9999px;width:400px;height:200px;";
+
+		try {
+			document.body.appendChild(host);
+
+			// H1-A → P-A → H1-B → P-B という構造
+			const editor = new Editor({
+				element: host,
+				extensions: [
+					Document,
+					Paragraph,
+					Text,
+					Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
+				],
+				content:
+					"<h1>見出し-A</h1><p>段落A</p><h1>見出し-B</h1><p>段落B</p>",
+			});
+
+			try {
+				const assert = (condition: boolean, message: string) => {
+					if (!condition) throw new Error(message);
+				};
+
+				const { doc } = editor.state;
+
+				// H1-A の pos = 0
+				const h1APos = 0;
+				// P-A の分を加算して H1-B の pos を確認
+				let pos = 0;
+				let h1BActualPos = -1;
+				for (let i = 0; i < doc.childCount; i++) {
+					const node = doc.child(i);
+					if (i === 2) {
+						h1BActualPos = pos;
+						break;
+					}
+					pos += node.nodeSize;
+				}
+				assert(h1BActualPos >= 0, "H1-B の pos が取得できませんでした");
+
+				const rangeA = resolveFoldRange(doc, h1APos);
+				const rangeB = resolveFoldRange(doc, h1BActualPos);
+
+				assert(rangeA !== null, "H1-A の折りたたみ範囲が null です");
+				assert(rangeB !== null, "H1-B の折りたたみ範囲が null です");
+
+				// A の範囲と B の範囲が重複しないこと
+				assert(
+					rangeA!.to <= rangeB!.from,
+					`H1-A (to=${rangeA!.to}) と H1-B (from=${rangeB!.from}) の範囲が重複しています`,
+				);
+			} finally {
+				editor.destroy();
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "別見出しの折りたたみ範囲は互いに干渉しません",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat 見出し折りたたみ干渉テスト失敗: ${error.message}`,
+				duration,
+			});
+		} finally {
+			try {
+				if (host.parentElement) host.parentElement.removeChild(host);
+			} catch {
+				// noop
+			}
+		}
+	}
+
+	private async testCompatFoldStateClearedOnSetMarkdown(): Promise<void> {
+		const testName = "compat \u898b\u51fa\u3057\u6298\u308a\u305f\u305f\u307f: setMarkdown \u5b9f\u884c\u5f8c\u306b state \u304c\u30af\u30ea\u30a2\u3055\u308c\u308b";
+		const startTime = performance.now();
+
+		const host = document.createElement("div");
+		host.style.cssText =
+			"position:absolute;left:-9999px;top:-9999px;width:400px;height:200px;";
+
+		try {
+			document.body.appendChild(host);
+
+			const editor = new Editor({
+				element: host,
+				extensions: [
+					Document,
+					Paragraph,
+					Text,
+					Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
+					HeadingFoldExtension,
+				VerticalWritingExtension.configure({ defaultMode: "horizontal-tb", targetNodeTypes: ["paragraph", "heading"] }),
+				],
+				content: "<h1>\u898b\u51fa\u3057A</h1><p>\u6bb5\u843dA</p>",
+			});
+
+			try {
+				const assert = (condition: boolean, message: string) => {
+					if (!condition) throw new Error(message);
+				};
+
+				// H1 \u306e pos \u3092\u53d6\u5f97\u3057\u3066 toggle
+				const h1Pos = 0;
+				editor.commands.toggleHeadingFold(h1Pos);
+
+				const stateBefore = headingFoldPluginKey.getState(editor.state);
+				assert(
+					stateBefore?.foldedPositions.size === 1,
+					`toggle \u5f8c\u306e foldedPositions.size \u304c 1 \u3067\u306a\u3044: ${stateBefore?.foldedPositions.size}`,
+				);
+
+				// \u5225\u6587\u66f8\u3078\u306e\u30b9\u30a4\u30c3\u30c1\u6642\u306e\u60f3\u5b9a\u3067 setMarkdown \u3092\u547c\u3073\u51fa\u3059
+				const adapter = createTipTapMarkdownAdapter(editor, {});
+				adapter.setMarkdown("# \u898b\u51fa\u3057B\n\n\u6bb5\u843dB");
+
+				const stateAfter = headingFoldPluginKey.getState(editor.state);
+				assert(
+					stateAfter?.foldedPositions.size === 0,
+					`setMarkdown \u5f8c\u306b foldedPositions \u304c\u6b8b\u3063\u3066\u3044\u307e\u3059: size=${stateAfter?.foldedPositions.size}`,
+				);
+			} finally {
+				editor.destroy();
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "setMarkdown \u5f8c\u306b fold state \u304c\u6b63\u3057\u304f\u30af\u30ea\u30a2\u3055\u308c\u307e\u3057\u305f",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat fold state \u30af\u30ea\u30a2\u30c6\u30b9\u30c8\u5931\u6557: ${(error as Error).message}`,
+				duration,
+			});
+		} finally {
+			try {
+				if (host.parentElement) host.parentElement.removeChild(host);
+			} catch {
+				// noop
+			}
+		}
+	}
+
+	private async testCompatTaskListContinuationLineNotDropped(): Promise<void> {
+		const testName = "compat task list: \u7d99\u7d9a\u884c\u304c\u6b20\u843d\u3057\u306a\u3044";
+		const startTime = performance.now();
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			// \u7d99\u7d9a\u884c\u3042\u308a\u30bf\u30b9\u30af\u30ea\u30b9\u30c8\uff1a isSimpleTaskList \u304c false \u306a\u306e\u3067 markdown-it \u30d5\u30a9\u30fc\u30eb\u30d0\u30c3\u30af
+			const md = "- [ ] \u30bf\u30b9\u30af\u9805\u76ee\n  \u7d99\u7d9a\u30c6\u30ad\u30b9\u30c8";
+			const html = normalizeMarkdownForTipTap(md, { enableRuby: false });
+
+			// \u7d99\u7d9a\u30c6\u30ad\u30b9\u30c8\u304c\u5fa1\u3055\u308c\u3066\u3044\u308b\u3053\u3068\u3092\u78ba\u8a8d\uff08\u30de\u30fc\u30af\u30a2\u30c3\u30d7\u306b\u542b\u307e\u308c\u3066\u3044\u308b\uff09
+			assert(
+				html.includes("\u7d99\u7d9a\u30c6\u30ad\u30b9\u30c8"),
+				`\u7d99\u7d9a\u30c6\u30ad\u30b9\u30c8\u304c\u6b20\u843d\u3057\u307e\u3057\u305f\u3002HTML: ${html}`,
+			);
+			// taskList \u578b\u306b\u306f\u306a\u3063\u3066\u3044\u306a\u3044\u3053\u3068\uff08markdown-it \u30d5\u30a9\u30fc\u30eb\u30d0\u30c3\u30af\uff09
+			assert(
+				!html.includes('data-checked'),
+				`\u7d99\u7d9a\u884c\u3042\u308a\u30ea\u30b9\u30c8\u304c taskList \u578b\u306b\u306a\u3063\u3066\u3044\u307e\u3059: ${html}`,
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "\u7d99\u7d9a\u884c\u304c\u6b20\u843d\u305b\u305a\u6b63\u3057\u304f\u30d5\u30a9\u30fc\u30eb\u30d0\u30c3\u30af\u3057\u307e\u3057\u305f",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat task list \u7d99\u7d9a\u884c\u30c6\u30b9\u30c8\u5931\u6557: ${(error as Error).message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testCompatTaskListMixedListNotDropped(): Promise<void> {
+		const testName = "compat task list: \u6df7\u5728\u30ea\u30b9\u30c8\u306e\u90e8\u5206\u304c\u6b20\u843d\u3057\u306a\u3044";
+		const startTime = performance.now();
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			// \u901a\u5e38\u7b87\u6761\u66f8\u304d\u3068\u30bf\u30b9\u30af\u9805\u76ee\u306e\u6df7\u5728\uff1a isSimpleTaskList \u304c false \u306a\u306e\u3067 markdown-it \u30d5\u30a9\u30fc\u30eb\u30d0\u30c3\u30af
+			const md = "- [ ] \u30bf\u30b9\u30af\u9805\u76ee\n- \u901a\u5e38\u9805\u76ee";
+			const html = normalizeMarkdownForTipTap(md, { enableRuby: false });
+
+			// \u4e21\u65b9\u306e\u9805\u76ee\u304c\u542b\u307e\u308c\u3066\u3044\u308b\u3053\u3068\u3092\u78ba\u8a8d
+			assert(
+				html.includes("\u30bf\u30b9\u30af\u9805\u76ee"),
+				`\u30bf\u30b9\u30af\u9805\u76ee\u304c\u6b20\u843d\u3057\u307e\u3057\u305f\u3002HTML: ${html}`,
+			);
+			assert(
+				html.includes("\u901a\u5e38\u9805\u76ee"),
+				`\u901a\u5e38\u9805\u76ee\u304c\u6b20\u843d\u3057\u307e\u3057\u305f\u3002HTML: ${html}`,
+			);
+			// taskList \u578b\u306b\u306f\u306a\u3063\u3066\u3044\u306a\u3044\u3053\u3068
+			assert(
+				!html.includes('data-checked'),
+				`\u6df7\u5728\u30ea\u30b9\u30c8\u304c taskList \u578b\u306b\u306a\u3063\u3066\u3044\u307e\u3059: ${html}`,
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "\u6df7\u5728\u30ea\u30b9\u30c8\u3067\u9805\u76ee\u6b20\u843d\u305b\u305a\u6b63\u3057\u304f\u30d5\u30a9\u30fc\u30eb\u30d0\u30c3\u30af\u3057\u307e\u3057\u305f",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat task list \u6df7\u5728\u30ea\u30b9\u30c8\u30c6\u30b9\u30c8\u5931\u6557: ${(error as Error).message}`,
+				duration,
+			});
+		}
+	}
+
+	// ─── compat チェックリスト round-trip 追加テスト ────────────────────────────
+
+	private async testCompatTaskListFullRoundTrip(): Promise<void> {
+		const testName = "compat チェックリスト: Markdown → TipTap → Markdown 完全 round-trip";
+		const startTime = performance.now();
+		const host = document.createElement("div");
+		host.style.cssText = "position:absolute;left:-9999px;top:-9999px;width:400px;height:200px;";
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			document.body.appendChild(host);
+
+			const originalMd = "- [ ] 未完了タスク\n- [x] 完了済みタスク";
+			const html = normalizeMarkdownForTipTap(originalMd, { enableRuby: false });
+
+			assert(
+				html.includes('data-checked="false"') || html.includes('data-checked="true"'),
+				`normalizeMarkdownForTipTap が checklist HTML を生成していません: ${html}`,
+			);
+
+			const editor = new Editor({
+				element: host,
+				extensions: [
+					Document,
+					Paragraph,
+					Text,
+					BulletList,
+					ChecklistListItem,
+				],
+				content: html,
+			});
+
+			try {
+				const adapter = createTipTapMarkdownAdapter(editor);
+				const markdown = adapter.getMarkdown();
+
+				assert(
+					markdown.includes("- [ ]"),
+					`round-trip 後に unchecked marker が失われました: ${JSON.stringify(markdown)}`,
+				);
+				assert(
+					markdown.includes("- [x]"),
+					`round-trip 後に checked marker が失われました: ${JSON.stringify(markdown)}`,
+				);
+				assert(
+					markdown.includes("未完了タスク"),
+					`round-trip 後に unchecked item テキストが失われました: ${JSON.stringify(markdown)}`,
+				);
+				assert(
+					markdown.includes("完了済みタスク"),
+					`round-trip 後に checked item テキストが失われました: ${JSON.stringify(markdown)}`,
+				);
+
+				const html2 = normalizeMarkdownForTipTap(markdown, { enableRuby: false });
+				assert(
+					html2.includes('data-checked="false"') || html2.includes('data-checked="true"'),
+					`2 回目の normalizeMarkdownForTipTap が checklist を生成していません: ${html2}`,
+				);
+				assert(
+					html2.includes('data-checked="false"') && html2.includes('data-checked="true"'),
+					`2 回目の HTML で checked 状態が失われました: ${html2}`,
+				);
+			} finally {
+				editor.destroy();
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "Markdown → TipTap → Markdown → HTML の完全 round-trip が成功",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `compat チェックリスト完全 round-trip 失敗: ${(error as Error).message}`,
+				duration,
+			});
+		} finally {
+			try {
+				if (host.parentElement) host.parentElement.removeChild(host);
+			} catch {
+				// noop
+			}
+		}
+	}
+
+	private async testCompatTaskListCheckedStateRoundTrip(): Promise<void> {
+		const testName = "compat チェックリスト: checked/unchecked 状態が round-trip で保持される";
+		const startTime = performance.now();
+		const host = document.createElement("div");
+		host.style.cssText = "position:absolute;left:-9999px;top:-9999px;width:400px;height:200px;";
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			document.body.appendChild(host);
+
+			const editor = new Editor({
+				element: host,
+				extensions: [
+					Document,
+					Paragraph,
+					Text,
+					BulletList,
+					ChecklistListItem,
+				],
+				content:
+					"<ul>" +
+					'<li data-checked="false"><p>A</p></li>' +
+					'<li data-checked="true"><p>B</p></li>' +
+					'<li data-checked="false"><p>C</p></li>' +
+					'<li data-checked="true"><p>D</p></li>' +
+					"</ul>",
+			});
+
+			try {
+				const adapter = createTipTapMarkdownAdapter(editor);
+				const md = adapter.getMarkdown();
+
+				const lines = md.split("\n").filter((l: string) => l.trim() !== "");
+				assert(lines.length === 4, `行数が不正: ${lines.length}, md=${JSON.stringify(md)}`);
+
+				assert(
+					lines[0].startsWith("- [ ] ") && lines[0].includes("A"),
+					`1 行目 unchecked 不正: ${lines[0]}`,
+				);
+				assert(
+					lines[1].startsWith("- [x] ") && lines[1].includes("B"),
+					`2 行目 checked 不正: ${lines[1]}`,
+				);
+				assert(
+					lines[2].startsWith("- [ ] ") && lines[2].includes("C"),
+					`3 行目 unchecked 不正: ${lines[2]}`,
+				);
+				assert(
+					lines[3].startsWith("- [x] ") && lines[3].includes("D"),
+					`4 行目 checked 不正: ${lines[3]}`,
+				);
+
+				const html2 = normalizeMarkdownForTipTap(md, { enableRuby: false });
+				const checkedFalseCount = (html2.match(/data-checked="false"/g) ?? []).length;
+				const checkedTrueCount = (html2.match(/data-checked="true"/g) ?? []).length;
+				assert(
+					checkedFalseCount === 2 && checkedTrueCount === 2,
+					`再変換後の checked 分布が不正: false=${checkedFalseCount}, true=${checkedTrueCount}`,
+				);
+			} finally {
+				editor.destroy();
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "checked/unchecked 状態が round-trip で正しく保持される",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `checked 状態 round-trip テスト失敗: ${(error as Error).message}`,
+				duration,
+			});
+		} finally {
+			try {
+				if (host.parentElement) host.parentElement.removeChild(host);
+			} catch {
+				// noop
+			}
+		}
+	}
+
+	private async testCompatTaskListNormalizeHtmlStructure(): Promise<void> {
+		const testName = "compat チェックリスト: normalizeMarkdownForTipTap が正しい HTML 構造を生成する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const md = "- [ ] item1\n- [x] item2\n- [ ] item3";
+			const html = normalizeMarkdownForTipTap(md, { enableRuby: false });
+
+			assert(
+				html.includes('ul') && html.includes('data-checked'),
+				`checklist の ul が生成されていません: ${html}`,
+			);
+
+			const itemMatches = html.match(/data-checked="/g) ?? [];
+			assert(
+				itemMatches.length === 3,
+				`checklist item の数が不正 (期待=3, 実際=${itemMatches.length}): ${html}`,
+			);
+
+			assert(
+				html.includes("item1") && html.includes("item2") && html.includes("item3"),
+				`全てのアイテムテキストが含まれていません: ${html}`,
+			);
+
+			const normalBullet = "- alpha\n- beta";
+			const normalHtml = normalizeMarkdownForTipTap(normalBullet, { enableRuby: false });
+			assert(
+				!normalHtml.includes('data-checked'),
+				`通常の bullet list が checklist に変換されています: ${normalHtml}`,
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "normalizeMarkdownForTipTap の HTML 構造が正しい",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `HTML 構造テスト失敗: ${(error as Error).message}`,
+				duration,
+			});
+		}
+	}
+
+	// ─── compat checklist serialize インデント ─────────────────────────────────
+
+	private async testCompatChecklistSerializeIndent(): Promise<void> {
+		const testName = "compat checklist: serialize 時の継続インデントが正しい";
+		const startTime = performance.now();
+		const host = document.createElement("div");
+		host.style.cssText = "position:absolute;left:-9999px;top:-9999px;width:400px;height:200px;";
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			document.body.appendChild(host);
+
+			// checklist の serialize で fullMarker 長を反映したインデントになるか確認
+			const editor = new Editor({
+				element: host,
+				extensions: [
+					Document,
+					Paragraph,
+					Text,
+					BulletList,
+					ChecklistListItem,
+				],
+				content:
+					"<ul>" +
+					'<li data-checked="false"><p>item</p></li>' +
+					"<li><p>normal</p></li>" +
+					"</ul>",
+			});
+
+			try {
+				const adapter = createTipTapMarkdownAdapter(editor);
+				const md = adapter.getMarkdown();
+
+				assert(
+					md.includes("- [ ] item"),
+					`unchecked checklist のマーカーが不正: ${JSON.stringify(md)}`,
+				);
+				assert(
+					md.includes("- normal"),
+					`通常 listItem のマーカーが不正: ${JSON.stringify(md)}`,
+				);
+
+				// round-trip: serialize した Markdown を再度 parse しても崩れない
+				const html2 = normalizeMarkdownForTipTap(md, { enableRuby: false });
+				assert(
+					html2.includes("item"),
+					`round-trip 後に item テキストが消えました: ${html2}`,
+				);
+			} finally {
+				editor.destroy();
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "checklist serialize の継続インデントが正しい",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `checklist serialize インデントテスト失敗: ${(error as Error).message}`,
+				duration,
+			});
+		} finally {
+			try {
+				if (host.parentElement) host.parentElement.removeChild(host);
+			} catch {
+				// noop
+			}
+		}
+	}
+
+	// ─── compat ordered checklist round-trip ──────────────────
+
+	private async testCompatOrderedChecklistRoundTrip(): Promise<void> {
+		const testName = "compat ordered checklist: Markdown → TipTap → Markdown round-trip";
+		const startTime = performance.now();
+		const host = document.createElement("div");
+		host.style.cssText = "position:absolute;left:-9999px;top:-9999px;width:400px;height:200px;";
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			document.body.appendChild(host);
+
+			const originalMd = "1. [ ] 未完了タスク\n2. [x] 完了済みタスク";
+			const html = normalizeMarkdownForTipTap(originalMd, { enableRuby: false });
+
+			assert(
+				html.includes("<ol>"),
+				`ordered checklist が <ol> で生成されていません: ${html}`,
+			);
+			assert(
+				html.includes('data-checked="false"') && html.includes('data-checked="true"'),
+				`ordered checklist の checked 状態が正しくありません: ${html}`,
+			);
+
+			const editor = new Editor({
+				element: host,
+				extensions: [
+					Document,
+					Paragraph,
+					Text,
+					OrderedList,
+					ChecklistListItem,
+				],
+				content: html,
+			});
+
+			try {
+				const adapter = createTipTapMarkdownAdapter(editor);
+				const markdown = adapter.getMarkdown();
+
+				assert(
+					/\d+\.\s+\[ \]/.test(markdown),
+					`round-trip 後に ordered unchecked marker が失われました: ${JSON.stringify(markdown)}`,
+				);
+				assert(
+					/\d+\.\s+\[x\]/.test(markdown),
+					`round-trip 後に ordered checked marker が失われました: ${JSON.stringify(markdown)}`,
+				);
+				assert(
+					markdown.includes("未完了タスク"),
+					`round-trip 後にテキストが失われました: ${JSON.stringify(markdown)}`,
+				);
+
+				// 2 回目の normalize
+				const html2 = normalizeMarkdownForTipTap(markdown, { enableRuby: false });
+				assert(
+					html2.includes("<ol>"),
+					`2 回目の normalize でも <ol> が生成されていません: ${html2}`,
+				);
+				assert(
+					html2.includes('data-checked="false"') && html2.includes('data-checked="true"'),
+					`2 回目の HTML で checked 状態が失われました: ${html2}`,
+				);
+			} finally {
+				editor.destroy();
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "ordered checklist の完全 round-trip が成功",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `ordered checklist round-trip 失敗: ${(error as Error).message}`,
+				duration,
+			});
+		} finally {
+			try {
+				if (host.parentElement) host.parentElement.removeChild(host);
+			} catch {
+				// noop
+			}
+		}
+	}
+
+	private async testCompatMixedChecklistMarkersFallback(): Promise<void> {
+		const testName = "compat checklist: mixed ordered/unordered markers はフォールバックする";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const mixedMd = "- [ ] A\n1. [x] B";
+			const html = normalizeMarkdownForTipTap(mixedMd, { enableRuby: false });
+
+			assert(
+				!html.includes('data-checked="false"') && !html.includes('data-checked="true"'),
+				`mixed checklist が checklist HTML に正規化されています: ${html}`,
+			);
+			assert(
+				html.includes("[ ] A") && html.includes("[x] B"),
+				`mixed checklist の内容がフォールバックで保持されていません: ${html}`,
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "mixed ordered/unordered checklist は安全にフォールバックする",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `mixed checklist フォールバックテスト失敗: ${(error as Error).message}`,
+				duration,
+			});
+		}
+	}
+
+	// ─── compat checklist toolbar: 段落から直接 checklist 化 ──────────────────
+
+	private async testCompatChecklistToolbarFromParagraph(): Promise<void> {
+		const testName = "compat checklist: toolbar ボタンで通常段落から checklist 化できる";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const labels = COMPAT_TOOLBAR_LIST_BUTTONS.map((b) => b.label);
+			const taskIndex = labels.indexOf(t("toolbar.taskList"));
+			assert(taskIndex >= 0, "checklist ボタン定義がありません");
+
+			const taskButton = COMPAT_TOOLBAR_LIST_BUTTONS[taskIndex];
+
+			// checklist-commands の toggleChecklistInSelection が
+			// listItem が無い場合に toggleBulletList を呼ぶことを確認
+			let bulletListToggled = false;
+			let checklistSetCount = 0;
+
+			// listItem が見つからない場合の mock editor
+			const listItems: Array<{ pos: number; attrs: Record<string, unknown> }> = [];
+			const mockEditor = {
+				isActive: () => false,
+				chain: () => ({
+					focus: () => ({
+						toggleBulletList: () => ({
+							run: () => {
+								bulletListToggled = true;
+								// toggleBulletList 後に listItem が生まれたことをシミュレート
+								listItems.push({ pos: 1, attrs: { checked: null } });
+								return true;
+							},
+						}),
+						toggleOrderedList: () => ({ run: () => true }),
+					}),
+				}),
+				state: {
+					selection: { from: 0, to: 10 },
+					doc: {
+						nodesBetween: (
+							_from: number,
+							_to: number,
+							callback: (node: { type: { name: string }; attrs: Record<string, unknown> }, pos: number) => void,
+						) => {
+							for (const item of listItems) {
+								callback(
+									{ type: { name: "listItem" }, attrs: item.attrs },
+									item.pos,
+								);
+							}
+						},
+					},
+					tr: {
+						setNodeMarkup: (pos: number, _type: undefined, attrs: Record<string, unknown>) => {
+							checklistSetCount++;
+							// listItems の attrs を更新
+							const item = listItems.find((i) => i.pos === pos);
+							if (item) item.attrs = attrs;
+							return mockEditor.state.tr;
+						},
+					},
+				},
+				view: {
+					dispatch: () => {},
+				},
+			};
+
+			// checklist ボタンを実行（段落状態）
+			taskButton.run(
+				mockEditor as unknown as Parameters<typeof taskButton.run>[0],
+			);
+
+			assert(
+				bulletListToggled,
+				"listItem が無い場合に toggleBulletList が呼ばれていません",
+			);
+			assert(
+				checklistSetCount > 0,
+				"checklist 属性が設定されていません",
+			);
+			assert(
+				listItems[0]?.attrs.checked === false,
+				`checklist 化後の checked が false ではありません: ${listItems[0]?.attrs.checked}`,
+			);
+
+			// checklist active 判定
+			assert(
+				taskButton.isActive(
+					mockEditor as unknown as Parameters<typeof taskButton.isActive>[0],
+				),
+				"checklist 化後に active 判定が true になっていません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "通常段落から checklist ボタン 1 回で checklist 化できる",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `checklist toolbar テスト失敗: ${(error as Error).message}`,
+				duration,
+			});
+		}
 	}
 }
 

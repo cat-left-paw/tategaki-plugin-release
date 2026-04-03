@@ -23,6 +23,7 @@ import type {
 } from "../types/settings";
 import { DEFAULT_V2_SETTINGS } from "../types/settings";
 import { createAozoraRubyRegExp } from "../shared/aozora-ruby";
+import { resolveAutoTcyDigitRange } from "../shared/aozora-tcy";
 import type { SoTEditor } from "./sot/sot-editor";
 import { OverlayImeTextarea } from "./sot/overlay-ime-textarea";
 import { OverlayImeReplaceController } from "./sot/overlay-ime-replace";
@@ -160,6 +161,20 @@ import {
 	resolveSoTLinePointWritingMode,
 	shouldSnapPointToLineEnd,
 } from "./sot/sot-line-end-click";
+import {
+	isSoTLogicalNavigationKey,
+	resolveSoTNavigationOffset,
+} from "./sot/sot-navigation";
+import {
+	isSoTPageNavigationKey,
+	resolveSoTPageNavigationOffsetCandidate,
+	resolveSoTPageNavigationPlan,
+} from "./sot/sot-page-navigation";
+import {
+	resolveSoTPreviousLogicalLineVisualStartOffset,
+	resolveSoTVisualBoundarySnapOffset,
+	sortSoTVisualLineRects,
+} from "./sot/sot-visual-navigation";
 import { classifyPointerTarget } from "./sot/sot-pointer-strategy";
 import {
 	isNativeSelectionEnabled as policyIsNativeSelectionEnabled,
@@ -175,7 +190,12 @@ import {
 	isPhoneLikeMobile,
 	PHONE_MEDIA_QUERY,
 } from "./shared/device-profile";
-import { getViewComputedStyle } from "./sot/sot-view-local-dom";
+import {
+	cancelViewAnimationFrame,
+	elementsFromViewPoint,
+	getViewComputedStyle,
+	requestViewAnimationFrame,
+} from "./sot/sot-view-local-dom";
 
 export const TATEGAKI_SOT_WYSIWYG_VIEW_TYPE = "tategaki-sot-wysiwyg-view";
 const LINE_DATASET_KEYS = [
@@ -400,6 +420,7 @@ export class SoTWysiwygView extends ItemView {
 	private ceSelectionSync: SoTCeSelectionSync | null = null;
 	private nativeSelectionSupport: NativeSelectionSupport | null = null;
 	private pendingCaretScroll = false;
+	private pageNavigationRaf: number | null = null;
 	private selectAllActive = false;
 	private softSelectionActive = false;
 	private softSelectionFrom = 0;
@@ -4047,6 +4068,9 @@ export class SoTWysiwygView extends ItemView {
 				tcyRanges,
 				{
 					enableAutoTcy: this.plugin.settings.wysiwyg.enableAutoTcy === true,
+					autoTcyDigitRange: resolveAutoTcyDigitRange(
+						this.plugin.settings.wysiwyg,
+					),
 					rubyRanges: [],
 				},
 			);
@@ -4136,6 +4160,9 @@ export class SoTWysiwygView extends ItemView {
 				tcyRanges,
 				{
 					enableAutoTcy: this.plugin.settings.wysiwyg.enableAutoTcy === true,
+					autoTcyDigitRange: resolveAutoTcyDigitRange(
+						this.plugin.settings.wysiwyg,
+					),
 					rubyRanges,
 				},
 			);
@@ -4182,6 +4209,9 @@ export class SoTWysiwygView extends ItemView {
 			tcyRanges,
 			{
 				enableAutoTcy: this.plugin.settings.wysiwyg.enableAutoTcy === true,
+				autoTcyDigitRange: resolveAutoTcyDigitRange(
+					this.plugin.settings.wysiwyg,
+				),
 				rubyRanges,
 			},
 		);
@@ -5397,8 +5427,9 @@ export class SoTWysiwygView extends ItemView {
 					!keyboardEvent.metaKey &&
 					!keyboardEvent.ctrlKey &&
 					!keyboardEvent.altKey &&
-					["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
-						key,
+					(
+						isSoTLogicalNavigationKey(key) ||
+						(!keyboardEvent.shiftKey && isSoTPageNavigationKey(key))
 					)
 				) {
 					event.preventDefault();
@@ -5444,8 +5475,10 @@ export class SoTWysiwygView extends ItemView {
 				!(event as KeyboardEvent).metaKey &&
 				!(event as KeyboardEvent).ctrlKey &&
 				!(event as KeyboardEvent).altKey &&
-				["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
-					key,
+				(
+					isSoTLogicalNavigationKey(key) ||
+					(!(event as KeyboardEvent).shiftKey &&
+						isSoTPageNavigationKey(key))
 				)
 			) {
 				event.preventDefault();
@@ -9021,10 +9054,8 @@ export class SoTWysiwygView extends ItemView {
 			if (event.altKey) return;
 			if (event.isComposing || this.ceImeComposing) return;
 			if (
-				event.key === "ArrowUp" ||
-				event.key === "ArrowDown" ||
-				event.key === "ArrowLeft" ||
-				event.key === "ArrowRight"
+				isSoTLogicalNavigationKey(event.key) ||
+				(!event.shiftKey && isSoTPageNavigationKey(event.key))
 			) {
 				event.preventDefault();
 				event.stopPropagation();
@@ -11382,13 +11413,17 @@ export class SoTWysiwygView extends ItemView {
 
 	private handleNavigate(event: KeyboardEvent): void {
 		if (!this.sotEditor || !this.derivedRootEl) return;
+		const writingMode = window.getComputedStyle(
+			this.derivedRootEl,
+		).writingMode;
+		if (isSoTPageNavigationKey(event.key)) {
+			this.handlePageNavigation(event.key, writingMode);
+			return;
+		}
 		const doc = this.sotEditor.getDoc();
 		const selection = this.sotEditor.getSelection();
 		const head = selection.head;
 		this.updatePendingText("", true);
-		const writingMode = window.getComputedStyle(
-			this.derivedRootEl,
-		).writingMode;
 		const visibleDocStart = this.getVisibleDocStartOffset();
 		if (
 			!event.shiftKey &&
@@ -11431,7 +11466,157 @@ export class SoTWysiwygView extends ItemView {
 		this.scheduleCaretUpdate(true);
 	}
 
+	private handlePageNavigation(
+		key: string,
+		writingMode: string,
+	): void {
+		if (!this.sotEditor || !this.derivedRootEl) return;
+		const selection = this.sotEditor.getSelection();
+		const lineIndex = this.findLineIndex(selection.head);
+		if (lineIndex === null) return;
+		const lineRange = this.lineRanges[lineIndex];
+		const lineEl = this.getLineElement(lineIndex);
+		if (!lineRange || !lineEl) return;
+		this.ensureLineRendered(lineEl);
+		const lineLength = lineRange.to - lineRange.from;
+		const localOffset = Math.max(
+			0,
+			Math.min(selection.head - lineRange.from, lineLength),
+		);
+		const caretRect =
+			this.getCaretRectInLine(lineEl, localOffset, lineRange, writingMode) ??
+			lineEl.getBoundingClientRect();
+		const plan = resolveSoTPageNavigationPlan({
+			key,
+			writingMode,
+			caretRect,
+			viewportRect: this.derivedRootEl.getBoundingClientRect(),
+		});
+		if (!plan) return;
+		this.updatePendingText("", true);
+		this.derivedRootEl.scrollLeft += plan.scrollDeltaX;
+		this.derivedRootEl.scrollTop += plan.scrollDeltaY;
+		this.renderPipeline?.onScrollSettled();
+		if (this.pageNavigationRaf !== null) {
+			cancelViewAnimationFrame(this.derivedRootEl, this.pageNavigationRaf);
+		}
+		const preferForward = key === "PageDown";
+		this.pageNavigationRaf = requestViewAnimationFrame(
+			this.derivedRootEl,
+			() => {
+				this.pageNavigationRaf = null;
+				this.commitPageNavigationSelection(
+					plan.targetPoint.x,
+					plan.targetPoint.y,
+					preferForward,
+				);
+			},
+		);
+	}
+
+	private commitPageNavigationSelection(
+		clientX: number,
+		clientY: number,
+		preferForward: boolean,
+	): void {
+		if (!this.sotEditor) return;
+		const selection = this.sotEditor.getSelection();
+		const fallbackOffset = this.resolvePageNavigationFallbackOffset(
+			clientX,
+			clientY,
+			preferForward,
+		);
+		const next = resolveSoTPageNavigationOffsetCandidate(
+			this.resolveOffsetFromViewportPoint(clientX, clientY, preferForward),
+			fallbackOffset,
+		);
+		if (next === null) return;
+		let normalized = this.normalizeOffsetToVisible(next, preferForward);
+		if (normalized === selection.head && next !== selection.head) {
+			normalized = this.findNextVisibleOffset(next, preferForward);
+		}
+		if (normalized === selection.head) {
+			return;
+		}
+		this.setSelectionNormalized(normalized, normalized, {
+			syncDom: !this.isNativeSelectionEnabled(),
+		});
+		this.pendingCaretScroll = true;
+		this.scheduleCaretUpdate(true);
+	}
+
+	private resolveOffsetFromViewportPoint(
+		clientX: number,
+		clientY: number,
+		preferForward: boolean,
+	): number | null {
+		const lineEl = this.getLineElementFromViewportPoint(clientX, clientY);
+		if (!lineEl) return null;
+		this.ensureLineRendered(lineEl);
+		const from = Number.parseInt(lineEl.dataset.from ?? "0", 10);
+		const to = Number.parseInt(lineEl.dataset.to ?? "0", 10);
+		const lineLength = Math.max(0, to - from);
+		const localOffset = this.getLocalOffsetFromPoint(
+			lineEl,
+			clientX,
+			clientY,
+			lineLength,
+		);
+		if (localOffset === null) return null;
+		const clamped = Math.max(0, Math.min(localOffset, lineLength));
+		return this.normalizeOffsetToVisible(from + clamped, preferForward);
+	}
+
+	private resolvePageNavigationFallbackOffset(
+		clientX: number,
+		clientY: number,
+		preferForward: boolean,
+	): number | null {
+		const lineEl = this.getLineElementFromViewportPoint(clientX, clientY);
+		if (!lineEl) return null;
+		const from = Number.parseInt(lineEl.dataset.from ?? "0", 10);
+		const to = Number.parseInt(lineEl.dataset.to ?? "0", 10);
+		return this.normalizeOffsetToVisible(
+			preferForward ? from : to,
+			preferForward,
+		);
+	}
+
+	private getLineElementFromViewportPoint(
+		clientX: number,
+		clientY: number,
+	): HTMLElement | null {
+		if (!this.derivedContentEl) return null;
+		for (const element of elementsFromViewPoint(
+			this.derivedContentEl,
+			clientX,
+			clientY,
+		)) {
+			const lineEl =
+				element instanceof HTMLElement
+					? (element.closest(".tategaki-sot-line") as HTMLElement | null)
+					: null;
+			if (lineEl) return lineEl;
+		}
+		const lineElements = Array.from(
+			this.derivedContentEl.querySelectorAll<HTMLElement>(
+				".tategaki-sot-line",
+			),
+		);
+		if (lineElements.length === 0) return null;
+		const rects = lineElements.map((lineEl) => {
+			const visualRects = this.getLineVisualRects(lineEl);
+			return visualRects.length > 0
+				? getRectUnion(visualRects, lineEl.getBoundingClientRect())
+				: lineEl.getBoundingClientRect();
+		});
+		const index = this.findClosestRectIndex(rects, clientX, clientY);
+		return lineElements[index] ?? null;
+	}
+
 	private isBackwardNavigationKey(key: string, writingMode: string): boolean {
+		if (key === "Home") return true;
+		if (key === "End") return false;
 		const isVertical = writingMode.startsWith("vertical");
 		if (isVertical) {
 			const isVerticalRL = writingMode !== "vertical-lr";
@@ -13914,9 +14099,6 @@ export class SoTWysiwygView extends ItemView {
 		if (!lineRange || !lineEl) return null;
 
 		const lineLength = lineRange.to - lineRange.from;
-		if (lineLength <= 0) {
-			return { offset: null, atBoundary: false };
-		}
 		const localOffset = Math.max(
 			0,
 			Math.min(currentOffset - lineRange.from, lineLength),
@@ -13930,16 +14112,16 @@ export class SoTWysiwygView extends ItemView {
 		if (!caretRect) return null;
 
 		const rects = this.getLineVisualRects(lineEl);
-		if (rects.length <= 1) {
+		if (rects.length === 0) {
 			return { offset: null, atBoundary: false };
 		}
-		const sortedRects = rects
-			.slice()
-			.sort((a, b) =>
-				isVertical
-					? a.left - b.left || a.top - b.top
-					: a.top - b.top || a.left - b.left,
-			);
+		const sortedRects = sortSoTVisualLineRects(rects, writingMode);
+		const currentVisualLineStartOffsets = this.getVisualLineStartOffsetsInLine(
+			lineEl,
+			lineRange,
+			sortedRects,
+			writingMode,
+		);
 
 		const centerX = caretRect.left + (caretRect.width || 0) / 2;
 		const centerY = caretRect.top + (caretRect.height || 0) / 2;
@@ -14000,14 +14182,42 @@ export class SoTWysiwygView extends ItemView {
 			if (nextLineIndex === null || nextLineIndex === lineIndex) {
 				return { offset: currentOffset, atBoundary: false };
 			}
-			const nextLineEl = this.getLineElement(nextLineIndex);
 			const nextRange = this.lineRanges[nextLineIndex];
-			if (!nextLineEl || !nextRange) {
+			if (!nextRange) {
+				return { offset: currentOffset, atBoundary: false };
+			}
+			const nextLineEl = this.getLineElement(nextLineIndex);
+			if (!nextLineEl) {
 				return { offset: currentOffset, atBoundary: false };
 			}
 			const nextLength = Math.max(0, nextRange.to - nextRange.from);
 			if (nextLength <= 0) {
 				return { offset: nextRange.from, atBoundary: false };
+			}
+			const nextRects = sortSoTVisualLineRects(
+				this.getLineVisualRects(nextLineEl),
+				writingMode,
+			);
+			const nextLineStartOffsets = this.getVisualLineStartOffsetsInLine(
+				nextLineEl,
+				nextRange,
+				nextRects,
+				writingMode,
+			);
+			const previousLogicalLineVisualStart =
+				resolveSoTPreviousLogicalLineVisualStartOffset({
+					writingMode,
+					key,
+					currentLocalOffset: localOffset,
+					currentFirstVisibleStartOffset:
+						currentVisualLineStartOffsets[0] ?? 0,
+					targetVisualLineStartOffsets: nextLineStartOffsets,
+				});
+			if (previousLogicalLineVisualStart !== null) {
+				return {
+					offset: nextRange.from + previousLogicalLineVisualStart,
+					atBoundary: false,
+				};
 			}
 			const targetX = isVertical ? centerX : centerX;
 			const targetY = isVertical ? centerY : centerY;
@@ -14025,6 +14235,18 @@ export class SoTWysiwygView extends ItemView {
 		}
 
 		const targetRect = sortedRects[nextIndex];
+		const visualBoundarySnap = resolveSoTVisualBoundarySnapOffset({
+			writingMode,
+			key,
+			currentLocalOffset: localOffset,
+			visualLineStartOffsets: currentVisualLineStartOffsets,
+		});
+		if (visualBoundarySnap !== null) {
+			return {
+				offset: lineRange.from + visualBoundarySnap,
+				atBoundary: false,
+			};
+		}
 		let targetX = centerX;
 		let targetY = centerY;
 		if (isVertical) {
@@ -14152,6 +14374,47 @@ export class SoTWysiwygView extends ItemView {
 			}
 		}
 		return null;
+	}
+
+	private getVisualLineStartOffsetsInLine(
+		lineEl: HTMLElement,
+		lineRange: LineRange,
+		sortedRects: DOMRect[],
+		writingMode: string,
+	): number[] {
+		const lineLength = Math.max(0, lineRange.to - lineRange.from);
+		if (lineLength <= 0 || sortedRects.length === 0) return [0];
+		const segments = this.buildSegmentsForLine(lineRange.from, lineRange.to);
+		let probe = segments[0]?.from ?? lineRange.from;
+		let lastRectIndex: number | null = null;
+		const starts: number[] = [];
+		for (let i = 0; i < lineLength + sortedRects.length; i += 1) {
+			const localOffset = Math.max(
+				0,
+				Math.min(probe - lineRange.from, lineLength),
+			);
+			const rect = this.getCaretRectInLine(
+				lineEl,
+				localOffset,
+				lineRange,
+				writingMode,
+			);
+			if (!rect) break;
+			const rectIndex = this.findClosestRectIndex(
+				sortedRects,
+				rect.left + rect.width / 2,
+				rect.top + rect.height / 2,
+			);
+			if (rectIndex !== lastRectIndex) {
+				starts.push(localOffset);
+				lastRectIndex = rectIndex;
+				if (starts.length >= sortedRects.length) break;
+			}
+			const next = this.findNextVisibleOffsetInLine(lineRange, probe, true);
+			if (next === null || next === probe) break;
+			probe = next;
+		}
+		return starts.length > 0 ? starts : [0];
 	}
 
 	private findNextVisualLineOffsetInLine(
@@ -14358,129 +14621,6 @@ export class SoTWysiwygView extends ItemView {
 		key: string,
 		writingMode: string,
 	): number {
-		const safeHead = Math.max(0, Math.min(head, doc.length));
-		const lineInfo = this.getLineInfo(doc, safeHead);
-		const isVertical = writingMode.startsWith("vertical");
-		const isVerticalRL = writingMode !== "vertical-lr";
-
-		if (isVertical) {
-			if (key === "ArrowUp") {
-				// 段落先頭の場合は前の段落の末尾へ移動
-				if (lineInfo.column <= 0) {
-					return lineInfo.lineStart > 0
-						? lineInfo.lineStart - 1
-						: safeHead;
-				}
-				return Math.max(lineInfo.lineStart, safeHead - 1);
-			}
-			if (key === "ArrowDown") {
-				if (safeHead >= lineInfo.lineEnd) {
-					return lineInfo.lineEnd < doc.length
-						? lineInfo.lineEnd + 1
-						: safeHead;
-				}
-				return Math.min(lineInfo.lineEnd, safeHead + 1);
-			}
-			if (key === "ArrowLeft") {
-				if (isVerticalRL) {
-					if (safeHead >= lineInfo.lineEnd) {
-						return this.getNextLineStart(doc, lineInfo);
-					}
-					return this.moveToNextLine(doc, lineInfo);
-				}
-				if (safeHead <= lineInfo.lineStart) {
-					return this.getPrevLineEnd(doc, lineInfo);
-				}
-				return this.moveToPrevLine(doc, lineInfo);
-			}
-			if (key === "ArrowRight") {
-				if (isVerticalRL) {
-					if (safeHead <= lineInfo.lineStart) {
-						return this.getPrevLineEnd(doc, lineInfo);
-					}
-					return this.moveToPrevLine(doc, lineInfo);
-				}
-				if (safeHead >= lineInfo.lineEnd) {
-					return this.getNextLineStart(doc, lineInfo);
-				}
-				return this.moveToNextLine(doc, lineInfo);
-			}
-			return safeHead;
-		}
-
-		if (key === "ArrowLeft") {
-			return Math.max(0, safeHead - 1);
-		}
-		if (key === "ArrowRight") {
-			return Math.min(doc.length, safeHead + 1);
-		}
-		if (key === "ArrowUp") {
-			return this.moveToPrevLine(doc, lineInfo);
-		}
-		if (key === "ArrowDown") {
-			return this.moveToNextLine(doc, lineInfo);
-		}
-		return safeHead;
-	}
-
-	private getLineInfo(
-		doc: string,
-		head: number,
-	): {
-		lineStart: number;
-		lineEnd: number;
-		column: number;
-	} {
-		const lineStart = doc.lastIndexOf("\n", Math.max(0, head - 1)) + 1;
-		const lineEndIndex = doc.indexOf("\n", head);
-		const lineEnd = lineEndIndex === -1 ? doc.length : lineEndIndex;
-		const column = Math.max(
-			0,
-			Math.min(head - lineStart, lineEnd - lineStart),
-		);
-		return { lineStart, lineEnd, column };
-	}
-
-	private moveToPrevLine(
-		doc: string,
-		info: {
-			lineStart: number;
-			lineEnd: number;
-			column: number;
-		},
-	): number {
-		if (info.lineStart === 0) return info.lineStart + info.column;
-		const prevLineEnd = info.lineStart - 1;
-		const prevLineStart =
-			doc.lastIndexOf("\n", Math.max(0, prevLineEnd - 1)) + 1;
-		const prevLineLength = prevLineEnd - prevLineStart;
-		return prevLineStart + Math.min(info.column, prevLineLength);
-	}
-
-	private moveToNextLine(
-		doc: string,
-		info: {
-			lineStart: number;
-			lineEnd: number;
-			column: number;
-		},
-	): number {
-		if (info.lineEnd >= doc.length) return info.lineEnd;
-		const nextLineStart = info.lineEnd + 1;
-		const nextLineEndIndex = doc.indexOf("\n", nextLineStart);
-		const nextLineEnd =
-			nextLineEndIndex === -1 ? doc.length : nextLineEndIndex;
-		const nextLineLength = nextLineEnd - nextLineStart;
-		return nextLineStart + Math.min(info.column, nextLineLength);
-	}
-
-	private getNextLineStart(doc: string, info: { lineEnd: number }): number {
-		if (info.lineEnd >= doc.length) return info.lineEnd;
-		return info.lineEnd + 1;
-	}
-
-	private getPrevLineEnd(doc: string, info: { lineStart: number }): number {
-		if (info.lineStart <= 0) return 0;
-		return Math.min(doc.length, info.lineStart - 1);
+		return resolveSoTNavigationOffset(doc, head, key, writingMode);
 	}
 }

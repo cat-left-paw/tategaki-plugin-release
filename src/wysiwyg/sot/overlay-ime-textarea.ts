@@ -1,3 +1,6 @@
+import { isSoTLogicalNavigationKey } from "./sot-navigation";
+import { isSoTPageNavigationKey } from "./sot-page-navigation";
+
 type OverlayCallbacks = {
 	replaceSelection: (text: string) => void;
 	handleEnter?: (params: {
@@ -152,14 +155,18 @@ export class OverlayImeTextarea {
 				event.stopPropagation();
 				return;
 			}
+			const isModifiedHomeEnd =
+				(event.metaKey || event.ctrlKey || event.altKey) &&
+				(event.key === "Home" || event.key === "End");
 			const allowPropagation =
-				(event.metaKey || event.ctrlKey) &&
-				event.shiftKey &&
-				!event.altKey &&
-				["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
-					event.key,
-				) &&
-				!(this.callbacks.shouldHandleOutlinerKey?.(event) ?? false);
+				isModifiedHomeEnd ||
+				((event.metaKey || event.ctrlKey) &&
+					event.shiftKey &&
+					!event.altKey &&
+					["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
+						event.key,
+					) &&
+					!(this.callbacks.shouldHandleOutlinerKey?.(event) ?? false));
 			if (!allowPropagation) {
 				event.stopPropagation();
 			}
@@ -253,8 +260,11 @@ export class OverlayImeTextarea {
 
 			if (
 				this.textarea.value.length === 0 &&
-				["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
-					event.key,
+				!isMod &&
+				!event.altKey &&
+				(
+					isSoTLogicalNavigationKey(event.key) ||
+					(!event.shiftKey && isSoTPageNavigationKey(event.key))
 				)
 			) {
 				event.preventDefault();

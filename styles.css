@@ -4052,7 +4052,7 @@ ruby {
 .tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
 	.tategaki-sot-line {
 	width: fit-content;
-	min-width: 1em;
+	min-width: calc(var(--tategaki-line-height, 1.8) * 1em);
 }
 
 .tategaki-sot-line.tategaki-md-heading {
@@ -4121,7 +4121,14 @@ ruby {
 .tategaki-sot-line[data-heading-foldable="1"]:hover .tategaki-md-heading-toggle,
 .tategaki-sot-line[data-heading-foldable="1"] .tategaki-md-heading-toggle:hover,
 .tategaki-sot-line[data-heading-foldable="1"]
-	.tategaki-md-heading-toggle:focus-visible {
+	.tategaki-md-heading-toggle:focus-visible,
+.tategaki-wysiwyg-editor [data-heading-foldable="1"]:hover > .tategaki-md-heading-toggle,
+.tategaki-wysiwyg-editor
+	[data-heading-foldable="1"]
+	> .tategaki-md-heading-toggle:hover,
+.tategaki-wysiwyg-editor
+	[data-heading-foldable="1"]
+	> .tategaki-md-heading-toggle:focus-visible {
 	opacity: 0.8;
 	transform: scale(1);
 	color: var(--tategaki-text-color, var(--text-normal));
@@ -4129,7 +4136,10 @@ ruby {
 
 /* 折りたたまれている見出しには常にトグルを表示 */
 .tategaki-sot-line[data-heading-collapsed="1"][data-heading-foldable="1"]
-	.tategaki-md-heading-toggle {
+	.tategaki-md-heading-toggle,
+.tategaki-wysiwyg-editor
+	[data-heading-collapsed="1"][data-heading-foldable="1"]
+	> .tategaki-md-heading-toggle {
 	opacity: 0.5;
 	transform: scale(0.95);
 }
@@ -4167,6 +4177,9 @@ ruby {
 /* 縦書き時にSVGアイコンのみを90度回転（ツールチップに影響しないように） */
 .tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
 	.tategaki-md-heading-ellipsis
+	svg,
+.tategaki-wysiwyg-editor:not([data-writing-mode="horizontal-tb"])
+	.tategaki-md-heading-ellipsis
 	svg {
 	transform: rotate(90deg);
 }
@@ -4201,6 +4214,18 @@ ruby {
 	top: 0.1em;
 }
 
+.tategaki-wysiwyg-editor[data-writing-mode="horizontal-tb"]
+	[data-heading-foldable="1"] {
+	position: relative;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="horizontal-tb"]
+	[data-heading-foldable="1"]
+	> .tategaki-md-heading-toggle {
+	left: -1.2em;
+	top: 0.1em;
+}
+
 /* 縦書き（右から左）: トグルは右側 */
 .tategaki-sot-derived-root[data-writing-mode="vertical-rl"]
 	.tategaki-md-heading-toggle {
@@ -4208,9 +4233,33 @@ ruby {
 	top: -0.6em;
 }
 
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"]
+	[data-heading-foldable="1"] {
+	position: relative;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"]
+	[data-heading-foldable="1"]
+	> .tategaki-md-heading-toggle {
+	right: -0.1em;
+	top: -0.6em;
+}
+
 /* 縦書き（左から右）: トグルは左側 */
 .tategaki-sot-derived-root[data-writing-mode="vertical-lr"]
 	.tategaki-md-heading-toggle {
+	left: -0.1em;
+	top: -0.6em;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"]
+	[data-heading-foldable="1"] {
+	position: relative;
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"]
+	[data-heading-foldable="1"]
+	> .tategaki-md-heading-toggle {
 	left: -0.1em;
 	top: -0.6em;
 }
@@ -4916,8 +4965,8 @@ ruby {
 
 .tategaki-sot-eol {
 	display: inline-block;
-	/* 縦書きでは幅が行の高さ、heightが文字幅相当 */
-	width: 1em;
+	/* 縦書きでは幅が行ピッチ（line-height基準）、heightが文字幅相当 */
+	width: calc(var(--tategaki-line-height, 1.8) * 1em);
 	height: 0.5em;
 	opacity: 0;
 	user-select: none;
@@ -5419,4 +5468,81 @@ ruby {
 
 .tategaki-title-page-heading:is(h6) {
 	font-size: 1em;
+}
+
+/* ─── compat チェックリスト (Nyoze 方式: li[data-checked]) ────────────────── */
+
+.tategaki-wysiwyg-editor .ProseMirror li[data-checked] {
+	list-style: none;
+	position: relative;
+	padding-inline-start: 1.25em;
+	margin-inline-start: -1.5em;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror li[data-checked]::before {
+	content: "";
+	position: absolute;
+	inset-block-start: calc((var(--tategaki-line-height, 1.75) - 1) * 0.5em);
+	inset-inline-start: 0.08em;
+	inline-size: 1em;
+	block-size: 1em;
+	border: 1px solid;
+	border-radius: 0.25em;
+	background-color: var(--text-muted, #888);
+	opacity: 0.6;
+	cursor: pointer;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror li[data-checked="true"]::before {
+	-webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14'/%3E%3Cpath d='M9 12l2 2l4 -4'/%3E%3C/svg%3E");
+	mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14'/%3E%3Cpath d='M9 12l2 2l4 -4'/%3E%3C/svg%3E");
+	background-color: var(--interactive-accent, #705dcf);
+	opacity: 1;
+}
+
+.tategaki-wysiwyg-editor .ProseMirror li[data-checked] > p {
+	margin: 0;
+}
+
+/* チェック済みのテキストを薄くする */
+.tategaki-wysiwyg-editor .ProseMirror li[data-checked="true"] > p {
+	opacity: 0.55;
+	text-decoration: line-through;
+}
+
+/* ─── compat 見出し折りたたみ ────────────────────────────────────────────────── */
+
+.tategaki-heading-fold-toggle {
+	display: inline-block;
+	cursor: pointer;
+	user-select: none;
+	opacity: 0.5;
+	font-size: 0.75em;
+	line-height: 1;
+	vertical-align: middle;
+	padding: 0 0.25em;
+	border-radius: 3px;
+	transition: opacity 0.15s;
+}
+
+.tategaki-heading-fold-toggle::before {
+	content: "▼";
+}
+
+.tategaki-heading-fold-toggle.is-folded::before {
+	content: "▶";
+}
+
+.tategaki-heading-fold-toggle:hover {
+	opacity: 1;
+	background-color: var(--background-modifier-hover);
+}
+
+/* 縦書きモードのトグルボタン */
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .tategaki-heading-fold-toggle::before {
+	content: "◀";
+}
+
+.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .tategaki-heading-fold-toggle.is-folded::before {
+	content: "▼";
 }

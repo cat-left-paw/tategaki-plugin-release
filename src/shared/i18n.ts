@@ -383,7 +383,7 @@ const jaDict = {
 	"notice.ceIme.reason.externalUpdated": "外部更新を検知",
 	"notice.ceIme.reason.caretVerification": "キャレット整合性チェック",
 	"notice.tcy.invalidSelection":
-		"縦中横は半角英数字/!? の2〜4文字のみ対応です。",
+		"縦中横は半角英数字/!? の1〜4文字のみ対応です。",
 	"notice.unsupported.readOnlyOpened":
 		"未対応タグがあるため読み取り専用で開きました。",
 	"notice.unsupported.backupFailed":
@@ -816,7 +816,7 @@ const enDict: Record<I18nKey, string> = {
 	"notice.ceIme.reason.caretVerification":
 		"caret consistency check",
 	"notice.tcy.invalidSelection":
-		"TCY supports only 2-4 half-width alphanumeric/!? characters.",
+		"TCY supports only 1-4 half-width alphanumeric/!? characters.",
 	"notice.unsupported.readOnlyOpened":
 		"Opened in read-only mode because unsupported tags were found.",
 	"notice.unsupported.backupFailed":

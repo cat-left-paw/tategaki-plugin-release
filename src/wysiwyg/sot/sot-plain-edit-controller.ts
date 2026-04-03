@@ -1,5 +1,6 @@
 import type { LineRange } from "./line-ranges";
 import type { SoTEditor } from "./sot-editor";
+import { resolveSoTPlainEditHomeEndSelection } from "./sot-plain-edit-navigation";
 import { getRectUnion } from "./sot-selection-geometry";
 
 export type PlainEditRange = {
@@ -108,6 +109,32 @@ export class SoTPlainEditController {
 					event.stopPropagation();
 					this.host.toggleSourceMode();
 					return;
+				}
+				if (
+					!this.host.plainEditComposing &&
+					!isImeCompositionKey(event)
+				) {
+					const nextSelection = resolveSoTPlainEditHomeEndSelection({
+						text: overlay.value ?? "",
+						key: event.key,
+						selectionStart: overlay.selectionStart ?? 0,
+						selectionEnd: overlay.selectionEnd ?? 0,
+						selectionDirection: overlay.selectionDirection,
+						shiftKey: event.shiftKey,
+						altKey: event.altKey,
+						metaKey: event.metaKey,
+						ctrlKey: event.ctrlKey,
+					});
+					if (nextSelection) {
+						event.preventDefault();
+						event.stopPropagation();
+						overlay.setSelectionRange(
+							nextSelection.start,
+							nextSelection.end,
+							nextSelection.direction
+						);
+						return;
+					}
 				}
 				if (
 					!event.shiftKey &&

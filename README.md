@@ -14,7 +14,11 @@ Status:
   - Edits Obsidian Markdown directly (no conversion / no sync step)
   - Vertical / horizontal writing layout
   - Paragraph-level source text editing
+  - Keyboard navigation tuned for vertical writing, including `Home` / `End` / `PageUp` / `PageDown`
   - Ruby (furigana) support (Aozora Bunko style), e.g. `｜漢字《かんじ》`
+  - TCY support
+    - Explicit TCY: `｟A｠` / `｟12｠` for 1-4 characters
+    - Automatic TCY with configurable minimum / maximum alphanumeric digit length
   - Images (standard Markdown images and Obsidian embeds)
   - Outline navigation and heading folding
   - Selection mode options for Writing & Reference mode (`fast-click` / `native-drag`)
@@ -30,6 +34,8 @@ Status:
 - Compatibility mode (TipTap-based editor) for older workflows
   - Search / replace
   - Inline source text editing
+  - Checklist editing and heading folding
+  - Automatic TCY digit-range settings are also applied here
   - Sync backups (can be disabled in settings)
   - Planned for removal in a future update; migration to Writing & Reference mode is recommended
 - Theme and display settings

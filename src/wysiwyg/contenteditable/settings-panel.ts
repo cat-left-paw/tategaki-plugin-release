@@ -24,6 +24,8 @@ import TategakiV2Plugin from "../../core/plugin";
 import { debugWarn, debugError } from "../../shared/logger";
 import { showConfirmModal } from "../../shared/ui/confirm-modal";
 import { t } from "../../shared/i18n";
+import { resolveSelectionModeSettingUiState } from "./settings-panel-state";
+import { resolveAutoTcyDigitRange } from "../../shared/aozora-tcy";
 
 const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
 	テーマ名を入力: "Enter theme name",
@@ -85,8 +87,12 @@ const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
 		"Left = closer to text / Right = farther from text.",
 	縦中横: "TCY",
 	自動縦中横: "Auto TCY",
-	"英数字2〜4文字と !! / !? / ?? を、表示時のみ縦中横として扱います（本文には記号を追加しません）":
-		"Apply TCY only in display for 2-4 alphanumerics and !! / !? / ?? (no extra symbols are added to text).",
+	"英数字列の対象桁数を設定でき、!! / !? / ?? は従来通り表示時のみ縦中横として扱います（本文には記号を追加しません）":
+		"Configure the digit range for alphanumeric sequences; !! / !? / ?? remain display-only TCY without changing the text.",
+	最小桁数: "Minimum digits",
+	"自動TCYにする英数字列の最小桁数を選択": "Choose the minimum digits for automatic TCY alphanumeric sequences.",
+	最大桁数: "Maximum digits",
+	"自動TCYにする英数字列の最大桁数を選択": "Choose the maximum digits for automatic TCY alphanumeric sequences.",
 	色設定: "Colors",
 	文字色: "Text color",
 	ページ色: "Page color",
@@ -1015,6 +1021,9 @@ export class SettingsPanelModal extends Modal {
 
 	private createSettingsUI(container: HTMLElement): void {
 		const isCompatMode = this.panelContext.mode === "compat";
+		const selectionModeSettingState = resolveSelectionModeSettingUiState(
+			this.panelContext.mode,
+		);
 		const isCeImeMode = !!this.panelContext.isCeImeMode;
 		const imeDisabled = isCompatMode || isCeImeMode;
 		const imeDisabledReason = isCompatMode
@@ -1742,7 +1751,7 @@ export class SettingsPanelModal extends Modal {
 					this.createSettingItem(
 						content,
 						"自動縦中横",
-						"英数字2〜4文字と !! / !? / ?? を、表示時のみ縦中横として扱います（本文には記号を追加しません）",
+						"英数字列の対象桁数を設定でき、!! / !? / ?? は従来通り表示時のみ縦中横として扱います（本文には記号を追加しません）",
 						(itemEl) => {
 							const button = itemEl.createEl("button", {
 								cls: "tategaki-toggle-button",
@@ -1766,6 +1775,94 @@ export class SettingsPanelModal extends Modal {
 								const next = !getCurrent();
 								this.tempSettings.wysiwyg.enableAutoTcy = next;
 								refresh(next);
+								this.applySettings();
+							});
+						},
+					);
+
+					const normalizeAutoTcyDigitSettings = () => {
+						const digitRange = resolveAutoTcyDigitRange({
+							minDigits:
+								this.tempSettings.wysiwyg.autoTcyMinDigits,
+							maxDigits:
+								this.tempSettings.wysiwyg.autoTcyMaxDigits,
+						});
+						this.tempSettings.wysiwyg.autoTcyMinDigits =
+							digitRange.minDigits;
+						this.tempSettings.wysiwyg.autoTcyMaxDigits =
+							digitRange.maxDigits;
+						return digitRange;
+					};
+					let refreshAutoTcyMinDigits: (() => void) | null = null;
+					let refreshAutoTcyMaxDigits: (() => void) | null = null;
+					const refreshAutoTcyDigitSelects = () => {
+						refreshAutoTcyMinDigits?.();
+						refreshAutoTcyMaxDigits?.();
+					};
+
+					this.createSettingItem(
+						content,
+						"最小桁数",
+						"自動TCYにする英数字列の最小桁数を選択",
+						(itemEl) => {
+							const select = itemEl.createEl("select");
+							select.className =
+								"tategaki-settings-select is-medium";
+
+							for (let digit = 1; digit <= 4; digit += 1) {
+								select.createEl("option", {
+									text: String(digit),
+									value: String(digit),
+								});
+							}
+
+							const refresh = () => {
+								const digitRange =
+									normalizeAutoTcyDigitSettings();
+								select.value = String(digitRange.minDigits);
+							};
+							refreshAutoTcyMinDigits = refresh;
+
+							refresh();
+
+							select.addEventListener("change", () => {
+								this.tempSettings.wysiwyg.autoTcyMinDigits =
+									Number(select.value);
+								refreshAutoTcyDigitSelects();
+								this.applySettings();
+							});
+						},
+					);
+
+					this.createSettingItem(
+						content,
+						"最大桁数",
+						"自動TCYにする英数字列の最大桁数を選択",
+						(itemEl) => {
+							const select = itemEl.createEl("select");
+							select.className =
+								"tategaki-settings-select is-medium";
+
+							for (let digit = 1; digit <= 4; digit += 1) {
+								select.createEl("option", {
+									text: String(digit),
+									value: String(digit),
+								});
+							}
+
+							const refresh = () => {
+								const digitRange =
+									normalizeAutoTcyDigitSettings();
+								select.value = String(digitRange.maxDigits);
+							};
+							refreshAutoTcyMaxDigits = refresh;
+
+							refresh();
+
+							select.addEventListener("change", () => {
+								this.tempSettings.wysiwyg.autoTcyMaxDigits =
+									Number(select.value);
+								refreshAutoTcyDigitSelects();
 								this.applySettings();
 							});
 						},
@@ -2225,6 +2322,7 @@ export class SettingsPanelModal extends Modal {
 							this.applySettings();
 						});
 					},
+					selectionModeSettingState,
 				);
 			},
 		);

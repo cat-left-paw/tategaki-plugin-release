@@ -9,7 +9,8 @@ import Italic from "@tiptap/extension-italic";
 import { Slice } from "@tiptap/pm/model";
 import BulletList from "@tiptap/extension-bullet-list";
 import OrderedList from "@tiptap/extension-ordered-list";
-import ListItem from "@tiptap/extension-list-item";
+import { ChecklistListItem } from "./extensions/checklist-list-item";
+import { ChecklistClickExtension } from "./extensions/checklist-click";
 import Blockquote from "@tiptap/extension-blockquote";
 import Code from "@tiptap/extension-code";
 import Strike from "@tiptap/extension-strike";
@@ -37,11 +38,15 @@ import { WbrNode } from "./extensions/wbr";
 import { TategakiImage } from "./extensions/tategaki-image";
 import { AozoraTcyNode } from "./extensions/aozora-tcy";
 import { AutoTcyDecoration } from "./extensions/auto-tcy-decoration";
+import { HeadingFoldExtension } from "./extensions/heading-fold-extension";
 import {
 	convertAozoraRubySyntaxToHtml,
 	convertRubyElementsToAozora,
 } from "../../shared/aozora-ruby";
-import { convertAozoraTcySyntaxToHtml } from "../../shared/aozora-tcy";
+import {
+	convertAozoraTcySyntaxToHtml,
+	resolveAutoTcyDigitRange,
+} from "../../shared/aozora-tcy";
 
 export interface TategakiCompatEditorOptions {
 	element: HTMLElement;
@@ -91,6 +96,7 @@ export function createTategakiCompatEditor(options: TategakiCompatEditorOptions)
 			AozoraTcyNode,
 			AutoTcyDecoration.configure({
 				isEnabled: () => settings.wysiwyg.enableAutoTcy === true,
+				getDigitRange: () => resolveAutoTcyDigitRange(settings.wysiwyg),
 			}),
 			Heading.configure({
 				levels: [1, 2, 3, 4, 5, 6],
@@ -101,12 +107,14 @@ export function createTategakiCompatEditor(options: TategakiCompatEditorOptions)
 			Underline,
 			BulletList,
 			OrderedList,
-			ListItem,
+			ChecklistListItem,
+			ChecklistClickExtension,
 			Blockquote,
 			Code,
 			CodeBlockExtension,
 			HardBreakSerializer,
 			TategakiHorizontalRule,
+			HeadingFoldExtension,
 			Link.configure({
 				autolink: true,
 				openOnClick: true,

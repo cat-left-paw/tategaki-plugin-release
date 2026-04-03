@@ -2,10 +2,15 @@ import { Extension } from "@tiptap/core";
 import { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { collectAutoTcyRanges } from "../../../shared/aozora-tcy";
+import {
+	type AutoTcyDigitRange,
+	collectAutoTcyRanges,
+	resolveAutoTcyDigitRange,
+} from "../../../shared/aozora-tcy";
 
 export interface AutoTcyDecorationOptions {
 	isEnabled: () => boolean;
+	getDigitRange: () => AutoTcyDigitRange;
 }
 
 const AutoTcyDecorationPluginKey = new PluginKey("tategaki-auto-tcy-decoration");
@@ -16,15 +21,20 @@ export const AutoTcyDecoration = Extension.create<AutoTcyDecorationOptions>({
 	addOptions() {
 		return {
 			isEnabled: () => false,
+			getDigitRange: () => resolveAutoTcyDigitRange(),
 		};
 	},
 
 	addProseMirrorPlugins() {
 		let cachedDoc: ProseMirrorNode | null = null;
 		let cachedEnabled = false;
+		let cachedDigitRange: AutoTcyDigitRange | null = null;
 		let cachedDecorations: DecorationSet | null = null;
 
-		const buildDecorations = (doc: ProseMirrorNode): DecorationSet => {
+		const buildDecorations = (
+			doc: ProseMirrorNode,
+			digitRange: AutoTcyDigitRange,
+		): DecorationSet => {
 			const decorations: Decoration[] = [];
 			doc.descendants((node, pos) => {
 				if (!node.isText) return true;
@@ -45,7 +55,7 @@ export const AutoTcyDecoration = Extension.create<AutoTcyDecorationOptions>({
 					}
 				}
 
-				const ranges = collectAutoTcyRanges(text);
+				const ranges = collectAutoTcyRanges(text, digitRange);
 				for (const range of ranges) {
 					if (range.from >= range.to) continue;
 					decorations.push(
@@ -66,22 +76,30 @@ export const AutoTcyDecoration = Extension.create<AutoTcyDecorationOptions>({
 				props: {
 					decorations: (state) => {
 						const enabled = this.options.isEnabled();
+						const digitRange = this.options.getDigitRange();
 						if (!enabled) {
 							cachedDoc = state.doc;
 							cachedEnabled = false;
+							cachedDigitRange = digitRange;
 							cachedDecorations = null;
 							return null;
 						}
 						if (
 							cachedDecorations &&
 							cachedEnabled === enabled &&
-							cachedDoc === state.doc
+							cachedDoc === state.doc &&
+							cachedDigitRange?.minDigits === digitRange.minDigits &&
+							cachedDigitRange?.maxDigits === digitRange.maxDigits
 						) {
 							return cachedDecorations;
 						}
-						cachedDecorations = buildDecorations(state.doc);
+						cachedDecorations = buildDecorations(
+							state.doc,
+							digitRange,
+						);
 						cachedDoc = state.doc;
 						cachedEnabled = enabled;
+						cachedDigitRange = digitRange;
 						return cachedDecorations;
 					},
 				},
@@ -89,4 +107,3 @@ export const AutoTcyDecoration = Extension.create<AutoTcyDecorationOptions>({
 		];
 	},
 });
-

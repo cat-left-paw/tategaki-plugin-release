@@ -23,6 +23,7 @@ import {
 	isValidAozoraTcyBody,
 } from "../../shared/aozora-tcy";
 import { resolveTipTapRubySelection } from "./ruby-selection";
+import { COMPAT_TOOLBAR_LIST_BUTTONS } from "./toolbar-list-buttons";
 
 export interface TipTapToolbarOptions {
 	app: App;
@@ -101,27 +102,27 @@ export class TipTapCompatToolbar {
 		}
 
 		// 書字方向切り替えボタン（一番左に配置）
-			if (this.options.onToggleWritingMode && this.options.getWritingMode) {
-				this.writingModeButton = this.createButton(
-					"arrow-down-up",
+		if (this.options.onToggleWritingMode && this.options.getWritingMode) {
+			this.writingModeButton = this.createButton(
+				"arrow-down-up",
 				t("toolbar.writingMode.toggle"),
 				() => {
 					this.options.onToggleWritingMode?.();
 					this.updateWritingModeButton();
 					this.updateHorizontalRuleIcon();
-					},
-				);
-				this.writingModeButton.addEventListener("mouseenter", () => {
-					this.writingModeButtonHovered = true;
-					this.updateWritingModeButton();
-				});
-				this.writingModeButton.addEventListener("mouseleave", () => {
-					this.writingModeButtonHovered = false;
-					this.updateWritingModeButton();
-				});
+				},
+			);
+			this.writingModeButton.addEventListener("mouseenter", () => {
+				this.writingModeButtonHovered = true;
 				this.updateWritingModeButton();
-				this.createSeparator();
-			}
+			});
+			this.writingModeButton.addEventListener("mouseleave", () => {
+				this.writingModeButtonHovered = false;
+				this.updateWritingModeButton();
+			});
+			this.updateWritingModeButton();
+			this.createSeparator();
+		}
 
 		// ファイル切替（SoTと同等の導線）
 		if (this.options.onOpenFileSwitcher) {
@@ -130,6 +131,20 @@ export class TipTapCompatToolbar {
 				t("toolbar.fileSwitch"),
 				() => this.options.onOpenFileSwitcher?.(),
 			);
+			this.createSeparator();
+		}
+
+		// 書籍モード（SoT と同じ先頭導線へ揃える）
+		if (this.options.onToggleReadingMode) {
+			this.readingModeButton = this.createButton(
+				"book",
+				t("toolbar.readingMode.pagination"),
+				() => {
+					this.options.onToggleReadingMode?.();
+					this.updateReadingModeButton();
+				},
+			);
+			this.updateReadingModeButton();
 			this.createSeparator();
 		}
 
@@ -178,12 +193,11 @@ export class TipTapCompatToolbar {
 		this.createSeparator();
 
 		// リスト・引用
-		this.createButton("list", t("toolbar.bulletList"), () =>
-			this.editor.chain().focus().toggleBulletList().run(),
-		);
-		this.createButton("list-ordered", t("toolbar.orderedList"), () =>
-			this.editor.chain().focus().toggleOrderedList().run(),
-		);
+		for (const button of COMPAT_TOOLBAR_LIST_BUTTONS) {
+			this.createButton(button.icon, button.label, () =>
+				button.run(this.editor),
+			);
+		}
 		this.createButton("quote", t("toolbar.blockquote"), () =>
 			this.toggleBlockquoteWithTrailingParagraph(),
 		);
@@ -260,20 +274,6 @@ export class TipTapCompatToolbar {
 			this.createButton("list-tree", t("toolbar.outline"), () => {
 				this.options.onToggleOutline?.();
 			});
-		}
-
-		// 書籍モード
-		if (this.options.onToggleReadingMode) {
-			this.createSeparator();
-			this.readingModeButton = this.createButton(
-				"book",
-				t("toolbar.readingMode.pagination"),
-				() => {
-					this.options.onToggleReadingMode?.();
-					this.updateReadingModeButton();
-				},
-			);
-			this.updateReadingModeButton();
 		}
 
 		// 補助入力パネル（トグル）
@@ -794,11 +794,9 @@ export class TipTapCompatToolbar {
 				tcyActive ? t("toolbar.tcyClear") : t("toolbar.tcyInsert"),
 			);
 		}
-		this.updateButtonState("list", this.editor.isActive("bulletList"));
-		this.updateButtonState(
-			"list-ordered",
-			this.editor.isActive("orderedList"),
-		);
+		for (const button of COMPAT_TOOLBAR_LIST_BUTTONS) {
+			this.updateButtonState(button.buttonKey, button.isActive(this.editor));
+		}
 		this.updateButtonState("quote", this.editor.isActive("blockquote"));
 		this.updateButtonState("code-2", this.editor.isActive("codeBlock"));
 

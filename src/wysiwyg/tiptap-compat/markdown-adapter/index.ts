@@ -11,6 +11,7 @@ import {
 } from "../../../shared/aozora-tcy";
 import type { TategakiV2Settings } from "../../../types/settings";
 import { COMPAT_HARD_BREAK_MARKDOWN } from "../line-break-policy";
+import { headingFoldPluginKey } from "../heading-fold";
 
 const BLANK_LINE_MARKER = "\u2060";
 type MarkdownItConstructor = typeof import("markdown-it");
@@ -98,6 +99,13 @@ class TipTapMarkdownAdapter implements MarkdownAdapter {
 			contextFilePath,
 			resolveImageSrc: this.resolveImageSrc,
 		});
+		// 全文差し替えの前に fold state をクリア（ファイル切替時の state 漏れを防ぐ）
+		const view = this.editor.view;
+		if (view) {
+			view.dispatch(
+				view.state.tr.setMeta(headingFoldPluginKey, { type: "clear" }),
+			);
+		}
 		this.isApplying = true;
 		try {
 			this.editor
@@ -375,7 +383,14 @@ function renderStrictMarkdownToTipTapHtml(
 				break;
 			}
 
-			blocks.push(markdownRenderer.render(listLines.join("\n")));
+			const hasTaskItems = listLines.some((l) =>
+				/^(\s*)(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(l),
+			);
+			if (hasTaskItems && isSimpleTaskList(listLines)) {
+				blocks.push(convertTaskListLinesToHtml(listLines, enableRuby));
+			} else {
+				blocks.push(markdownRenderer.render(listLines.join("\n")));
+			}
 			i = j - 1;
 			continue;
 		}
@@ -768,17 +783,25 @@ function serializeList(
 ): string {
 	const lines: string[] = [];
 	const baseIndent = " ".repeat(indentLevel);
-	const continuationIndent = " ".repeat(indentLevel + marker.length + 1);
 	for (let i = 0; i < node.childCount; i++) {
 		const child = node.child(i);
+		// checklist: listItem の checked 属性に応じてマーカーを変える
+		const checked = child.attrs?.checked;
+		let checkboxToken = "";
+		if (checked === true) checkboxToken = "[x] ";
+		else if (checked === false) checkboxToken = "[ ] ";
+		const fullMarker = `${marker} ${checkboxToken}`;
+		// 本文開始位置 = baseIndent + fullMarker の長さ分
+		const contentIndentLen = indentLevel + fullMarker.length;
+		const continuationIndent = " ".repeat(contentIndentLen);
 		const body =
 			serializeBlock(
 				child,
-				indentLevel + marker.length + 1,
+				contentIndentLen,
 				i,
 				node.childCount
 			) ?? "";
-		const prefix = `${baseIndent}${marker} `;
+		const prefix = `${baseIndent}${fullMarker}`;
 		lines.push(
 			body
 				.split("\n")
@@ -796,6 +819,70 @@ function serializeList(
 	}
 	return lines.join("\n");
 }
+
+/**
+ * タスクリスト行を TipTap が解釈できる HTML に変換する。
+ * `- [ ] item` / `- [x] item` パターンの行を対象にし、
+ * 通常リスト行（チェックボックスなし）は無視する。
+ */
+/**
+ * 与えられたリスト行群が「単純なタスクリスト」かどうかを判定する。
+ *
+ * 単純なタスクリスト = 空行以外の全行がトップレベルの task 項目で、
+ * marker 種別（unordered / ordered）がブロック内で統一されているもの
+ * 以下の場合は false を返してフォールバック（markdown-it）を使う:
+ * - 継続行（インデントされた非リスト行）が含まれる
+ * - ネストしたタスク項目（先頭スペースあり）が含まれる
+ * - 通常の箇条書きや番号リストが混在する
+ * - unordered checklist と ordered checklist が混在する
+ */
+function isSimpleTaskList(lines: string[]): boolean {
+	let markerKind: "unordered" | "ordered" | null = null;
+	for (const line of lines) {
+		if (/^\s*$/.test(line)) continue;
+		const currentKind = /^[-*+]\s+\[[ xX]\]/.test(line)
+			? "unordered"
+			: /^\d+[.)]\s+\[[ xX]\]/.test(line)
+				? "ordered"
+				: null;
+		if (!currentKind) return false;
+		if (markerKind === null) {
+			markerKind = currentKind;
+			continue;
+		}
+		if (markerKind !== currentKind) return false;
+	}
+	return true;
+}
+
+function convertTaskListLinesToHtml(lines: string[], enableRuby: boolean): string {
+	const taskItemRegex = /^(\s*)(?:([-*+])|\d+[.)])\s+\[([ xX])\]\s*(.*)$/;
+	const items: string[] = [];
+	let markerKind: "unordered" | "ordered" | null = null;
+	for (const line of lines) {
+		const match = taskItemRegex.exec(line);
+		if (!match) continue;
+		const currentKind = match[2] ? "unordered" : "ordered";
+		if (markerKind === null) {
+			markerKind = currentKind;
+		} else if (markerKind !== currentKind) {
+			return "";
+		}
+		const checked = match[3].toLowerCase() === "x";
+		const rawContent = match[4] ?? "";
+		// インライン記法（ボールド・イタリック等）を変換
+		const renderedContent = enableRuby
+			? markdownRenderer.renderInline(convertInlineSyntaxToTipTapHtml(rawContent, true))
+			: markdownRenderer.renderInline(rawContent);
+		items.push(
+			`<li data-checked="${checked}"><p>${renderedContent}</p></li>`,
+		);
+	}
+	if (items.length === 0 || markerKind === null) return "";
+	const tag = markerKind === "ordered" ? "ol" : "ul";
+	return `<${tag}>${items.join("")}</${tag}>`;
+}
+
 
 function flattenChildren(node: PMNode, indentLevel: number): string {
 	const parts: string[] = [];

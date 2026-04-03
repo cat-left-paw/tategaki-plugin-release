@@ -1,13 +1,45 @@
 const TCY_START_MARK = "｟";
 const TCY_END_MARK = "｠";
-const TCY_BODY_PATTERN = "[A-Za-z0-9!?]{2,4}";
+const TCY_BODY_PATTERN = "[A-Za-z0-9!?]{1,4}";
 const AUTO_TCY_SYMBOLS = new Set(["!!", "!?", "??"]);
+
+export const AUTO_TCY_MIN_DIGITS_MIN = 1;
+export const AUTO_TCY_MAX_DIGITS_MAX = 4;
+export const DEFAULT_AUTO_TCY_MIN_DIGITS = 2;
+export const DEFAULT_AUTO_TCY_MAX_DIGITS = 4;
+
+export type AutoTcyDigitRange = {
+	minDigits: number;
+	maxDigits: number;
+};
 
 export type AutoTcyRange = {
 	from: number;
 	to: number;
 	text: string;
 };
+
+export function resolveAutoTcyDigitRange(
+	input?: {
+		minDigits?: unknown;
+		maxDigits?: unknown;
+		autoTcyMinDigits?: unknown;
+		autoTcyMaxDigits?: unknown;
+	} | null,
+): AutoTcyDigitRange {
+	const rawMin = normalizeAutoTcyDigitValue(
+		input?.minDigits ?? input?.autoTcyMinDigits,
+		DEFAULT_AUTO_TCY_MIN_DIGITS,
+	);
+	const rawMax = normalizeAutoTcyDigitValue(
+		input?.maxDigits ?? input?.autoTcyMaxDigits,
+		DEFAULT_AUTO_TCY_MAX_DIGITS,
+	);
+
+	return rawMin <= rawMax
+		? { minDigits: rawMin, maxDigits: rawMax }
+		: { minDigits: rawMax, maxDigits: rawMin };
+}
 
 export function createAozoraTcyRegExp(): RegExp {
 	return new RegExp(
@@ -17,15 +49,38 @@ export function createAozoraTcyRegExp(): RegExp {
 }
 
 export function isValidAozoraTcyBody(text: string): boolean {
-	return /^[A-Za-z0-9!?]{2,4}$/.test(text);
+	return /^[A-Za-z0-9!?]{1,4}$/.test(text);
 }
 
-export function isValidAutoTcyBody(text: string): boolean {
-	if (/^[A-Za-z0-9]{2,4}$/.test(text)) return true;
+export function isValidAutoTcyBody(
+	text: string,
+	options?: {
+		minDigits?: unknown;
+		maxDigits?: unknown;
+		autoTcyMinDigits?: unknown;
+		autoTcyMaxDigits?: unknown;
+	},
+): boolean {
+	const digitRange = resolveAutoTcyDigitRange(options);
+	if (/^[A-Za-z0-9]+$/.test(text)) {
+		const length = text.length;
+		return (
+			length >= digitRange.minDigits &&
+			length <= digitRange.maxDigits
+		);
+	}
 	return AUTO_TCY_SYMBOLS.has(text);
 }
 
-export function collectAutoTcyRanges(text: string): AutoTcyRange[] {
+export function collectAutoTcyRanges(
+	text: string,
+	options?: {
+		minDigits?: unknown;
+		maxDigits?: unknown;
+		autoTcyMinDigits?: unknown;
+		autoTcyMaxDigits?: unknown;
+	},
+): AutoTcyRange[] {
 	if (!text) return [];
 	const ranges: AutoTcyRange[] = [];
 	const tokenRegex = /[A-Za-z0-9!?]+/g;
@@ -38,7 +93,7 @@ export function collectAutoTcyRanges(text: string): AutoTcyRange[] {
 		const next = end < text.length ? text[end] : "";
 		// 明示TCY（｟...｠）内の本文は自動TCY対象から除外する。
 		if (prev === TCY_START_MARK && next === TCY_END_MARK) continue;
-		if (!isValidAutoTcyBody(token)) continue;
+		if (!isValidAutoTcyBody(token, options)) continue;
 		ranges.push({ from: index, to: end, text: token });
 	}
 	return ranges;
@@ -85,4 +140,15 @@ function escapeHtml(input: string): string {
 		.replace(/>/g, "&gt;")
 		.replace(/"/g, "&quot;")
 		.replace(/'/g, "&#39;");
+}
+
+function normalizeAutoTcyDigitValue(value: unknown, fallback: number): number {
+	const num = Number(value);
+	if (!Number.isFinite(num)) {
+		return fallback;
+	}
+	return Math.max(
+		AUTO_TCY_MIN_DIGITS_MIN,
+		Math.min(AUTO_TCY_MAX_DIGITS_MAX, Math.trunc(num)),
+	);
 }

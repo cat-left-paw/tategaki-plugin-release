@@ -2,6 +2,12 @@
  * Tategaki Plugin v2.0 設定型定義
  */
 
+import {
+	DEFAULT_AUTO_TCY_MAX_DIGITS,
+	DEFAULT_AUTO_TCY_MIN_DIGITS,
+	resolveAutoTcyDigitRange,
+} from "../shared/aozora-tcy";
+
 export type WritingMode = "vertical-rl" | "horizontal-tb";
 export type EditorMode = "tiptap";
 export type SyncMode = "manual" | "auto";
@@ -206,6 +212,8 @@ export interface WysiwygSettings {
 	customEmphasisChars?: string[]; // 傍点候補のユーザー登録文字
 	enableTcy: boolean; // 縦中横
 	enableAutoTcy: boolean; // 記号を増やさない自動縦中横（表示のみ）
+	autoTcyMinDigits?: number; // 自動TCY対象の最小桁数
+	autoTcyMaxDigits?: number; // 自動TCY対象の最大桁数
 	enableAssistantInput: boolean; // 補助入力パネル
 	enableSyncBackup: boolean; // 互換モードの同期バックアップ
 	plainTextView?: boolean; // SoTビューの全文プレーン表示
@@ -225,7 +233,7 @@ export interface WysiwygSettings {
  * 現在の設定バージョン
  * 新しい設定が追加された時にインクリメントする
  */
-export const CURRENT_SETTINGS_VERSION = 3;
+export const CURRENT_SETTINGS_VERSION = 4;
 
 /**
  * メイン設定インターフェース
@@ -376,6 +384,8 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		customEmphasisChars: [],
 		enableTcy: true,
 		enableAutoTcy: false,
+		autoTcyMinDigits: DEFAULT_AUTO_TCY_MIN_DIGITS,
+		autoTcyMaxDigits: DEFAULT_AUTO_TCY_MAX_DIGITS,
 		enableAssistantInput: false,
 		enableSyncBackup: true,
 		plainTextView: false,
@@ -734,6 +744,12 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 				validated.wysiwyg.enableAutoTcy =
 					DEFAULT_V2_SETTINGS.wysiwyg.enableAutoTcy;
 			}
+			const autoTcyDigitRange = resolveAutoTcyDigitRange({
+				minDigits: (validated.wysiwyg as any).autoTcyMinDigits,
+				maxDigits: (validated.wysiwyg as any).autoTcyMaxDigits,
+			});
+			validated.wysiwyg.autoTcyMinDigits = autoTcyDigitRange.minDigits;
+			validated.wysiwyg.autoTcyMaxDigits = autoTcyDigitRange.maxDigits;
 			if (typeof (validated.wysiwyg as any).plainTextView !== "boolean") {
 				validated.wysiwyg.plainTextView =
 					DEFAULT_V2_SETTINGS.wysiwyg.plainTextView;
@@ -818,6 +834,14 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 					normalizeCustomEmphasisChars(
 						validated.wysiwyg.customEmphasisChars
 					);
+				const autoTcyDigitRange = resolveAutoTcyDigitRange({
+					minDigits: validated.wysiwyg.autoTcyMinDigits,
+					maxDigits: validated.wysiwyg.autoTcyMaxDigits,
+				});
+				validated.wysiwyg.autoTcyMinDigits =
+					autoTcyDigitRange.minDigits;
+				validated.wysiwyg.autoTcyMaxDigits =
+					autoTcyDigitRange.maxDigits;
 			}
 
 		if (
