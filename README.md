@@ -15,6 +15,15 @@ Status:
   - Vertical / horizontal writing layout
   - Paragraph-level source text editing
   - Keyboard navigation tuned for vertical writing, including `Home` / `End` / `PageUp` / `PageDown`
+  - Typewriter scroll
+    - Keeps the caret near a configurable follow position while typing
+    - Supports configurable follow position and follow band width
+    - Works together with scroll past end so the caret stays comfortable near the document end
+  - Visual focus options for Writing & Reference mode
+    - Highlight the active editing block
+    - Highlight the current line
+    - Dim non-focused paragraphs / blocks
+    - Can be used together with Typewriter scroll or independently
   - Ruby (furigana) support (Aozora Bunko style), e.g. `｜漢字《かんじ》`
   - TCY support
     - Explicit TCY: `｟A｠` / `｟12｠` for 1-4 characters
@@ -23,10 +32,13 @@ Status:
   - Outline navigation and heading folding
   - Selection mode options for Writing & Reference mode (`fast-click` / `native-drag`)
     - New installs now default to `fast-click`
+    - While Typewriter scroll is active, selection behavior is treated effectively as `fast-click`
   - Outliner-style list editing: move items, change nesting with `Tab` / `Shift+Tab`, and keep ordered lists renumbered
   - Improved `Enter` / `Shift+Enter` behavior in list items and blockquotes
     - `Enter` continues or exits naturally, and `Shift+Enter` can be used for in-item line breaks and continuing blank lines
   - Horizontal rules can be deleted directly in Writing & Reference mode with `Delete` / `Backspace`
+  - Toolbar controls for Typewriter features
+    - Toggle `Typewriter scroll`, editing-block highlight, current-line highlight, and non-focus dimming from one menu
 - Book mode
   - Measured pagination for reading
   - Frontmatter can be shown on a separate cover page
