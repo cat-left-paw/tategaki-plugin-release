@@ -23,8 +23,21 @@ import { App, Modal, Setting, setIcon } from "obsidian";
 import TategakiV2Plugin from "../../core/plugin";
 import { debugWarn, debugError } from "../../shared/logger";
 import { showConfirmModal } from "../../shared/ui/confirm-modal";
-import { t } from "../../shared/i18n";
-import { resolveSelectionModeSettingUiState } from "./settings-panel-state";
+import {
+	localizePresetThemeName,
+	t,
+} from "../../shared/i18n";
+import {
+	formatSoTTypewriterHighlightOpacityForUi,
+	formatSoTTypewriterNonFocusOpacityForUi,
+	formatSoTTypewriterFollowBandRatioForUi,
+	formatSoTTypewriterOffsetRatioForUi,
+	resolveSelectionModeSettingUiState,
+	resolveSoTTypewriterHighlightOpacityFromUiPercent,
+	resolveSoTTypewriterNonFocusOpacityFromUiPercent,
+	resolveSoTTypewriterFollowBandRatioFromUiPercent,
+	resolveSoTTypewriterOffsetRatioFromUiPercent,
+} from "./settings-panel-state";
 import { resolveAutoTcyDigitRange } from "../../shared/aozora-tcy";
 
 const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
@@ -87,12 +100,15 @@ const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
 		"Left = closer to text / Right = farther from text.",
 	縦中横: "TCY",
 	自動縦中横: "Auto TCY",
-	"英数字列の対象桁数を設定でき、!! / !? / ?? は従来通り表示時のみ縦中横として扱います（本文には記号を追加しません）":
-		"Configure the digit range for alphanumeric sequences; !! / !? / ?? remain display-only TCY without changing the text.",
+	"短い英数字列を表示時のみ縦中横として扱います。必要に応じて対象桁数や数字限定を設定できます":
+		"Short alphanumeric sequences are treated as display-only TCY. You can adjust the digit range and optionally limit matches to digits.",
+	"数字だけを対象にする": "Digits only",
+	"ON にしても !! / !? / ?? は常に自動TCYの対象です":
+		"Even when enabled, !! / !? / ?? are always matched by Auto TCY.",
 	最小桁数: "Minimum digits",
-	"自動TCYにする英数字列の最小桁数を選択": "Choose the minimum digits for automatic TCY alphanumeric sequences.",
+	"自動TCYにする対象列の最小桁数を選択": "Choose the minimum digit count for Auto TCY targets.",
 	最大桁数: "Maximum digits",
-	"自動TCYにする英数字列の最大桁数を選択": "Choose the maximum digits for automatic TCY alphanumeric sequences.",
+	"自動TCYにする対象列の最大桁数を選択": "Choose the maximum digit count for Auto TCY targets.",
 	色設定: "Colors",
 	文字色: "Text color",
 	ページ色: "Page color",
@@ -106,9 +122,38 @@ const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
 	見出し文字色をリセット: "Reset heading color",
 	本文と同じ色に戻します: "Revert to body text color.",
 	リセット: "Reset",
+	見出し後マージン: "Margin after heading",
+	"見出しの後（縦書き：左側、横書き：下側）のマージン（em）":
+		"Margin after the heading (vertical: left side, horizontal: bottom) in em.",
+	見出し区切り線: "Heading divider lines",
+	"区切り線を表示する見出しレベルを選択":
+		"Choose which heading levels show divider lines.",
+	見出しの位置: "Heading position",
+	見出しテキストの配置位置: "Position of heading text.",
+	上: "Top",
+	下: "Bottom",
+	選択モード: "Selection mode",
+	クリック優先: "Prefer clicks",
+	ドラッグ選択優先: "Prefer drag selection",
+	"クリック位置の反映を優先するか、ドラッグ選択の自然さを優先するかを選びます。":
+		"Choose whether to prioritize click placement or natural drag selection.",
 	フロントマター設定: "Frontmatter",
 	"見出しを章扉に設定すると、フロントマターは独立ページとして扱われます":
 		"When headings are set to title pages, frontmatter is treated as a separate page.",
+	書籍モード表示方式: "Book-mode display style",
+	"フロントマターを本文先頭に流すか、独立ページにするかを選びます":
+		"Choose whether frontmatter flows into the document body or appears on a separate page.",
+	本文先頭: "Inline at document start",
+	独立ページ: "Separate page",
+	"独立ページのレイアウト": "Separate-page layout",
+	"独立ページの配置方式を選びます":
+		"Choose how the separate page is arranged.",
+	通常: "Normal",
+	中央配置: "Centered",
+	"独立ページの文字方向": "Separate-page writing mode",
+	"中央配置の書字方向を指定します":
+		"Choose the writing direction used for the centered layout.",
+	本文に合わせる: "Match body writing mode",
 	余白設定: "Margins",
 	上余白: "Top padding",
 	"ページ上部の余白を調整（0〜200px）": "Adjust top padding (0-200px).",
@@ -171,6 +216,14 @@ const SETTINGS_PANEL_EN_TEXT: Record<string, string> = {
 		"Adjust top padding of book-mode content area (0-200px).",
 	"書籍モード本文エリアの下余白を調整（0〜200px）":
 		"Adjust bottom padding of book-mode content area (0-200px).",
+	"見出しのページ扱い": "Heading pagination",
+	"見出し前での改ページまたは章扉ページの挿入方式を選びます":
+		"Choose whether to insert a page break or a title page before headings.",
+	改ページ: "Page break",
+	章扉: "Title page",
+	対象見出しレベル: "Target heading level",
+	"改ページまたは章扉の対象となる見出しレベルを指定します":
+		"Choose which heading level and above receives page breaks or title pages.",
 	見出し前改ページ: "Page break before headings",
 	"指定レベル以上の見出しの前で改ページします（0=無効）":
 		"Insert a page break before headings at or above this level (0=off).",
@@ -358,6 +411,14 @@ type SettingsPanelMode = "sot" | "compat";
 type SettingsPanelContext = {
 	mode: SettingsPanelMode;
 	isCeImeMode?: boolean;
+	/**
+	 * SoT で source mode (段落プレーン編集) / plain text view 中など、
+	 * Typewriter 系機能が一時的に利用不可な状態にあるか。
+	 * 保存値は変えずに、UI を非活性表示にするためのフラグ。
+	 */
+	sotTypewriterUnavailable?: boolean;
+	sotTypewriterUnavailableReason?: string;
+	onClose?: () => void;
 };
 
 const GENERIC_FONTS = [
@@ -929,6 +990,11 @@ export class SettingsPanelModal extends Modal {
 		this.panelContext = {
 			mode: context?.mode ?? "sot",
 			isCeImeMode: context?.isCeImeMode ?? false,
+			sotTypewriterUnavailable:
+				context?.sotTypewriterUnavailable ?? false,
+			sotTypewriterUnavailableReason:
+				context?.sotTypewriterUnavailableReason,
+			onClose: context?.onClose,
 		};
 	}
 
@@ -1021,6 +1087,7 @@ export class SettingsPanelModal extends Modal {
 
 	private createSettingsUI(container: HTMLElement): void {
 		const isCompatMode = this.panelContext.mode === "compat";
+		// 互換モード判定のみに使う。Typewriter ON による disabled は refreshSelectionModeState で動的管理する。
 		const selectionModeSettingState = resolveSelectionModeSettingUiState(
 			this.panelContext.mode,
 		);
@@ -1042,6 +1109,7 @@ export class SettingsPanelModal extends Modal {
 		let rubyGapValueSpan: HTMLSpanElement | null = null;
 		let refreshHeadingAlignOptions: (() => void) | null = null;
 		let refreshFrontmatterDisplayModeNotice: (() => void) | null = null;
+		let refreshSelectionModeState: (() => void) | null = null;
 
 		// ─── 基本設定 ───
 		this.createCollapsibleSection(
@@ -1751,7 +1819,7 @@ export class SettingsPanelModal extends Modal {
 					this.createSettingItem(
 						content,
 						"自動縦中横",
-						"英数字列の対象桁数を設定でき、!! / !? / ?? は従来通り表示時のみ縦中横として扱います（本文には記号を追加しません）",
+						"短い英数字列を表示時のみ縦中横として扱います。必要に応じて対象桁数や数字限定を設定できます",
 						(itemEl) => {
 							const button = itemEl.createEl("button", {
 								cls: "tategaki-toggle-button",
@@ -1780,6 +1848,28 @@ export class SettingsPanelModal extends Modal {
 						},
 					);
 
+					this.createSettingItem(
+						content,
+						"数字だけを対象にする",
+						"ON にしても !! / !? / ?? は常に自動TCYの対象です",
+						(itemEl) => {
+							const checkbox = itemEl.createEl("input", {
+								type: "checkbox",
+							});
+							checkbox.checked =
+								this.tempSettings.wysiwyg.autoTcyDigitsOnly === true;
+							checkbox.setAttr(
+								"aria-label",
+								sp("数字だけを対象にする"),
+							);
+							checkbox.addEventListener("change", () => {
+								this.tempSettings.wysiwyg.autoTcyDigitsOnly =
+									checkbox.checked;
+								this.applySettings();
+							});
+						},
+					);
+
 					const normalizeAutoTcyDigitSettings = () => {
 						const digitRange = resolveAutoTcyDigitRange({
 							minDigits:
@@ -1803,7 +1893,7 @@ export class SettingsPanelModal extends Modal {
 					this.createSettingItem(
 						content,
 						"最小桁数",
-						"自動TCYにする英数字列の最小桁数を選択",
+						"自動TCYにする対象列の最小桁数を選択",
 						(itemEl) => {
 							const select = itemEl.createEl("select");
 							select.className =
@@ -1837,7 +1927,7 @@ export class SettingsPanelModal extends Modal {
 					this.createSettingItem(
 						content,
 						"最大桁数",
-						"自動TCYにする英数字列の最大桁数を選択",
+						"自動TCYにする対象列の最大桁数を選択",
 						(itemEl) => {
 							const select = itemEl.createEl("select");
 							select.className =
@@ -2299,7 +2389,7 @@ export class SettingsPanelModal extends Modal {
 					content,
 					"執筆・参照モードの選択方法",
 					"クリック位置の反映を優先するか、ドラッグ選択の自然さを優先するかを選びます。",
-					(itemEl) => {
+					(itemEl, context) => {
 						const select = itemEl.createEl("select");
 						select.className = "tategaki-settings-select";
 
@@ -2314,18 +2404,526 @@ export class SettingsPanelModal extends Modal {
 
 						select.value =
 							this.tempSettings.wysiwyg.sotSelectionMode ??
-							"native-drag";
+							"fast-click";
 
 						select.addEventListener("change", () => {
 							this.tempSettings.wysiwyg.sotSelectionMode =
 								getTypedSelectValue<SoTSelectionMode>(select);
 							this.applySettings();
 						});
+
+						// Typewriter ON/OFF 切り替え時に disabled 状態を動的更新するための hook
+						if (context && !isCompatMode) {
+							const { settingItem, infoContainer } = context;
+							const twDisabledReason = infoContainer.createDiv({
+								cls: "tategaki-settings-item-disabled-reason",
+								text: "Typewriter スクロール中は選択方法が一時的にクリック優先になります。Typewriter スクロールをオフにすると、保存されている設定に戻ります。",
+							});
+							twDisabledReason.style.display = "none";
+
+							refreshSelectionModeState = () => {
+								const tw =
+									this.tempSettings.wysiwyg
+										.sotTypewriterMode === true;
+								settingItem.toggleClass("is-disabled", tw);
+								select.disabled = tw;
+								twDisabledReason.style.display = tw
+									? ""
+									: "none";
+							};
+							// 初期状態を反映
+							refreshSelectionModeState();
+						}
 					},
 					selectionModeSettingState,
 				);
 			},
 		);
+
+		if (!isCompatMode) {
+			const typewriterUnavailable =
+				this.panelContext.sotTypewriterUnavailable === true;
+			const typewriterDisabledReason = typewriterUnavailable
+				? (this.panelContext.sotTypewriterUnavailableReason ?? "")
+				: undefined;
+			// 各項目には disabled だけ渡し、理由はセクション冒頭バナーに集約する
+			const typewriterItemOptions = typewriterUnavailable
+				? { disabled: true }
+				: undefined;
+			this.createCollapsibleSection(
+				container,
+				"scroll-text",
+				t("settings.typewriter.section"),
+				false,
+				(content) => {
+					if (typewriterUnavailable && typewriterDisabledReason) {
+						const banner = content.createDiv({
+							cls: "tategaki-settings-section-disabled-banner tategaki-settings-item-disabled-reason",
+							text: sp(typewriterDisabledReason),
+						});
+						banner.style.display = "";
+					}
+					this.createSettingItem(
+						content,
+						t("settings.sotTypewriterMode.name"),
+						t("settings.sotTypewriterMode.desc"),
+						(itemEl) => {
+							const button = itemEl.createEl("button", {
+								cls: "tategaki-toggle-button",
+							});
+
+							const getCurrent = () =>
+								this.tempSettings.wysiwyg
+									.sotTypewriterMode === true;
+
+							const refresh = (enabled: boolean) => {
+								this.updateToggleButton(
+									button,
+									enabled,
+									t("settings.value.enabled"),
+									t("settings.value.disabled"),
+								);
+							};
+
+							refresh(getCurrent());
+
+							button.addEventListener("click", () => {
+								const next = !getCurrent();
+								this.tempSettings.wysiwyg.sotTypewriterMode =
+									next;
+								refresh(next);
+								refreshSelectionModeState?.();
+								this.applySettings();
+							});
+						},
+						typewriterItemOptions,
+					);
+
+					this.createSettingItem(
+						content,
+						t("settings.sotTypewriterOffsetRatio.name"),
+						t("settings.sotTypewriterOffsetRatio.desc"),
+						(itemEl) => {
+							const wrapper = itemEl.createDiv(
+								"tategaki-slider-control",
+							);
+
+							const slider = wrapper.createEl("input");
+							slider.type = "range";
+							slider.min = "-40";
+							slider.max = "40";
+							slider.step = "1";
+							const initialValue =
+								this.tempSettings.wysiwyg
+									.sotTypewriterOffsetRatio ??
+								DEFAULT_V2_SETTINGS.wysiwyg
+									.sotTypewriterOffsetRatio ??
+								0;
+							slider.value = Math.round(
+								initialValue * 100,
+							).toString();
+							slider.className =
+								"tategaki-slider-input is-medium";
+
+							const valueSpan = wrapper.createEl("span");
+							valueSpan.textContent =
+								formatSoTTypewriterOffsetRatioForUi(
+									initialValue,
+								);
+							valueSpan.className =
+								"tategaki-slider-value is-wide";
+
+							slider.addEventListener("input", () => {
+								const value =
+									resolveSoTTypewriterOffsetRatioFromUiPercent(
+										parseInt(slider.value, 10),
+									);
+								this.tempSettings.wysiwyg.sotTypewriterOffsetRatio =
+									value;
+								valueSpan.textContent =
+									formatSoTTypewriterOffsetRatioForUi(value);
+								this.applySettings({ debounce: true });
+							});
+
+							slider.addEventListener("change", () => {
+								this.applySettings();
+							});
+						},
+						typewriterItemOptions,
+					);
+
+					this.createSettingItem(
+						content,
+						t("settings.sotTypewriterFollowBandRatio.name"),
+						t("settings.sotTypewriterFollowBandRatio.desc"),
+						(itemEl) => {
+							const wrapper = itemEl.createDiv(
+								"tategaki-slider-control",
+							);
+
+							const slider = wrapper.createEl("input");
+							slider.type = "range";
+							slider.min = "5";
+							slider.max = "25";
+							slider.step = "1";
+							const initialValue =
+								this.tempSettings.wysiwyg
+									.sotTypewriterFollowBandRatio ??
+								DEFAULT_V2_SETTINGS.wysiwyg
+									.sotTypewriterFollowBandRatio ??
+								0.16;
+							slider.value = Math.round(
+								initialValue * 100,
+							).toString();
+							slider.className =
+								"tategaki-slider-input is-medium";
+
+							const valueSpan = wrapper.createEl("span");
+							valueSpan.textContent =
+								formatSoTTypewriterFollowBandRatioForUi(
+									initialValue,
+								);
+							valueSpan.className =
+								"tategaki-slider-value is-wide";
+
+							slider.addEventListener("input", () => {
+								const value =
+									resolveSoTTypewriterFollowBandRatioFromUiPercent(
+										parseInt(slider.value, 10),
+									);
+								this.tempSettings.wysiwyg.sotTypewriterFollowBandRatio =
+									value;
+								valueSpan.textContent =
+									formatSoTTypewriterFollowBandRatioForUi(
+										value,
+									);
+								this.applySettings({ debounce: true });
+							});
+
+							slider.addEventListener("change", () => {
+								this.applySettings();
+							});
+						},
+						typewriterItemOptions,
+					);
+
+					content.createEl("h4", {
+						text: t("settings.sotTypewriterVisualFocus.section"),
+					});
+
+					this.createSettingItem(
+						content,
+						t("settings.sotTypewriterBlockHighlightEnabled.name"),
+						t("settings.sotTypewriterBlockHighlightEnabled.desc"),
+						(itemEl) => {
+							const button = itemEl.createEl("button", {
+								cls: "tategaki-toggle-button",
+							});
+
+							const getCurrent = () =>
+								this.tempSettings.wysiwyg
+									.sotTypewriterBlockHighlightEnabled !==
+								false;
+
+							const refresh = (enabled: boolean) => {
+								this.updateToggleButton(
+									button,
+									enabled,
+									t("settings.value.enabled"),
+									t("settings.value.disabled"),
+								);
+							};
+
+							refresh(getCurrent());
+
+							button.addEventListener("click", () => {
+								const next = !getCurrent();
+								this.tempSettings.wysiwyg
+									.sotTypewriterBlockHighlightEnabled = next;
+								refresh(next);
+								this.applySettings();
+							});
+						},
+						typewriterItemOptions,
+					);
+
+					this.createSettingItem(
+						content,
+						t("settings.sotTypewriterCurrentLineHighlightEnabled.name"),
+						t("settings.sotTypewriterCurrentLineHighlightEnabled.desc"),
+						(itemEl) => {
+							const button = itemEl.createEl("button", {
+								cls: "tategaki-toggle-button",
+							});
+
+							const getCurrent = () =>
+								this.tempSettings.wysiwyg
+									.sotTypewriterCurrentLineHighlightEnabled !==
+								false;
+
+							const refresh = (enabled: boolean) => {
+								this.updateToggleButton(
+									button,
+									enabled,
+									t("settings.value.enabled"),
+									t("settings.value.disabled"),
+								);
+							};
+
+							refresh(getCurrent());
+
+							button.addEventListener("click", () => {
+								const next = !getCurrent();
+								this.tempSettings.wysiwyg
+									.sotTypewriterCurrentLineHighlightEnabled =
+									next;
+								refresh(next);
+								this.applySettings();
+							});
+						},
+						typewriterItemOptions,
+					);
+
+					this.createSettingItem(
+						content,
+						t("settings.sotTypewriterNonFocusDimEnabled.name"),
+						t("settings.sotTypewriterNonFocusDimEnabled.desc"),
+						(itemEl) => {
+							const button = itemEl.createEl("button", {
+								cls: "tategaki-toggle-button",
+							});
+
+							const getCurrent = () =>
+								this.tempSettings.wysiwyg
+									.sotTypewriterNonFocusDimEnabled !== false;
+
+							const refresh = (enabled: boolean) => {
+								this.updateToggleButton(
+									button,
+									enabled,
+									t("settings.value.enabled"),
+									t("settings.value.disabled"),
+								);
+							};
+
+							refresh(getCurrent());
+
+							button.addEventListener("click", () => {
+								const next = !getCurrent();
+								this.tempSettings.wysiwyg
+									.sotTypewriterNonFocusDimEnabled = next;
+								refresh(next);
+								this.applySettings();
+							});
+						},
+						typewriterItemOptions,
+					);
+
+					this.createColorSettingItem(
+						content,
+						t("settings.sotTypewriterBlockHighlightColor.name"),
+						this.tempSettings.wysiwyg
+							.sotTypewriterBlockHighlightColor ??
+							DEFAULT_V2_SETTINGS.wysiwyg
+								.sotTypewriterBlockHighlightColor ??
+							"#1e90ff",
+						DEFAULT_V2_SETTINGS.wysiwyg
+							.sotTypewriterBlockHighlightColor ?? "#1e90ff",
+						(color) => {
+							this.tempSettings.wysiwyg
+								.sotTypewriterBlockHighlightColor = color;
+							this.applySettings();
+						},
+						typewriterItemOptions,
+					);
+
+					this.createSettingItem(
+						content,
+						t("settings.sotTypewriterBlockHighlightOpacity.name"),
+						t("settings.sotTypewriterBlockHighlightOpacity.desc"),
+						(itemEl) => {
+							const wrapper = itemEl.createDiv(
+								"tategaki-slider-control",
+							);
+
+							const slider = wrapper.createEl("input");
+							slider.type = "range";
+							slider.min = "0";
+							slider.max = "100";
+							slider.step = "1";
+							const initialValue =
+								this.tempSettings.wysiwyg
+									.sotTypewriterBlockHighlightOpacity ??
+								DEFAULT_V2_SETTINGS.wysiwyg
+									.sotTypewriterBlockHighlightOpacity ??
+								0.16;
+							slider.value = Math.round(
+								initialValue * 100,
+							).toString();
+							slider.className =
+								"tategaki-slider-input is-medium";
+
+							const valueSpan = wrapper.createEl("span");
+							valueSpan.textContent =
+								formatSoTTypewriterHighlightOpacityForUi(
+									initialValue,
+								);
+							valueSpan.className =
+								"tategaki-slider-value is-wide";
+
+							slider.addEventListener("input", () => {
+								const value =
+									resolveSoTTypewriterHighlightOpacityFromUiPercent(
+										parseInt(slider.value, 10),
+									);
+								this.tempSettings.wysiwyg
+									.sotTypewriterBlockHighlightOpacity = value;
+								valueSpan.textContent =
+									formatSoTTypewriterHighlightOpacityForUi(
+										value,
+									);
+								this.applySettings({ debounce: true });
+							});
+
+							slider.addEventListener("change", () => {
+								this.applySettings();
+							});
+						},
+						typewriterItemOptions,
+					);
+
+					this.createColorSettingItem(
+						content,
+						t("settings.sotTypewriterCurrentLineHighlightColor.name"),
+						this.tempSettings.wysiwyg
+							.sotTypewriterCurrentLineHighlightColor ??
+							DEFAULT_V2_SETTINGS.wysiwyg
+								.sotTypewriterCurrentLineHighlightColor ??
+							"#1e90ff",
+						DEFAULT_V2_SETTINGS.wysiwyg
+							.sotTypewriterCurrentLineHighlightColor ??
+							"#1e90ff",
+						(color) => {
+							this.tempSettings.wysiwyg
+								.sotTypewriterCurrentLineHighlightColor = color;
+							this.applySettings();
+						},
+						typewriterItemOptions,
+					);
+
+					this.createSettingItem(
+						content,
+						t("settings.sotTypewriterCurrentLineHighlightOpacity.name"),
+						t("settings.sotTypewriterCurrentLineHighlightOpacity.desc"),
+						(itemEl) => {
+							const wrapper = itemEl.createDiv(
+								"tategaki-slider-control",
+							);
+
+							const slider = wrapper.createEl("input");
+							slider.type = "range";
+							slider.min = "0";
+							slider.max = "100";
+							slider.step = "1";
+							const initialValue =
+								this.tempSettings.wysiwyg
+									.sotTypewriterCurrentLineHighlightOpacity ??
+								DEFAULT_V2_SETTINGS.wysiwyg
+									.sotTypewriterCurrentLineHighlightOpacity ??
+								0.28;
+							slider.value = Math.round(
+								initialValue * 100,
+							).toString();
+							slider.className =
+								"tategaki-slider-input is-medium";
+
+							const valueSpan = wrapper.createEl("span");
+							valueSpan.textContent =
+								formatSoTTypewriterHighlightOpacityForUi(
+									initialValue,
+								);
+							valueSpan.className =
+								"tategaki-slider-value is-wide";
+
+							slider.addEventListener("input", () => {
+								const value =
+									resolveSoTTypewriterHighlightOpacityFromUiPercent(
+										parseInt(slider.value, 10),
+									);
+								this.tempSettings.wysiwyg
+									.sotTypewriterCurrentLineHighlightOpacity =
+									value;
+								valueSpan.textContent =
+									formatSoTTypewriterHighlightOpacityForUi(
+										value,
+									);
+								this.applySettings({ debounce: true });
+							});
+
+							slider.addEventListener("change", () => {
+								this.applySettings();
+							});
+						},
+						typewriterItemOptions,
+					);
+
+					this.createSettingItem(
+						content,
+						t("settings.sotTypewriterNonFocusOpacity.name"),
+						t("settings.sotTypewriterNonFocusOpacity.desc"),
+						(itemEl) => {
+							const wrapper = itemEl.createDiv(
+								"tategaki-slider-control",
+							);
+
+							const slider = wrapper.createEl("input");
+							slider.type = "range";
+							slider.min = "10";
+							slider.max = "100";
+							slider.step = "1";
+							const initialValue =
+								this.tempSettings.wysiwyg
+									.sotTypewriterNonFocusOpacity ??
+								DEFAULT_V2_SETTINGS.wysiwyg
+									.sotTypewriterNonFocusOpacity ??
+								0.42;
+							slider.value = Math.round(
+								initialValue * 100,
+							).toString();
+							slider.className =
+								"tategaki-slider-input is-medium";
+
+							const valueSpan = wrapper.createEl("span");
+							valueSpan.textContent =
+								formatSoTTypewriterNonFocusOpacityForUi(
+									initialValue,
+								);
+							valueSpan.className =
+								"tategaki-slider-value is-wide";
+
+							slider.addEventListener("input", () => {
+								const value =
+									resolveSoTTypewriterNonFocusOpacityFromUiPercent(
+										parseInt(slider.value, 10),
+									);
+								this.tempSettings.wysiwyg
+									.sotTypewriterNonFocusOpacity = value;
+								valueSpan.textContent =
+									formatSoTTypewriterNonFocusOpacityForUi(
+										value,
+									);
+								this.applySettings({ debounce: true });
+							});
+
+							slider.addEventListener("change", () => {
+								this.applySettings();
+							});
+						},
+						typewriterItemOptions,
+					);
+				},
+			);
+		}
 
 		// ─── キャレット設定 ───
 		this.createCollapsibleSection(
@@ -3300,6 +3898,7 @@ export class SettingsPanelModal extends Modal {
 		initialColor: string,
 		fallbackColor: string,
 		onChange: (color: string) => void,
+		options?: { disabled?: boolean; disabledReason?: string },
 	): void {
 		this.createSettingItem(
 			container,
@@ -3341,6 +3940,7 @@ export class SettingsPanelModal extends Modal {
 					);
 				});
 			},
+			options,
 		);
 	}
 
@@ -3365,7 +3965,7 @@ export class SettingsPanelModal extends Modal {
 		const themes = this.tempSettings.themes || [];
 		themes.forEach((theme) => {
 			select.createEl("option", {
-				text: theme.name,
+				text: localizePresetThemeName(theme.id, theme.name),
 				value: theme.id,
 			});
 		});
@@ -3539,7 +4139,7 @@ export class SettingsPanelModal extends Modal {
 		// プラグインのメソッドを使用してテーマを作成
 		await this.plugin.createThemeFromCurrentSettings(
 			themeName,
-			isEnglishUi() ? "User theme" : "ユーザー作成テーマ",
+			t("theme.userCreatedDescription"),
 		);
 
 		// tempSettingsを更新
@@ -3554,5 +4154,6 @@ export class SettingsPanelModal extends Modal {
 		}
 		const { contentEl } = this;
 		contentEl.empty();
+		this.panelContext.onClose?.();
 	}
 }

@@ -41,6 +41,31 @@ export type SoTPointerContext = {
 	setPointerState: (state: Partial<SoTPointerState>) => void;
 };
 
+export type SoTTailSpacerPointerEndSnapInput = {
+	writingMode: string;
+	lineIndex: number;
+	totalLines: number;
+	pointerClientX: number;
+	pointerClientY: number;
+	lineRect: DOMRect;
+	marginPx?: number;
+};
+
+export function shouldSnapSoTTailSpacerPointerToDocumentEnd(
+	input: SoTTailSpacerPointerEndSnapInput,
+): boolean {
+	if (input.totalLines <= 0) return false;
+	if (input.lineIndex !== input.totalLines - 1) return false;
+	const margin = input.marginPx ?? 2;
+	if (input.writingMode === "horizontal-tb") {
+		return input.pointerClientY > input.lineRect.bottom + margin;
+	}
+	if (input.writingMode === "vertical-lr") {
+		return input.pointerClientX > input.lineRect.right + margin;
+	}
+	return input.pointerClientX < input.lineRect.left - margin;
+}
+
 export class SoTPointerHandler {
 	private context: SoTPointerContext;
 	private autoScrollRaf: number | null = null;
@@ -639,6 +664,14 @@ export class SoTPointerHandler {
 		this.context.ensureLineRendered(lineEl);
 		const from = Number.parseInt(lineEl.dataset.from ?? "0", 10);
 		const to = Number.parseInt(lineEl.dataset.to ?? "0", 10);
+		const tailSpacerEndOffset = this.getTailSpacerEndOffsetFromPointerEvent(
+			lineEl,
+			event,
+			to,
+		);
+		if (tailSpacerEndOffset !== null) {
+			return tailSpacerEndOffset;
+		}
 		if (widgetEl && lineEl.contains(widgetEl)) {
 			const relFrom = Number.parseInt(widgetEl.dataset.from ?? "", 10);
 			const relTo = Number.parseInt(widgetEl.dataset.to ?? "", 10);
@@ -687,6 +720,37 @@ export class SoTPointerHandler {
 			) ?? 0;
 		const clamped = Math.max(0, Math.min(localOffset, lineLength));
 		return this.context.normalizeOffsetToVisible(from + clamped, true);
+	}
+
+	private getTailSpacerEndOffsetFromPointerEvent(
+		lineEl: HTMLElement,
+		event: PointerEvent,
+		to: number,
+	): number | null {
+		const rootEl = this.context.getDerivedRootEl();
+		if (!rootEl) return null;
+		const ranges = this.context.getLineRanges();
+		if (ranges.length === 0) return null;
+		const lineIndex = Number.parseInt(lineEl.dataset.line ?? "", 10);
+		if (!Number.isFinite(lineIndex)) return null;
+		const rects = this.context.getLineVisualRects(lineEl);
+		const lineRect = getRectUnion(rects, lineEl.getBoundingClientRect());
+		const writingMode = window.getComputedStyle(rootEl).writingMode;
+		if (
+			!shouldSnapSoTTailSpacerPointerToDocumentEnd({
+				writingMode,
+				lineIndex,
+				totalLines: ranges.length,
+				pointerClientX: event.clientX,
+				pointerClientY: event.clientY,
+				lineRect,
+			})
+		) {
+			return null;
+		}
+		const finalRange = ranges[ranges.length - 1];
+		const finalTo = finalRange?.to ?? to;
+		return this.context.normalizeOffsetToVisible(finalTo, true);
 	}
 
 	private findLineElementFromPoint(

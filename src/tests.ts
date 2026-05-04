@@ -15,7 +15,17 @@ import {
 	htmlToDocument,
 	markdownToDocument,
 } from "./wysiwyg/contenteditable-block/converters/markdown-parser";
-import { resolveSelectionModeSettingUiState } from "./wysiwyg/contenteditable/settings-panel-state";
+import {
+	formatSoTTypewriterHighlightOpacityForUi,
+	formatSoTTypewriterNonFocusOpacityForUi,
+	formatSoTTypewriterFollowBandRatioForUi,
+	formatSoTTypewriterOffsetRatioForUi,
+	resolveSelectionModeSettingUiState,
+	resolveSoTTypewriterHighlightOpacityFromUiPercent,
+	resolveSoTTypewriterNonFocusOpacityFromUiPercent,
+	resolveSoTTypewriterFollowBandRatioFromUiPercent,
+	resolveSoTTypewriterOffsetRatioFromUiPercent,
+} from "./wysiwyg/contenteditable/settings-panel-state";
 	import { MarkdownConverter } from "./wysiwyg/contenteditable/markdown-converter";
 	import { applyAozoraRubyToElement } from "./shared/aozora-ruby";
 	import { Editor } from "@tiptap/core";
@@ -53,6 +63,12 @@ import {
 	SOT_MARKDOWN_HARD_BREAK,
 } from "./wysiwyg/sot/sot-list-enter";
 import {
+	computeSoTHorizontalRuleLineDeletionRange,
+	isSoTHorizontalRuleLine,
+	trySoTHorizontalRuleCollapsedBackspace,
+	trySoTHorizontalRuleCollapsedDeleteForward,
+} from "./wysiwyg/sot/sot-hr-line-delete";
+import {
 	runListOutlinerAction,
 	type SoTListOutlinerHost,
 } from "./wysiwyg/sot/sot-list-outliner";
@@ -73,11 +89,39 @@ import { MeasuredPagination } from "./wysiwyg/reading-mode/measured-pagination";
 import { htmlHasVisibleContent } from "./wysiwyg/reading-mode/visible-content";
 import { debugWarn } from "./shared/logger";
 import { compareSemver } from "./shared/version";
-import { computeLineRanges } from "./wysiwyg/sot/line-ranges";
+import { computeLineRanges, type LineRange } from "./wysiwyg/sot/line-ranges";
+import { computeLineRangesFromLines, recomputeLineBlockKinds } from "./wysiwyg/sot/sot-line-model";
 import {
 	resolveEnsureLineRenderedTargetIndex,
 	resolveLineElementFromChildren,
 } from "./wysiwyg/sot/sot-line-element-contract";
+import {
+	resolveSoTFocusBlockAtSelectionHead,
+	resolveSoTFocusBlockForLineIndex,
+} from "./wysiwyg/sot/sot-focus-block-resolver";
+import {
+	applySoTFocusVisualClassesToLine,
+	SOT_FOCUS_VISUAL_BLOCK_HIGHLIGHT_ROOT_CLASS,
+	SOT_FOCUS_VISUAL_DIM_ROOT_CLASS,
+	SOT_FOCUS_VISUAL_LINE_CLASS,
+	SOT_FOCUS_VISUAL_ROOT_CLASS,
+	updateSoTFocusVisualDom,
+} from "./wysiwyg/sot/sot-focus-visual-dom";
+import {
+	resolveSoTCurrentLineVisualRectCandidates,
+	resolveSoTCurrentLineDisplayRect,
+	resolveSoTCurrentLineVisualRect,
+	SOT_FOCUS_VISUAL_CURRENT_LINE_CLASS,
+	SOT_FOCUS_VISUAL_CURRENT_LINE_OVERLAY_CLASS,
+	updateSoTCurrentLineVisualOverlay,
+} from "./wysiwyg/sot/sot-current-line-visual";
+import { applySoTFocusVisualCssVariables } from "./wysiwyg/sot/sot-focus-visual-style";
+import { isTypewriterMenuActive } from "./wysiwyg/shared/typewriter-menu-active";
+import { resolveSoTTypewriterAvailability } from "./wysiwyg/sot/sot-typewriter-availability";
+import {
+	createInactiveSoTFocusVisualState,
+	resolveSoTFocusVisualState,
+} from "./wysiwyg/sot/sot-focus-visual-state";
 import {
 	buildCollapsedGapRanges,
 	resolveVisibleLineIndexAfterBudget,
@@ -117,8 +161,11 @@ import { probeChunkSnapshot } from "./wysiwyg/sot/sot-chunk-read-probe";
 import {
 	decideOnPointerDown,
 	shouldHandleNativeSelectionMouseUpFallback,
+	resolveEffectiveSelectionMode,
 } from "./wysiwyg/sot/sot-native-selection-assist";
+import { shouldSnapSoTTailSpacerPointerToDocumentEnd } from "./wysiwyg/sot/sot-pointer";
 import { SoTSelectionChangeBinding } from "./wysiwyg/sot/sot-selectionchange-binding";
+import { SoTSelectionOverlay } from "./wysiwyg/sot/sot-selection-overlay";
 import {
 	cancelViewAnimationFrame,
 	clearViewTimeout,
@@ -135,17 +182,67 @@ import {
 	shouldSnapPointToLineEnd,
 } from "./wysiwyg/sot/sot-line-end-click";
 import { resolveSoTNavigationOffset } from "./wysiwyg/sot/sot-navigation";
+import {
+	applyPlainTextInsertAtOffset,
+	findSoTVisualLineStartIndexMatchingLocalOffset,
+	isSoTCollapsedLocalHeadAtVisualLineEndEquivalentToNextStart,
+	isSoTEndPendingVisualOnlyShowsPriorStripeEndAtHead,
+	resolveSoTCollapsedEndFirstTapAbsoluteHead,
+	resolveSoTCollapsedEndNavigationPlan,
+	resolveSoTVisualStripeIndexForLocalHead,
+} from "./wysiwyg/sot/sot-end-key-collapsed";
+import {
+	classifySoTHomeCollapsedPosition,
+	resolveSoTCollapsedHomeNavigationPlan,
+} from "./wysiwyg/sot/sot-home-key-collapsed";
+import { viewportCaretRectDisplayAtPriorStripeInlineEnd } from "./wysiwyg/sot/sot-end-key-visual-caret";
+import { shouldSoTDeferClearingEndKeyPendingBeforeHandleNavigate } from "./wysiwyg/sot/sot-end-key-pending-visual-caret";
 import { resolveSoTPlainEditHomeEndSelection } from "./wysiwyg/sot/sot-plain-edit-navigation";
 import {
+	computeSoTPageScrollRemaining,
+	evaluateSoTPageScrollOutcome,
 	resolveSoTPageNavigationOffsetCandidate,
+	resolveSoTPageNavigationOffsetCandidateForOutcome,
 	resolveSoTPageNavigationPlan,
+	SOT_PAGE_SCROLL_EDGE_REMAINING_PX,
+	SOT_PAGE_SCROLL_SUFFICIENT_RATIO,
 } from "./wysiwyg/sot/sot-page-navigation";
 import {
+	clampSoTPageDownDelta,
+	computeSoTContentScrollRemainingForPageDown,
+	computeSoTScrollPastEndExtent,
+} from "./wysiwyg/sot/sot-scroll-past-end";
+import {
+	resolveSoTNextLogicalLineVisualStartOffset,
 	resolveSoTPreviousLogicalLineVisualStartOffset,
 	resolveSoTVisualBoundarySnapOffset,
 	sortSoTVisualLineRects,
 } from "./wysiwyg/sot/sot-visual-navigation";
+import {
+	isSoTTypewriterCaretWithinBand,
+	resolveSoTTypewriterCaretMainAxisPosition,
+	resolveSoTTypewriterFollowBand,
+	resolveSoTTypewriterScrollPlan,
+	resolveSoTTypewriterScrollDeltaToBand,
+	resolveSoTTypewriterTarget,
+} from "./wysiwyg/sot/sot-typewriter-scroll";
+import {
+	isSoTTypewriterSuppressedNavigationKey,
+	resolveSoTTypewriterSuppressionDecision,
+} from "./wysiwyg/sot/sot-typewriter-suppression";
+import {
+	shouldRequestSoTTypewriterFollowForInput,
+	shouldUseSoTTypewriterPendingCaretForFollow,
+} from "./wysiwyg/sot/sot-typewriter-follow-request";
+import {
+	resolveSoTCaretScrollPolicy,
+	resolveSoTRenderScrollRestorePolicy,
+} from "./wysiwyg/sot/sot-caret-scroll-policy";
+import { findSoTRunTextPositionAtOffset } from "./wysiwyg/sot/sot-run-offset";
+import { collectRenderableTcyRangesForLine } from "./wysiwyg/sot/sot-inline-tcy";
+import { SoTPlainEditController } from "./wysiwyg/sot/sot-plain-edit-controller";
 import { SoTPointerWindowBinding } from "./wysiwyg/sot/sot-pointer-window-binding";
+import type { SoTEditor } from "./wysiwyg/sot/sot-editor";
 import {
 	collectAutoTcyRanges,
 	convertAozoraTcySyntaxToHtml,
@@ -186,6 +283,7 @@ export class TategakiTestSuite {
 		
 		await this.testSettingsValidation();
 		await this.testSelectionModeSettingUiState();
+		await this.testSoTTypewriterSettingsUiHelpers();
 		await this.testDefaultSettings();
 		await this.testCSSVariables();
 		await this.testDOMElements();
@@ -217,7 +315,15 @@ export class TategakiTestSuite {
 					await this.testMeasuredPaginationPrunesNestedPageBreakHeadingGhost();
 					await this.testMeasuredPaginationVisibleOnlyPages();
 				await this.testSoTLineRanges();
-				await this.testSoTListContinuationEnter();
+				await this.testSoTHorizontalRuleLineDeleteHelpers();
+				await this.testSoTFocusBlockResolverHelper();
+		await this.testSoTFocusVisualStateHelper();
+		await this.testTypewriterMenuActiveHelper();
+		await this.testSoTTypewriterAvailabilityHelper();
+		await this.testSoTFocusVisualDomHelper();
+		await this.testSoTCurrentLineVisualOverlayHelper();
+		await this.testSoTFocusVisualCssVariableHelper();
+		await this.testSoTListContinuationEnter();
 				await this.testSoTListHardBreakContinuation();
 				await this.testSoTBlockquoteContinuationEnter();
 				await this.testSoTBlockquoteHardBreakContinuation();
@@ -238,15 +344,32 @@ export class TategakiTestSuite {
 				await this.testSoTViewLocalDomUsesPopoutWindow();
 				await this.testSoTLineEndClickHelper();
 				await this.testSoTHomeEndNavigationHelper();
+				await this.testSoTCollapsedEndMeansNextVisualLineStart();
+				await this.testSoTCollapsedHomePositionBasedNavigation();
+				await this.testSoTCollapsedEndPositionBasedNavigation();
+				await this.testSoTCollapsedEndSecondTapPendingOverridesRectStripe();
 				await this.testSoTPageNavigationHelper();
 				await this.testSoTPageNavigationHelperSafety();
+				await this.testSoTPageScrollOutcomeHelper();
+				await this.testSoTPageScrollRemainingHelper();
+				await this.testSoTPageNavigationOffsetCandidateForOutcome();
+				await this.testSoTScrollPastEndHelper();
+				await this.testSoTTypewriterScrollHelper();
+				await this.testSoTTypewriterSuppressionHelper();
+				await this.testSoTTypewriterInputFollowRequestHelper();
+				await this.testSoTCaretScrollPolicySettingsPanel();
 				await this.testSoTPlainEditHomeEndNavigationHelper();
+				await this.testSoTPlainEditNormalLineRangeStaysSingleLine();
 				await this.testSoTPlainEditShiftHomeEndSelectionHelper();
 				await this.testSoTPlainEditModifiedHomeEndIsIgnored();
 				await this.testSoTVerticalPreviousLineNavigationHelper();
 				await this.testSoTVisualBoundaryNavigationHelper();
+				await this.testSoTRunOffsetBoundaryResolution();
 				await this.testSoTPointerWindowBindingRebindsWindow();
 				await this.testSoTNativeSelectionAssistPointerdownPolicy();
+				await this.testSoTTypewriterEffectiveSelectionMode();
+				await this.testSoTSelectionOverlayTailSpacerVisibleRange();
+				await this.testSoTTailSpacerPointerSnapIsFinalLineOnly();
 				await this.testSoTSelectionChangeBindingRebindsDocument();
 				await this.testSoTLineElementContract();
 				await this.testVersionCompare();
@@ -303,7 +426,1202 @@ export class TategakiTestSuite {
 			this.results.push({
 				name: testName,
 				success: false,
-				message: `行レンジ計算エラー: ${error.message}`,
+				message: `行レンジ計算エラー: ${(error as Error).message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTHorizontalRuleLineDeleteHelpers(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: 水平線行の検出と Backspace / Delete 用削除レンジが期待通り";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			assert(isSoTHorizontalRuleLine("---"), "--- は水平線");
+			assert(isSoTHorizontalRuleLine("  * * *\t"), "スペース入り * 罫線");
+			assert(!isSoTHorizontalRuleLine("foo"), "通常行は水平線ではない");
+			assert(!isSoTHorizontalRuleLine("--"), "2 文字は水平線ではない");
+
+			const rangesMid = computeLineRanges("a\n---\nb");
+			const delMid = computeSoTHorizontalRuleLineDeletionRange(
+				"a\n---\nb",
+				rangesMid,
+				1,
+			);
+			assert(delMid?.from === 2 && delMid.to === 6, "中間行は --- と \\n を削除");
+
+			const rangesLast = computeLineRanges("z\n---");
+			const delLast = computeSoTHorizontalRuleLineDeletionRange(
+				"z\n---",
+				rangesLast,
+				1,
+			);
+			assert(delLast?.from === 2 && delLast.to === 5, "末尾行は --- のみ削除");
+
+			const bs = trySoTHorizontalRuleCollapsedBackspace(
+				"a\n---\nb",
+				rangesMid,
+				1,
+				5,
+			);
+			assert(
+				bs?.deleteFrom === 2 && bs.deleteTo === 6 && bs.nextCaret === 2,
+				"行末 Backspace で水平線＋改行を削除",
+			);
+
+			const df = trySoTHorizontalRuleCollapsedDeleteForward(
+				"a\n---\nb",
+				rangesMid,
+				1,
+				2,
+			);
+			assert(
+				df?.deleteFrom === 2 && df.deleteTo === 6,
+				"行頭 Delete で水平線＋改行を削除",
+			);
+
+			const dfEnd = trySoTHorizontalRuleCollapsedDeleteForward(
+				"a\n---\nb",
+				rangesMid,
+				1,
+				5,
+			);
+			assert(
+				dfEnd?.deleteFrom === 2 && dfEnd.deleteTo === 6,
+				"行末 Delete でも水平線＋改行をまとめて削除",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "水平線 helper が期待通り",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `水平線 helper テスト失敗: ${(error as Error).message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTFocusBlockResolverHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: focus block resolver helper は現在行と編集 block を安定解決する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const normalizeLinkLabel = (label: string) =>
+				label.trim().toLowerCase();
+			const buildState = (text: string, collapsedHeadingLines = new Set<number>()) => {
+				const lines = text.split("\n");
+				const model = recomputeLineBlockKinds({
+					lines,
+					collapsedHeadingLines,
+					normalizeLinkLabel,
+				});
+				return {
+					lineRanges: computeLineRangesFromLines(lines),
+					...model,
+				};
+			};
+			const findLineIndex = (
+				ranges: Array<{ from: number; to: number }>,
+				offset: number,
+			): number | null => {
+				if (!Number.isFinite(offset)) return null;
+				for (let i = 0; i < ranges.length; i += 1) {
+					const range = ranges[i];
+					if (!range) continue;
+					if (offset >= range.from && offset <= range.to) return i;
+				}
+				return null;
+			};
+
+			const paragraphState = buildState("para1\npara2\n\npara3");
+			const paragraph = resolveSoTFocusBlockForLineIndex(paragraphState, 1);
+			assert(paragraph?.kind === "paragraph", "通常段落が paragraph にならない");
+			assert(
+				paragraph?.blockStartLine === 0 && paragraph.blockEndLine === 1,
+				`通常段落境界が不正: ${paragraph?.blockStartLine}-${paragraph?.blockEndLine}`,
+			);
+			const emptyLine = resolveSoTFocusBlockForLineIndex(paragraphState, 2);
+			assert(
+				emptyLine?.kind === "paragraph" &&
+					emptyLine.blockStartLine === 2 &&
+					emptyLine.blockEndLine === 2,
+				"空行が独立段落として解決されません",
+			);
+
+			const headingState = buildState("# Heading\nbody");
+			const heading = resolveSoTFocusBlockForLineIndex(headingState, 0);
+			assert(heading?.kind === "heading", "見出し行が heading にならない");
+			assert(
+				heading?.blockStartLine === 0 && heading.blockEndLine === 0,
+				"見出しが単体 block になっていません",
+			);
+
+			const calloutState = buildState(
+				"> [!note] Title\n> body\nnext",
+			);
+			const callout = resolveSoTFocusBlockForLineIndex(calloutState, 1);
+			assert(callout?.kind === "callout", "callout block が解決されません");
+			assert(
+				callout?.blockStartLine === 0 && callout.blockEndLine === 1,
+				"callout block 境界が不正",
+			);
+
+			const tableState = buildState(
+				"| a | b |\n| --- | --- |\n| c | d |\nnext",
+			);
+			const table = resolveSoTFocusBlockForLineIndex(tableState, 2);
+			assert(table?.kind === "table", "table block が解決されません");
+			assert(
+				table?.blockStartLine === 0 && table.blockEndLine === 2,
+				"table block 境界が不正",
+			);
+
+			const deflistState = buildState(
+				"term\n: def\nterm2\n: def2\nnext",
+			);
+			const deflist = resolveSoTFocusBlockForLineIndex(deflistState, 2);
+			assert(deflist?.kind === "deflist", "deflist block が解決されません");
+			assert(
+				deflist?.blockStartLine === 0 && deflist.blockEndLine === 3,
+				"deflist block 境界が不正",
+			);
+
+			const codeState = buildState(
+				"```ts\nconst x = 1;\n```\nnext",
+			);
+			const code = resolveSoTFocusBlockForLineIndex(codeState, 1);
+			assert(code?.kind === "code-block", "code block が解決されません");
+			assert(
+				code?.blockStartLine === 0 && code.blockEndLine === 2,
+				"code block 境界が不正",
+			);
+
+			const mathState = buildState(
+				"$$\na+b\n$$\nnext",
+			);
+			const math = resolveSoTFocusBlockForLineIndex(mathState, 1);
+			assert(math?.kind === "math-block", "math block が解決されません");
+			assert(
+				math?.blockStartLine === 0 && math.blockEndLine === 2,
+				"math block 境界が不正",
+			);
+
+			const frontmatterState = buildState(
+				"---\ntitle: test\n---\nbody",
+			);
+			const frontmatter = resolveSoTFocusBlockForLineIndex(
+				frontmatterState,
+				1,
+			);
+			assert(
+				frontmatter?.kind === "frontmatter-block",
+				"frontmatter block が解決されません",
+			);
+			assert(
+				frontmatter?.blockStartLine === 0 &&
+					frontmatter.blockEndLine === 2,
+				"frontmatter block 境界が不正",
+			);
+
+			const collapsedState = buildState(
+				"# H1\nhidden-a\nhidden-b\nnext",
+				new Set([0]),
+			);
+			assert(
+				resolveSoTFocusBlockForLineIndex(collapsedState, 1) === null,
+				"heading-hidden 行が安全に失敗しません",
+			);
+
+			const paragraphFromHead = resolveSoTFocusBlockAtSelectionHead({
+				selectionHead: 7,
+				findLineIndex: (offset) =>
+					findLineIndex(paragraphState.lineRanges, offset),
+				state: paragraphState,
+			});
+			assert(
+				paragraphFromHead?.kind === "paragraph" &&
+					paragraphFromHead.blockStartLine === 0 &&
+					paragraphFromHead.blockEndLine === 1,
+				"selection head 経由で paragraph block を解決できません",
+			);
+
+			assert(
+				resolveSoTFocusBlockForLineIndex(paragraphState, -1) === null,
+				"負の line index で安全に失敗しません",
+			);
+			assert(
+				resolveSoTFocusBlockForLineIndex(paragraphState, null) === null,
+				"null line index で安全に失敗しません",
+			);
+			assert(
+				resolveSoTFocusBlockAtSelectionHead({
+					selectionHead: null,
+					findLineIndex: () => 0,
+					state: paragraphState,
+				}) === null,
+				"null selection head で安全に失敗しません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"paragraph/heading/callout/table/deflist/code/math/frontmatter と安全失敗を確認",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `focus block resolver helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTFocusVisualStateHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: focus visual state helper は Typewriter scroll に依存せず current block を解決する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const normalizeLinkLabel = (label: string) =>
+				label.trim().toLowerCase();
+			const text = "para1\npara2\n\n# Heading\nbody";
+			const lines = text.split("\n");
+			const model = recomputeLineBlockKinds({
+				lines,
+				collapsedHeadingLines: new Set<number>(),
+				normalizeLinkLabel,
+			});
+			const lineRanges = computeLineRangesFromLines(lines);
+			const blockResolverState = {
+				lineRanges,
+				...model,
+			};
+			const findLineIndex = (offset: number): number | null => {
+				for (let i = 0; i < lineRanges.length; i += 1) {
+					const range = lineRanges[i];
+					if (!range) continue;
+					if (offset >= range.from && offset <= range.to) return i;
+				}
+				return null;
+			};
+
+			const active = resolveSoTFocusVisualState({
+				sourceModeEnabled: false,
+				plainTextViewEnabled: false,
+				ceImeMode: false,
+				blockHighlightEnabled: true,
+				currentLineHighlightEnabled: true,
+				nonFocusDimEnabled: true,
+				selection: { anchor: 7, head: 7 },
+				findLineIndex,
+				blockResolverState,
+			});
+			assert(active.active, "collapsed caret で focus visual が有効になりません");
+			assert(
+				active.block?.kind === "paragraph" &&
+					active.focusLineStart === 1 &&
+					active.focusLineEnd === 1 &&
+					active.currentLineIndex === 1,
+				"paragraph は V2 では current line 単位に縮まりません",
+			);
+
+			const heading = resolveSoTFocusVisualState({
+				sourceModeEnabled: false,
+				plainTextViewEnabled: false,
+				ceImeMode: false,
+				blockHighlightEnabled: true,
+				currentLineHighlightEnabled: true,
+				nonFocusDimEnabled: true,
+				selection: { anchor: 14, head: 14 },
+				findLineIndex,
+				blockResolverState,
+			});
+			assert(
+				heading.active &&
+					heading.block?.kind === "heading" &&
+					heading.focusLineStart === 3 &&
+					heading.focusLineEnd === 3 &&
+					heading.currentLineIndex === 3,
+				"見出し caret で heading 単体 block になりません",
+			);
+
+			const suppressedCurrentLine = resolveSoTFocusVisualState({
+				sourceModeEnabled: false,
+				plainTextViewEnabled: false,
+				ceImeMode: false,
+				suppressCurrentLineHighlight: true,
+				blockHighlightEnabled: true,
+				currentLineHighlightEnabled: true,
+				nonFocusDimEnabled: true,
+				selection: { anchor: 14, head: 14 },
+				findLineIndex,
+				blockResolverState,
+			});
+			assert(
+				suppressedCurrentLine.active &&
+					suppressedCurrentLine.currentLineIndex === null &&
+					suppressedCurrentLine.focusLineStart === 3 &&
+					suppressedCurrentLine.focusLineEnd === 3,
+				"current line suppress 時に block まで消えています",
+			);
+
+			// Typewriter scroll とは独立して、視覚フォーカスは選択範囲やソースモードなどで inactive になる
+			const rangeSelection = resolveSoTFocusVisualState({
+				sourceModeEnabled: false,
+				plainTextViewEnabled: false,
+				ceImeMode: false,
+				blockHighlightEnabled: true,
+				currentLineHighlightEnabled: true,
+				nonFocusDimEnabled: true,
+				selection: { anchor: 0, head: 7 },
+				findLineIndex,
+				blockResolverState,
+			});
+			assert(
+				!rangeSelection.active &&
+					rangeSelection.reason === "selection-range",
+				"range selection で suppress されません",
+			);
+
+			const sourceMode = resolveSoTFocusVisualState({
+				sourceModeEnabled: true,
+				plainTextViewEnabled: false,
+				ceImeMode: false,
+				blockHighlightEnabled: true,
+				currentLineHighlightEnabled: true,
+				nonFocusDimEnabled: true,
+				selection: { anchor: 7, head: 7 },
+				findLineIndex,
+				blockResolverState,
+			});
+			assert(
+				!sourceMode.active && sourceMode.reason === "source-mode",
+				"source mode で suppress されません",
+			);
+
+			const plainTextView = resolveSoTFocusVisualState({
+				sourceModeEnabled: false,
+				plainTextViewEnabled: true,
+				ceImeMode: false,
+				blockHighlightEnabled: true,
+				currentLineHighlightEnabled: true,
+				nonFocusDimEnabled: true,
+				selection: { anchor: 7, head: 7 },
+				findLineIndex,
+				blockResolverState,
+			});
+			assert(
+				!plainTextView.active && plainTextView.reason === "plain-text-view",
+				"plain text view で suppress されません",
+			);
+
+			const ceIme = resolveSoTFocusVisualState({
+				sourceModeEnabled: false,
+				plainTextViewEnabled: false,
+				ceImeMode: true,
+				blockHighlightEnabled: true,
+				currentLineHighlightEnabled: true,
+				nonFocusDimEnabled: true,
+				selection: { anchor: 7, head: 7 },
+				findLineIndex,
+				blockResolverState,
+			});
+			assert(
+				!ceIme.active && ceIme.reason === "ce-ime",
+				"CE IME 中で suppress されません",
+			);
+
+			const blockOnly = resolveSoTFocusVisualState({
+				sourceModeEnabled: false,
+				plainTextViewEnabled: false,
+				ceImeMode: false,
+				blockHighlightEnabled: true,
+				currentLineHighlightEnabled: false,
+				nonFocusDimEnabled: false,
+				selection: { anchor: 14, head: 14 },
+				findLineIndex,
+				blockResolverState,
+			});
+			assert(
+				blockOnly.active &&
+					blockOnly.blockHighlightEnabled &&
+					!blockOnly.currentLineHighlightEnabled &&
+					!blockOnly.nonFocusDimEnabled &&
+					blockOnly.currentLineIndex === null,
+				"block highlight 単独設定が state に反映されません",
+			);
+
+			const dimOnly = resolveSoTFocusVisualState({
+				sourceModeEnabled: false,
+				plainTextViewEnabled: false,
+				ceImeMode: false,
+				blockHighlightEnabled: false,
+				currentLineHighlightEnabled: false,
+				nonFocusDimEnabled: true,
+				selection: { anchor: 14, head: 14 },
+				findLineIndex,
+				blockResolverState,
+			});
+			assert(
+				dimOnly.active &&
+					!dimOnly.blockHighlightEnabled &&
+					!dimOnly.currentLineHighlightEnabled &&
+					dimOnly.nonFocusDimEnabled &&
+					dimOnly.focusLineStart === 3 &&
+					dimOnly.focusLineEnd === 3,
+				"non-focus dim 単独設定で focus block を保持できません",
+			);
+
+			const allDisabled = resolveSoTFocusVisualState({
+				sourceModeEnabled: false,
+				plainTextViewEnabled: false,
+				ceImeMode: false,
+				blockHighlightEnabled: false,
+				currentLineHighlightEnabled: false,
+				nonFocusDimEnabled: false,
+				selection: { anchor: 14, head: 14 },
+				findLineIndex,
+				blockResolverState,
+			});
+			assert(
+				!allDisabled.active &&
+					allDisabled.reason === "visual-focus-disabled",
+				"全 toggle OFF で inactive になりません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"Typewriter scroll に依存せず、paragraph/heading current line・toggle 抑制・source/plainText/ceIme/range selection の inactive を確認",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `focus visual state helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testTypewriterMenuActiveHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: Typewriter メニューボタンの active 判定は 4 設定の OR";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			assert(
+				!isTypewriterMenuActive({
+					scrollEnabled: false,
+					blockHighlightEnabled: false,
+					currentLineHighlightEnabled: false,
+					nonFocusDimEnabled: false,
+				}),
+				"全 OFF で active になっています",
+			);
+
+			assert(
+				isTypewriterMenuActive({
+					scrollEnabled: true,
+					blockHighlightEnabled: false,
+					currentLineHighlightEnabled: false,
+					nonFocusDimEnabled: false,
+				}),
+				"Typewriter scroll のみ ON で active になりません",
+			);
+
+			assert(
+				isTypewriterMenuActive({
+					scrollEnabled: false,
+					blockHighlightEnabled: true,
+					currentLineHighlightEnabled: false,
+					nonFocusDimEnabled: false,
+				}),
+				"block highlight のみ ON で active になりません (scroll とは独立)",
+			);
+
+			assert(
+				isTypewriterMenuActive({
+					scrollEnabled: false,
+					blockHighlightEnabled: false,
+					currentLineHighlightEnabled: true,
+					nonFocusDimEnabled: false,
+				}),
+				"current line highlight のみ ON で active になりません",
+			);
+
+			assert(
+				isTypewriterMenuActive({
+					scrollEnabled: false,
+					blockHighlightEnabled: false,
+					currentLineHighlightEnabled: false,
+					nonFocusDimEnabled: true,
+				}),
+				"non-focus dim のみ ON で active になりません",
+			);
+
+			assert(
+				isTypewriterMenuActive({
+					scrollEnabled: true,
+					blockHighlightEnabled: true,
+					currentLineHighlightEnabled: true,
+					nonFocusDimEnabled: true,
+				}),
+				"全 ON で active になりません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"4 設定 (scroll / block / current line / dim) のいずれかが ON ならボタンが active 扱い",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `Typewriter menu active helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTTypewriterAvailabilityHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: Typewriter availability は source/plain text/plain edit で利用不可";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const ok = resolveSoTTypewriterAvailability({
+				sourceModeEnabled: false,
+				plainTextViewEnabled: false,
+				plainEditActive: false,
+			});
+			assert(ok.available === true, "通常 SoT で available になっていない");
+			assert(ok.reason === null, "通常 SoT の reason が null になっていない");
+
+			const src = resolveSoTTypewriterAvailability({
+				sourceModeEnabled: true,
+				plainTextViewEnabled: false,
+				plainEditActive: false,
+			});
+			assert(src.available === false, "source mode で利用可能のままになっている");
+			assert(
+				src.reason === "source-mode",
+				`source mode の reason が source-mode になっていない: ${src.reason}`,
+			);
+
+			const plain = resolveSoTTypewriterAvailability({
+				sourceModeEnabled: false,
+				plainTextViewEnabled: true,
+				plainEditActive: false,
+			});
+			assert(
+				plain.available === false,
+				"plain text view で利用可能のままになっている",
+			);
+			assert(
+				plain.reason === "plain-text-view",
+				`plain text view の reason が plain-text-view になっていない: ${plain.reason}`,
+			);
+
+			const pe = resolveSoTTypewriterAvailability({
+				sourceModeEnabled: false,
+				plainTextViewEnabled: false,
+				plainEditActive: true,
+			});
+			assert(
+				pe.available === false,
+				"plain edit 中で利用可能のままになっている",
+			);
+			assert(
+				pe.reason === "plain-edit",
+				`plain edit の reason が plain-edit になっていない: ${pe.reason}`,
+			);
+
+			// 複合条件: plain edit が最優先
+			const both = resolveSoTTypewriterAvailability({
+				sourceModeEnabled: true,
+				plainTextViewEnabled: true,
+				plainEditActive: true,
+			});
+			assert(
+				both.available === false && both.reason === "plain-edit",
+				"複合条件で plain edit が優先されていない",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"通常 SoT は available、source / plain text / plain edit では利用不可と reason を返す",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `Typewriter availability helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTFocusVisualDomHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: focus visual DOM helper は current block marker と root class を差分更新する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const window = new Window();
+			const document =
+				window.document as unknown as globalThis.Document;
+			const rootEl = document.createElement("div") as HTMLElement;
+			rootEl.className = "tategaki-sot-derived-root";
+			const lines = new Map<number, HTMLElement>();
+			for (let i = 0; i < 4; i += 1) {
+				const lineEl = document.createElement("div") as HTMLElement;
+				lineEl.className = "tategaki-sot-line";
+				lineEl.dataset.line = String(i);
+				rootEl.appendChild(lineEl);
+				lines.set(i, lineEl);
+			}
+			const hiddenLine = document.createElement("div") as HTMLElement;
+			hiddenLine.className =
+				"tategaki-sot-line tategaki-md-heading-hidden";
+			hiddenLine.dataset.line = "9";
+
+			const previousState = createInactiveSoTFocusVisualState(
+				"visual-focus-disabled",
+			);
+			const blockA = {
+				active: true,
+				reason: null,
+				block: null,
+				focusLineStart: 0,
+				focusLineEnd: 1,
+				currentLineIndex: 1,
+				blockHighlightEnabled: true,
+				currentLineHighlightEnabled: true,
+				nonFocusDimEnabled: true,
+			};
+			updateSoTFocusVisualDom({
+				rootEl,
+				previousState,
+				nextState: blockA,
+				getLineElement: (lineIndex) => lines.get(lineIndex) ?? null,
+			});
+			assert(
+				rootEl.classList.contains(SOT_FOCUS_VISUAL_ROOT_CLASS),
+				"root に focus visual active class が付きません",
+			);
+			assert(
+				rootEl.classList.contains(SOT_FOCUS_VISUAL_DIM_ROOT_CLASS),
+				"root に dim enabled class が付きません",
+			);
+			assert(
+				rootEl.classList.contains(
+					SOT_FOCUS_VISUAL_BLOCK_HIGHLIGHT_ROOT_CLASS,
+				),
+				"root に block highlight enabled class が付きません",
+			);
+			assert(
+				lines.get(0)?.classList.contains(SOT_FOCUS_VISUAL_LINE_CLASS) ===
+					true &&
+					lines.get(1)?.classList.contains(SOT_FOCUS_VISUAL_LINE_CLASS) ===
+						true,
+				"current block line に highlight class が付きません",
+			);
+			assert(
+				lines.get(2)?.classList.contains(SOT_FOCUS_VISUAL_LINE_CLASS) ===
+					false,
+				"非フォーカス line まで highlight されています",
+			);
+			assert(
+				lines.get(1)?.classList.contains(
+					SOT_FOCUS_VISUAL_CURRENT_LINE_CLASS,
+				) === false,
+				"current line class が line 要素へ付与されています",
+			);
+
+			const blockB = {
+				active: true,
+				reason: null,
+				block: null,
+				focusLineStart: 2,
+				focusLineEnd: 3,
+				currentLineIndex: 2,
+				blockHighlightEnabled: true,
+				currentLineHighlightEnabled: true,
+				nonFocusDimEnabled: true,
+			};
+			updateSoTFocusVisualDom({
+				rootEl,
+				previousState: blockA,
+				nextState: blockB,
+				getLineElement: (lineIndex) => lines.get(lineIndex) ?? null,
+			});
+			assert(
+				lines.get(0)?.classList.contains(SOT_FOCUS_VISUAL_LINE_CLASS) ===
+					false &&
+					lines.get(1)?.classList.contains(SOT_FOCUS_VISUAL_LINE_CLASS) ===
+						false &&
+					lines.get(2)?.classList.contains(SOT_FOCUS_VISUAL_LINE_CLASS) ===
+						true,
+				"caret 移動時に current block の class 切替が追従しません",
+			);
+
+			applySoTFocusVisualClassesToLine({
+				lineEl: hiddenLine,
+				lineIndex: 9,
+				state: blockB,
+			});
+			assert(
+				!hiddenLine.classList.contains(SOT_FOCUS_VISUAL_LINE_CLASS),
+				"hidden 行まで focus class を付与しています",
+			);
+
+			const paragraphState = {
+				active: true,
+				reason: null,
+				block: null,
+				focusLineStart: 1,
+				focusLineEnd: 1,
+				currentLineIndex: 1,
+				blockHighlightEnabled: true,
+				currentLineHighlightEnabled: true,
+				nonFocusDimEnabled: true,
+			};
+			applySoTFocusVisualClassesToLine({
+				lineEl: lines.get(1)!,
+				lineIndex: 1,
+				state: paragraphState,
+			});
+			assert(
+				lines.get(1)?.classList.contains(SOT_FOCUS_VISUAL_LINE_CLASS) ===
+					true,
+				"paragraph で current block marker が壊れています",
+			);
+
+			const dimOnlyState = {
+				active: true,
+				reason: null,
+				block: null,
+				focusLineStart: 1,
+				focusLineEnd: 2,
+				currentLineIndex: null,
+				blockHighlightEnabled: false,
+				currentLineHighlightEnabled: false,
+				nonFocusDimEnabled: true,
+			};
+			updateSoTFocusVisualDom({
+				rootEl,
+				previousState: paragraphState,
+				nextState: dimOnlyState,
+				getLineElement: (lineIndex) => lines.get(lineIndex) ?? null,
+			});
+			assert(
+				rootEl.classList.contains(SOT_FOCUS_VISUAL_DIM_ROOT_CLASS),
+				"dim only で root dim class が外れています",
+			);
+			assert(
+				!rootEl.classList.contains(
+					SOT_FOCUS_VISUAL_BLOCK_HIGHLIGHT_ROOT_CLASS,
+				),
+				"block highlight OFF でも root highlight class が残っています",
+			);
+			assert(
+				lines.get(1)?.classList.contains(SOT_FOCUS_VISUAL_LINE_CLASS) ===
+					true,
+				"dim only で focus block marker の切替が不正です",
+			);
+
+			updateSoTFocusVisualDom({
+				rootEl,
+				previousState: dimOnlyState,
+				nextState: createInactiveSoTFocusVisualState("selection-range"),
+				getLineElement: (lineIndex) => lines.get(lineIndex) ?? null,
+			});
+			assert(
+				!rootEl.classList.contains(SOT_FOCUS_VISUAL_ROOT_CLASS),
+				"inactive 遷移で root class が残っています",
+			);
+			assert(
+				!rootEl.classList.contains(SOT_FOCUS_VISUAL_DIM_ROOT_CLASS) &&
+					!rootEl.classList.contains(
+						SOT_FOCUS_VISUAL_BLOCK_HIGHLIGHT_ROOT_CLASS,
+					),
+				"inactive 遷移で focus visual root subclass が残っています",
+			);
+			assert(
+				lines.get(2)?.classList.contains(SOT_FOCUS_VISUAL_LINE_CLASS) ===
+					false,
+				"inactive 遷移で current block class が残っています",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"current block marker・root class・hidden 行安全側を確認",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `focus visual DOM helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTCurrentLineVisualOverlayHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: current line visual overlay helper は caret に最も近い visual rect へ overlay する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const window = new Window();
+			const document =
+				window.document as unknown as globalThis.Document;
+			const rootEl = document.createElement("div") as HTMLElement;
+			const overlayEl = document.createElement("div") as HTMLElement;
+			rootEl.appendChild(overlayEl);
+			rootEl.scrollLeft = 11;
+			rootEl.scrollTop = 13;
+			rootEl.getBoundingClientRect = () =>
+				new DOMRect(100, 200, 400, 500);
+
+			const state = {
+				active: true,
+				reason: null,
+				block: null,
+				focusLineStart: 2,
+				focusLineEnd: 4,
+				currentLineIndex: 3,
+				blockHighlightEnabled: true,
+				currentLineHighlightEnabled: true,
+				nonFocusDimEnabled: true,
+			};
+
+			const firstRect = new DOMRect(180, 220, 24, 140);
+			const secondRect = new DOMRect(140, 220, 24, 140);
+			const resolvedRect = resolveSoTCurrentLineVisualRect({
+				lineVisualRects: [firstRect, secondRect],
+				caretRect: new DOMRect(145, 250, 8, 18),
+			});
+			assert(
+				resolvedRect === secondRect,
+				"caret に最も近い visual rect が選ばれません",
+			);
+			const committedRect = new DOMRect(190, 220, 24, 140);
+			const pendingWrappedRect = new DOMRect(110, 220, 24, 140);
+			const pendingCandidates =
+				resolveSoTCurrentLineVisualRectCandidates({
+					lineVisualRects: [committedRect],
+					pendingLineVisualRects: [pendingWrappedRect],
+					usePendingCaret: true,
+				});
+			const pendingResolvedRect = resolveSoTCurrentLineVisualRect({
+				lineVisualRects: pendingCandidates,
+				caretRect: new DOMRect(112, 250, 8, 18),
+			});
+			assert(
+				pendingResolvedRect === pendingWrappedRect,
+				"pending spacer の wrapped rect が current line 候補に入りません",
+			);
+			const committedOnlyCandidates =
+				resolveSoTCurrentLineVisualRectCandidates({
+					lineVisualRects: [committedRect],
+					pendingLineVisualRects: [pendingWrappedRect],
+					usePendingCaret: false,
+				});
+			assert(
+				committedOnlyCandidates.length === 1 &&
+					committedOnlyCandidates[0] === committedRect,
+				"pending caret でないときに pending rect が混入しています",
+			);
+			if (!resolvedRect) {
+				throw new Error("visual rect が null です");
+			}
+			const displayRect = resolveSoTCurrentLineDisplayRect({
+				visualRect: resolvedRect,
+				lineRect: new DOMRect(138, 214, 30, 146),
+				caretRect: new DOMRect(145, 250, 8, 18),
+				writingMode: "vertical-rl",
+				fontSize: 18,
+				lineHeight: 32,
+			});
+			if (!displayRect) {
+				throw new Error("display rect が null です");
+			}
+			assert(
+				displayRect.left === 137 &&
+					displayRect.top === 214 &&
+					displayRect.width === 30 &&
+					displayRect.height === 146,
+				"display rect が lineRect 優先の 1 行帯になりません",
+			);
+
+			updateSoTCurrentLineVisualOverlay({
+				rootEl,
+				overlayEl,
+				state,
+				rect: displayRect,
+			});
+			assert(
+				overlayEl.classList.contains(
+					SOT_FOCUS_VISUAL_CURRENT_LINE_CLASS,
+				),
+				"current line overlay active class が付きません",
+			);
+			assert(
+				overlayEl.style.display === "block" &&
+					window.getComputedStyle(overlayEl as any).display === "block",
+				"current line overlay active 時に表示状態になりません",
+			);
+			assert(
+				overlayEl.style.left === "48px" &&
+					overlayEl.style.top === "27px" &&
+					overlayEl.style.width === "30px" &&
+					overlayEl.style.height === "146px",
+				`current line overlay の位置/サイズが不正です: left=${overlayEl.style.left} top=${overlayEl.style.top} width=${overlayEl.style.width} height=${overlayEl.style.height}`,
+			);
+
+			updateSoTCurrentLineVisualOverlay({
+				rootEl,
+				overlayEl,
+				state: {
+					...state,
+					currentLineHighlightEnabled: false,
+				},
+				rect: displayRect,
+			});
+			assert(
+				overlayEl.style.display === "none" &&
+					!overlayEl.classList.contains(
+						SOT_FOCUS_VISUAL_CURRENT_LINE_CLASS,
+					),
+				"current line highlight OFF で overlay が消えません",
+			);
+
+			updateSoTCurrentLineVisualOverlay({
+				rootEl,
+				overlayEl,
+				state: {
+					...state,
+					currentLineIndex: null,
+				},
+				rect: displayRect,
+			});
+			assert(
+				overlayEl.style.display === "none" &&
+					!overlayEl.classList.contains(
+						SOT_FOCUS_VISUAL_CURRENT_LINE_CLASS,
+					),
+				"current line suppress 中でも overlay が残っています",
+			);
+
+			updateSoTCurrentLineVisualOverlay({
+				rootEl,
+				overlayEl,
+				state,
+				rect: null,
+			});
+			assert(
+				overlayEl.style.display === "none",
+				"rect が null でも overlay が残っています",
+			);
+
+			overlayEl.className = SOT_FOCUS_VISUAL_CURRENT_LINE_OVERLAY_CLASS;
+			assert(
+				overlayEl.className ===
+					SOT_FOCUS_VISUAL_CURRENT_LINE_OVERLAY_CLASS,
+				"overlay base class の参照が不正です",
+			);
+			const emptyLineRect = resolveSoTCurrentLineDisplayRect({
+				visualRect: new DOMRect(220, 180, 0, 12),
+				lineRect: new DOMRect(214, 160, 32, 240),
+				caretRect: new DOMRect(220, 182, 1, 12),
+				writingMode: "vertical-rl",
+				fontSize: 18,
+				lineHeight: 32,
+			});
+			assert(
+				!!emptyLineRect &&
+					emptyLineRect.left === 211 &&
+					emptyLineRect.top === 160 &&
+					emptyLineRect.width === 38 &&
+					emptyLineRect.height === 240,
+				"空行相当でも lineRect ベースの固定帯になりません",
+			);
+			const fallbackRect = resolveSoTCurrentLineDisplayRect({
+				visualRect: new DOMRect(220, 180, 0, 12),
+				lineRect: null,
+				caretRect: new DOMRect(220, 182, 1, 12),
+				writingMode: "vertical-rl",
+				fontSize: 18,
+				lineHeight: 32,
+			});
+			assert(
+				!!fallbackRect &&
+					fallbackRect.width >= 16 &&
+					fallbackRect.height >= 26,
+				"lineRect がなくても current line 用の最小サイズが確保されません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"current line display rect が lineRect 優先の帯になり、overlay が toggle に追従します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `current line overlay helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTFocusVisualCssVariableHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: focus visual CSS variable helper は derived root 自身へ設定値を反映する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const window = new Window();
+			const document =
+				window.document as unknown as globalThis.Document;
+			const wrapperEl = document.createElement("div") as HTMLElement;
+			const rootEl = document.createElement("div") as HTMLElement;
+			wrapperEl.appendChild(rootEl);
+			rootEl.style.setProperty(
+				"--tategaki-sot-typewriter-block-highlight-color",
+				"#1e90ff",
+			);
+			wrapperEl.style.setProperty(
+				"--tategaki-sot-typewriter-block-highlight-color",
+				"#ff0000",
+			);
+
+			applySoTFocusVisualCssVariables(rootEl, {
+				sotTypewriterBlockHighlightColor: "#00aa00",
+				sotTypewriterBlockHighlightOpacity: 0.33,
+				sotTypewriterCurrentLineHighlightColor: "#2244ff",
+				sotTypewriterCurrentLineHighlightOpacity: 0.55,
+				sotTypewriterNonFocusOpacity: 0.44,
+			});
+
+			assert(
+				rootEl.style.getPropertyValue(
+					"--tategaki-sot-typewriter-block-highlight-color",
+				) === "#00aa00",
+				"block highlight color が derived root に設定されません",
+			);
+			assert(
+				rootEl.style.getPropertyValue(
+					"--tategaki-sot-typewriter-block-highlight-opacity",
+				) === "0.33",
+				"block highlight opacity が derived root に設定されません",
+			);
+			assert(
+				rootEl.style.getPropertyValue(
+					"--tategaki-sot-typewriter-current-line-highlight-color",
+				) === "#2244ff",
+				"current line color が derived root に設定されません",
+			);
+			assert(
+				rootEl.style.getPropertyValue(
+					"--tategaki-sot-typewriter-current-line-highlight-opacity",
+				) === "0.55",
+				"current line opacity が derived root に設定されません",
+			);
+			assert(
+				rootEl.style.getPropertyValue(
+					"--tategaki-sot-typewriter-nonfocus-opacity",
+				) === "0.44",
+				"non-focus opacity が derived root に設定されません",
+			);
+			assert(
+				wrapperEl.style.getPropertyValue(
+					"--tategaki-sot-typewriter-block-highlight-color",
+				) === "#ff0000",
+				"wrapper 側の値まで書き換えています",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "focus visual CSS 変数が derived root へ直接反映されます",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `focus visual CSS variable helper テスト失敗: ${error.message}`,
 				duration,
 			});
 		}
@@ -651,6 +1969,583 @@ export class TategakiTestSuite {
 		}
 	}
 
+	private async testSoTCollapsedEndMeansNextVisualLineStart(): Promise<void> {
+		const testName =
+			"SoT collapsed End は表示行末を「次視覚行先頭」と同値の論理位置とする（差分 -1 と rect 依存でない stripe 決定）";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const lineRange: LineRange = { from: 0, to: 10 };
+			const startsA = [0, 5] as readonly number[];
+
+			assert(
+				resolveSoTVisualStripeIndexForLocalHead(4, startsA) === 0,
+				"local 4 の stripe が 0 ではない",
+			);
+			assert(
+				resolveSoTVisualStripeIndexForLocalHead(5, startsA) === 1,
+				"local 5 が次視覚行頭で stripe が 1 ではない",
+			);
+
+			const tap = resolveSoTCollapsedEndFirstTapAbsoluteHead({
+				headAbs: 3,
+				lineRange,
+				visualLineStartsLocal: startsA,
+			});
+			if (tap == null || tap !== 5) {
+				throw new Error(`End が次視覚行頭 5 でない got ${tap}`);
+			}
+			const insertAtFirstBreak: number = tap;
+			assert(
+				insertAtFirstBreak !== 4,
+				"End が nextVisualStart-1 と同値ではあってはいけない",
+			);
+
+			const docTen = "abcdefghij";
+			assert(
+				applyPlainTextInsertAtOffset(
+					docTen,
+					insertAtFirstBreak,
+					"X",
+				) === "abcdeXfghij",
+				"次視覚行頭への挿入で列境界がずれない",
+			);
+
+			assert(
+				applyPlainTextInsertAtOffset(docTen, 4, "X") === "abcdXefghij",
+				"tap-1 での挿入は別結果であること（検証データ整合）",
+			);
+
+			const startsB = [0, 3, 9] as const;
+			assert(
+				resolveSoTVisualStripeIndexForLocalHead(7, [...startsB]) === 1,
+				"3 視覚行で starts のみによる stripe インデックス",
+			);
+			assert(
+				resolveSoTVisualStripeIndexForLocalHead(10, [...startsB]) === 2,
+				"local 10 は最終視覚 stripe 2",
+			);
+
+			assert(
+				resolveSoTCollapsedEndFirstTapAbsoluteHead({
+					headAbs: 2,
+					lineRange,
+					visualLineStartsLocal: [...startsB],
+				}) === 3,
+				"第一視覚行内での End が次視覚行頭 3 と同値にならない",
+			);
+
+			assert(
+				resolveSoTCollapsedEndFirstTapAbsoluteHead({
+					headAbs: 12,
+					lineRange,
+					visualLineStartsLocal: [...startsB],
+				}) === null,
+				"最終視覚行では null で論理 End へフォールバックする",
+			);
+
+			const stripeRect = {
+				left: 100,
+				top: 50,
+				width: 28,
+				height: 400,
+			};
+			const sampleGlyph = {
+				left: 100,
+				top: 200,
+				width: 20,
+				height: 24,
+			};
+			const vEnd = viewportCaretRectDisplayAtPriorStripeInlineEnd(
+				stripeRect,
+				sampleGlyph,
+				"vertical-rl",
+				3,
+			);
+			assert(
+				vEnd.bottom <= stripeRect.top + stripeRect.height + 1e-6,
+				"縦書き End 視覚専用矩形は視覚ストライプ下端を超えない",
+			);
+			assert(
+				vEnd.bottom >= stripeRect.top + stripeRect.height - 10,
+				"縦書き End 視覚専用矩形はストライプ下端に近い",
+			);
+			const hEnd = viewportCaretRectDisplayAtPriorStripeInlineEnd(
+				stripeRect,
+				sampleGlyph,
+				"horizontal-tb",
+				3,
+			);
+			assert(
+				hEnd.right <= stripeRect.left + stripeRect.width + 1e-6,
+				"横書き End 視覚専用矩形は視覚ストライプ右端を超えない",
+			);
+			assert(
+				hEnd.right >= stripeRect.left + stripeRect.width - 10,
+				"横書き End 視覚専用矩形はストライプ右端に近い",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "End と次視覚行先頭の同値性・入力意味を満たす",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `collapsed End / 視覚行同値 テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTCollapsedHomePositionBasedNavigation(): Promise<void> {
+		const testName =
+			"SoT collapsed Home は論理／視覚行先頭のみローカルオフセットで分岐し rect に依存しない";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const starts = [0, 6] as const;
+			const lineLen = 12;
+
+			assert(
+				classifySoTHomeCollapsedPosition(0, starts, lineLen) ===
+					"logical_line_start",
+				"local 0 は論理行頭",
+			);
+			assert(
+				classifySoTHomeCollapsedPosition(6, starts, lineLen) ===
+					"visual_line_start_only",
+				"折返し視覚行頭のみは visual_line_start_only",
+			);
+			assert(
+				classifySoTHomeCollapsedPosition(9, starts, lineLen) === "mid_stripe",
+				"ストライプ途中は mid_stripe",
+			);
+
+			let plan = resolveSoTCollapsedHomeNavigationPlan({
+				localHead: 0,
+				visualLineStartsLocal: starts,
+				lineLength: lineLen,
+			});
+			assert(plan.kind === "noop", "論理行頭は noop");
+
+			plan = resolveSoTCollapsedHomeNavigationPlan({
+				localHead: 6,
+				visualLineStartsLocal: starts,
+				lineLength: lineLen,
+			});
+			assert(
+				plan.kind === "move" && plan.targetLocalOffset === 0,
+				"視覚行頭のみは論理行頭へ",
+			);
+
+			plan = resolveSoTCollapsedHomeNavigationPlan({
+				localHead: 10,
+				visualLineStartsLocal: starts,
+				lineLength: lineLen,
+			});
+			assert(
+				plan.kind === "move" && plan.targetLocalOffset === 6,
+				"第2ストライプ途中は当該視覚行先頭 6 へ",
+			);
+
+			plan = resolveSoTCollapsedHomeNavigationPlan({
+				localHead: 3,
+				visualLineStartsLocal: starts,
+				lineLength: lineLen,
+			});
+			assert(
+				plan.kind === "move" && plan.targetLocalOffset === 0,
+				"第1ストライプ途中は視覚行先頭 0（=論理行頭）へ",
+			);
+
+			const triple = [0, 3, 9] as const;
+			assert(
+				classifySoTHomeCollapsedPosition(7, triple, 12) === "mid_stripe",
+				"3 ストライプの中央付近は mid",
+			);
+			plan = resolveSoTCollapsedHomeNavigationPlan({
+				localHead: 7,
+				visualLineStartsLocal: triple,
+				lineLength: 12,
+			});
+			assert(
+				plan.kind === "move" && plan.targetLocalOffset === 3,
+				"local 7 のストライプ先頭は 3",
+			);
+
+			assert(
+				resolveSoTVisualStripeIndexForLocalHead(5, [...triple]) === 1,
+				"classify と整合する stripe index（補助）",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "Home が visualLineStartsLocal と localHead のみで安定して計画できる",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `collapsed Home テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTCollapsedEndPositionBasedNavigation(): Promise<void> {
+		const testName =
+			"SoT collapsed End は論理末尾・pending 前行末オーバーレイを二段目で最優先し列境界と併せて誤進を防ぐ";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const lineRange: LineRange = { from: 0, to: 20 };
+			const starts3 = [0, 7, 12] as const;
+
+			assert(
+				isSoTCollapsedLocalHeadAtVisualLineEndEquivalentToNextStart(
+					7,
+					starts3,
+					20,
+				),
+				"列境界は rect 省略時は従来どおり視覚行末同値とみなす（後方互換）",
+			);
+			assert(
+				isSoTCollapsedLocalHeadAtVisualLineEndEquivalentToNextStart(
+					7,
+					starts3,
+					20,
+					0,
+				),
+				"local 7 でキャレットが列 0 なら前行末同値",
+			);
+			assert(
+				!isSoTCollapsedLocalHeadAtVisualLineEndEquivalentToNextStart(
+					7,
+					starts3,
+					20,
+					1,
+				),
+				"local 7 でキャレットが列 1 なら現在 stripe 行頭（前行末ではない）",
+			);
+			assert(
+				isSoTCollapsedLocalHeadAtVisualLineEndEquivalentToNextStart(
+					12,
+					starts3,
+					20,
+					1,
+				),
+				"local 12 で列 1 なら stripe1 の行末同値",
+			);
+			assert(
+				!isSoTCollapsedLocalHeadAtVisualLineEndEquivalentToNextStart(
+					12,
+					starts3,
+					20,
+					2,
+				),
+				"local 12 で列 2 は最終 stripe 行頭のみ（論理行末へ直飛びしない）",
+			);
+			assert(
+				!isSoTCollapsedLocalHeadAtVisualLineEndEquivalentToNextStart(
+					3,
+					starts3,
+					20,
+				),
+				"stripe 途中は視覚行末同値でない",
+			);
+
+			assert(
+				findSoTVisualLineStartIndexMatchingLocalOffset(7, starts3, 20) ===
+					1,
+				"境界ヘルパー j=1",
+			);
+
+			assert(
+				isSoTEndPendingVisualOnlyShowsPriorStripeEndAtHead({
+					headAbs: 7,
+					pendingEndVisualOnlyForDocHead: 7,
+				}),
+				"pending forDocHead と head が一致すれば前行末オーバーレイ扱い",
+			);
+			assert(
+				!isSoTEndPendingVisualOnlyShowsPriorStripeEndAtHead({
+					headAbs: 7,
+					pendingEndVisualOnlyForDocHead: 6,
+				}),
+				"pending が head と一致しなければ false",
+			);
+
+			let p = resolveSoTCollapsedEndNavigationPlan({
+				normalizedHead: 19,
+				normalizedLogicalLineEnd: 19,
+				headAbs: 19,
+				lineRange,
+				visualLineStartsLocal: starts3,
+			});
+			assert(p.kind === "noop", "論理行末済み noop");
+
+			p = resolveSoTCollapsedEndNavigationPlan({
+				normalizedHead: 3,
+				normalizedLogicalLineEnd: 19,
+				headAbs: 3,
+				lineRange,
+				visualLineStartsLocal: starts3,
+			});
+			assert(
+				p.kind === "to_next_visual_line_start" &&
+					p.absoluteProbeHead === 7,
+				"途中は当該 stripe の次 visual start へ",
+			);
+
+			p = resolveSoTCollapsedEndNavigationPlan({
+				normalizedHead: 7,
+				normalizedLogicalLineEnd: 19,
+				headAbs: 7,
+				lineRange,
+				visualLineStartsLocal: starts3,
+				caretVisualStripeRectIndex: 0,
+			});
+			assert(
+				p.kind === "to_logical_line_end" &&
+					p.normalizedTargetHead === 19,
+				"列 0 におり starts[1] なら論理行末（二段目）",
+			);
+
+			p = resolveSoTCollapsedEndNavigationPlan({
+				normalizedHead: 7,
+				normalizedLogicalLineEnd: 19,
+				headAbs: 7,
+				lineRange,
+				visualLineStartsLocal: starts3,
+				caretVisualStripeRectIndex: 1,
+			});
+			assert(
+				p.kind === "to_next_visual_line_start" &&
+					p.absoluteProbeHead === 12,
+				"列 1 の starts[1] は折り返し行頭→まず当該 stripe 末（次 visual start）",
+			);
+
+			p = resolveSoTCollapsedEndNavigationPlan({
+				normalizedHead: 12,
+				normalizedLogicalLineEnd: 19,
+				headAbs: 12,
+				lineRange,
+				visualLineStartsLocal: starts3,
+				caretVisualStripeRectIndex: 1,
+			});
+			assert(
+				p.kind === "to_logical_line_end",
+				"列 1・starts[2] は前行末同値 → 論理行末",
+			);
+
+			p = resolveSoTCollapsedEndNavigationPlan({
+				normalizedHead: 12,
+				normalizedLogicalLineEnd: 19,
+				headAbs: 12,
+				lineRange,
+				visualLineStartsLocal: starts3,
+				caretVisualStripeRectIndex: 2,
+			});
+			assert(
+				p.kind === "to_logical_line_end",
+				"最終 stripe 行頭は firstTap 無しで論理行末",
+			);
+
+			const starts4 = [0, 7, 12, 15] as const;
+			p = resolveSoTCollapsedEndNavigationPlan({
+				normalizedHead: 12,
+				normalizedLogicalLineEnd: 19,
+				headAbs: 12,
+				lineRange,
+				visualLineStartsLocal: starts4,
+				caretVisualStripeRectIndex: 2,
+			});
+			assert(
+				p.kind === "to_next_visual_line_start" &&
+					p.absoluteProbeHead === 15,
+				"次ストライプがある境界で行頭列なら論理末へ飛ばず次 visual start へ",
+			);
+
+			const starts2 = [0, 5] as const;
+			const hitBranch = resolveSoTCollapsedEndNavigationPlan({
+				normalizedHead: 5,
+				normalizedLogicalLineEnd: 18,
+				headAbs: 5,
+				lineRange,
+				visualLineStartsLocal: starts2,
+				caretVisualStripeRectIndex: 0,
+			});
+			assert(
+				hitBranch.kind === "to_logical_line_end" &&
+					hitBranch.normalizedTargetHead === 18,
+				"2 stripe で境界 5 は列 0 なら視覚行末同値 → 論理行末（次 visual start へ誤進しない回帰）",
+			);
+
+			const startsSingle = [0] as const;
+			p = resolveSoTCollapsedEndNavigationPlan({
+				normalizedHead: 3,
+				normalizedLogicalLineEnd: 8,
+				headAbs: 3,
+				lineRange: { from: 0, to: 15 },
+				visualLineStartsLocal: startsSingle,
+			});
+			assert(
+				p.kind === "to_logical_line_end" &&
+					p.normalizedTargetHead === 8,
+				"単一視覚行では firstTap 無しでも論理行末へ",
+			);
+
+			const lineRangeAligned: LineRange = { from: 0, to: 10 };
+			const startsA = [0, 5] as const;
+			const tap = resolveSoTCollapsedEndFirstTapAbsoluteHead({
+				headAbs: 2,
+				lineRange: lineRangeAligned,
+				visualLineStartsLocal: startsA,
+			});
+			assert(tap === 5, "firstTap との整合");
+			const planMid = resolveSoTCollapsedEndNavigationPlan({
+				normalizedHead: 2,
+				normalizedLogicalLineEnd: 9,
+				headAbs: 2,
+				lineRange: lineRangeAligned,
+				visualLineStartsLocal: startsA,
+			});
+			assert(
+				planMid.kind === "to_next_visual_line_start" &&
+					planMid.absoluteProbeHead === 5,
+				"旧テストフィクスチャでも最初の段へ",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"End の二段目は pending 前行末を最優先し、無いときは列インデックスで境界を分離する",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `collapsed End 位置ベーステスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTCollapsedEndSecondTapPendingOverridesRectStripe(): Promise<void> {
+		const testName =
+			"SoT collapsed End 二段目は pendingEndKeyVisualOnlyCaret の forDocHead があれば表示行頭列でも論理行末へ進む";
+		const startTime = performance.now();
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const lineRange: LineRange = { from: 0, to: 20 };
+			const starts3 = [0, 7, 12] as const;
+			const plan = resolveSoTCollapsedEndNavigationPlan({
+				normalizedHead: 7,
+				normalizedLogicalLineEnd: 19,
+				headAbs: 7,
+				lineRange,
+				visualLineStartsLocal: starts3,
+				caretVisualStripeRectIndex: 1,
+				pendingEndVisualOnlyForDocHead: 7,
+			});
+			assert(
+				plan.kind === "to_logical_line_end" &&
+					plan.normalizedTargetHead === 19 &&
+					plan.resolvedViaPendingVisualOnlySecondTap === true,
+				"pending 分岐は resolvedViaPendingVisualOnlySecondTap を立てる",
+			);
+			const planNoPending = resolveSoTCollapsedEndNavigationPlan({
+				normalizedHead: 7,
+				normalizedLogicalLineEnd: 19,
+				headAbs: 7,
+				lineRange,
+				visualLineStartsLocal: starts3,
+				caretVisualStripeRectIndex: 1,
+				pendingEndVisualOnlyForDocHead: null,
+			});
+			assert(
+				planNoPending.kind === "to_next_visual_line_start" &&
+					planNoPending.absoluteProbeHead === 12,
+				"pending 無しでは従来どおり折り返し行頭から次 visual start",
+			);
+			assert(
+				shouldSoTDeferClearingEndKeyPendingBeforeHandleNavigate(
+					"End",
+					{ shiftKey: false, altKey: false, ctrlKey: false, metaKey: false },
+					3,
+					3,
+					false,
+					false,
+				),
+				"collapsed End では pending クリアを遅延する",
+			);
+			assert(
+				!shouldSoTDeferClearingEndKeyPendingBeforeHandleNavigate(
+					"End",
+					{ shiftKey: true, altKey: false, ctrlKey: false, metaKey: false },
+					3,
+					3,
+					false,
+					false,
+				),
+				"Shift+End は遅延しない",
+			);
+			assert(
+				!shouldSoTDeferClearingEndKeyPendingBeforeHandleNavigate(
+					"Home",
+					{ shiftKey: false, altKey: false, ctrlKey: false, metaKey: false },
+					3,
+					3,
+					false,
+					false,
+				),
+				"Home では遅延しない",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"helper が pending と rect-only の優先差・plan フラグ・遅延クリア条件を固定した",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `End pending 二段目 helper テスト失敗: ${(error as Error).message}`,
+				duration,
+			});
+		}
+	}
+
 	private async testSoTPageNavigationHelper(): Promise<void> {
 		const testName =
 			"SoT派生ビュー: PageUp/PageDown helper は writing mode ごとに viewport 単位の移動先を計算する";
@@ -848,6 +2743,1133 @@ export class TategakiTestSuite {
 				name: testName,
 				success: false,
 				message: `PageUp/PageDown helper safety テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTPageScrollOutcomeHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: page scroll outcome helper は sufficient/edge/partial を判定する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			assert(
+				SOT_PAGE_SCROLL_SUFFICIENT_RATIO === 0.85,
+				"sufficient ratio が spec の 0.85 と一致していません",
+			);
+
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: -400,
+					actualDelta: -400,
+				}) === "sufficient",
+				"完全に動いた case が sufficient になりません",
+			);
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: -400,
+					actualDelta: -340,
+				}) === "sufficient",
+				"actual / expected = 0.85 が sufficient になりません",
+			);
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: 400,
+					actualDelta: 360,
+				}) === "sufficient",
+				"正方向で十分に動いた case が sufficient になりません",
+			);
+
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: -400,
+					actualDelta: 0,
+				}) === "edge",
+				"全く動かない case が edge になりません",
+			);
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: 400,
+					actualDelta: 0,
+				}) === "edge",
+				"PageUp で全く動かない case が edge になりません",
+			);
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: -400,
+					actualDelta: -0.5,
+				}) === "edge",
+				"actualAbs < 1 が edge になりません",
+			);
+
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: -400,
+					actualDelta: -30,
+				}) === "partial",
+				"末端付近の小スクロール (30/400) が partial になりません",
+			);
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: -400,
+					actualDelta: -10,
+				}) === "partial",
+				"末端付近の小スクロール (10/400) が partial になりません",
+			);
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: 400,
+					actualDelta: 339,
+				}) === "partial",
+				"0.85 をわずかに下回る case が partial になりません",
+			);
+
+			// remainingAfter による partial → edge 格上げ
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: -400,
+					actualDelta: -30,
+					remainingAfter: 0,
+				}) === "edge",
+				"partial かつ残量 0 が edge へ格上げされません",
+			);
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: -400,
+					actualDelta: -30,
+					remainingAfter: SOT_PAGE_SCROLL_EDGE_REMAINING_PX - 0.01,
+				}) === "edge",
+				"partial かつ残量 < しきい値 が edge へ格上げされません",
+			);
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: -400,
+					actualDelta: -30,
+					remainingAfter: SOT_PAGE_SCROLL_EDGE_REMAINING_PX,
+				}) === "partial",
+				"partial かつ残量 = しきい値 は partial のまま (格上げしない)",
+			);
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: -400,
+					actualDelta: -30,
+					remainingAfter: 100,
+				}) === "partial",
+				"partial かつ残量が十分なら partial のまま",
+			);
+			// sufficient は remainingAfter で格下げしない (相対位置維持を維持)
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: -400,
+					actualDelta: -400,
+					remainingAfter: 0,
+				}) === "sufficient",
+				"sufficient は残量 0 でも sufficient を維持すべきです",
+			);
+
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: 0,
+					actualDelta: 0,
+				}) === "sufficient",
+				"expected が 0 の case が sufficient になりません",
+			);
+
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: Number.NaN,
+					actualDelta: 100,
+				}) === "sufficient",
+				"NaN expected が sufficient にフォールバックしません",
+			);
+			assert(
+				evaluateSoTPageScrollOutcome({
+					expectedDelta: 400,
+					actualDelta: Number.NaN,
+				}) === "sufficient",
+				"NaN actual が sufficient にフォールバックしません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"page scroll outcome helper が sufficient/edge/partial を仕様通り判定します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `page scroll outcome helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTPageScrollRemainingHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: page scroll 残量 helper は scroll axis ごとに残スクロール余地を返す";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			// vertical-rl (scrollLeft <= 0): pageDelta < 0 (PageDown 方向) なら
+			// 「scrollLeft - (-overflow)」が残量
+			const overflow = 1000;
+			const clientWidth = 400;
+			const scrollWidth = clientWidth + overflow;
+			// 先頭付近 (scrollLeft = -overflow) で更に PageDown → 残量 0
+			assert(
+				computeSoTPageScrollRemaining({
+					scrollAxis: "x",
+					pageDelta: -clientWidth,
+					scrollLeft: -overflow,
+					scrollTop: 0,
+					scrollWidth,
+					scrollHeight: 0,
+					clientWidth,
+					clientHeight: 0,
+				}) === 0,
+				"vertical-rl 先頭端で PageDown 残量が 0 になりません",
+			);
+			// 末尾付近 (scrollLeft = 0) で更に PageUp → 残量 0
+			assert(
+				computeSoTPageScrollRemaining({
+					scrollAxis: "x",
+					pageDelta: clientWidth,
+					scrollLeft: 0,
+					scrollTop: 0,
+					scrollWidth,
+					scrollHeight: 0,
+					clientWidth,
+					clientHeight: 0,
+				}) === 0,
+				"vertical-rl 末尾端で PageUp 残量が 0 になりません",
+			);
+			// 中央 (scrollLeft = -500) で PageDown → 残量 = overflow - 500 = 500
+			assert(
+				computeSoTPageScrollRemaining({
+					scrollAxis: "x",
+					pageDelta: -clientWidth,
+					scrollLeft: -500,
+					scrollTop: 0,
+					scrollWidth,
+					scrollHeight: 0,
+					clientWidth,
+					clientHeight: 0,
+				}) === 500,
+				"vertical-rl 中央で PageDown 残量が 500 になりません",
+			);
+			// 中央 (scrollLeft = -500) で PageUp → 残量 = 500
+			assert(
+				computeSoTPageScrollRemaining({
+					scrollAxis: "x",
+					pageDelta: clientWidth,
+					scrollLeft: -500,
+					scrollTop: 0,
+					scrollWidth,
+					scrollHeight: 0,
+					clientWidth,
+					clientHeight: 0,
+				}) === 500,
+				"vertical-rl 中央で PageUp 残量が 500 になりません",
+			);
+			// 末端から少しだけ動いた半端ケース (scrollLeft = -overflow + 30)
+			// → さらに PageDown 残量 = 30
+			assert(
+				computeSoTPageScrollRemaining({
+					scrollAxis: "x",
+					pageDelta: -clientWidth,
+					scrollLeft: -overflow + 30,
+					scrollTop: 0,
+					scrollWidth,
+					scrollHeight: 0,
+					clientWidth,
+					clientHeight: 0,
+				}) === 30,
+				"vertical-rl 末端寄りで PageDown 残量が 30 になりません",
+			);
+
+			// horizontal-tb (scrollTop ∈ [0, overflow]) PageDown
+			const heightOverflow = 800;
+			const clientHeight = 300;
+			const scrollHeight = clientHeight + heightOverflow;
+			assert(
+				computeSoTPageScrollRemaining({
+					scrollAxis: "y",
+					pageDelta: clientHeight,
+					scrollLeft: 0,
+					scrollTop: heightOverflow,
+					scrollWidth: 0,
+					scrollHeight,
+					clientWidth: 0,
+					clientHeight,
+				}) === 0,
+				"horizontal-tb 末尾端で PageDown 残量が 0 になりません",
+			);
+			assert(
+				computeSoTPageScrollRemaining({
+					scrollAxis: "y",
+					pageDelta: -clientHeight,
+					scrollLeft: 0,
+					scrollTop: 0,
+					scrollWidth: 0,
+					scrollHeight,
+					clientWidth: 0,
+					clientHeight,
+				}) === 0,
+				"horizontal-tb 先頭端で PageUp 残量が 0 になりません",
+			);
+			assert(
+				computeSoTPageScrollRemaining({
+					scrollAxis: "y",
+					pageDelta: clientHeight,
+					scrollLeft: 0,
+					scrollTop: 200,
+					scrollWidth: 0,
+					scrollHeight,
+					clientWidth: 0,
+					clientHeight,
+				}) === 600,
+				"horizontal-tb 中央で PageDown 残量が 600 になりません",
+			);
+
+			// vertical-lr (scrollLeft >= 0)
+			assert(
+				computeSoTPageScrollRemaining({
+					scrollAxis: "x",
+					pageDelta: clientWidth,
+					scrollLeft: overflow,
+					scrollTop: 0,
+					scrollWidth,
+					scrollHeight: 0,
+					clientWidth,
+					clientHeight: 0,
+				}) === 0,
+				"vertical-lr 末尾端で PageDown 残量が 0 になりません",
+			);
+			assert(
+				computeSoTPageScrollRemaining({
+					scrollAxis: "x",
+					pageDelta: -clientWidth,
+					scrollLeft: 200,
+					scrollTop: 0,
+					scrollWidth,
+					scrollHeight: 0,
+					clientWidth,
+					clientHeight: 0,
+				}) === 200,
+				"vertical-lr 中央で PageUp 残量が 200 になりません",
+			);
+
+			// pageDelta = 0 / 不正値の安全性
+			assert(
+				computeSoTPageScrollRemaining({
+					scrollAxis: "x",
+					pageDelta: 0,
+					scrollLeft: -500,
+					scrollTop: 0,
+					scrollWidth,
+					scrollHeight: 0,
+					clientWidth,
+					clientHeight: 0,
+				}) === 0,
+				"pageDelta 0 で残量が 0 になりません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"page scroll 残量 helper が axis ごとの同方向残量を仕様通り返します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `page scroll 残量 helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTScrollPastEndHelper(): Promise<void> {
+		const testName =
+			"SoT scroll past end: tail spacer helper は extent・clamp・remaining を正しく計算する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			// computeSoTScrollPastEndExtent
+			assert(
+				computeSoTScrollPastEndExtent(320) === 320,
+				"viewport 320 → extent 320 になりません",
+			);
+			assert(
+				computeSoTScrollPastEndExtent(0) === 0,
+				"viewport 0 → extent 0 になりません",
+			);
+			assert(
+				computeSoTScrollPastEndExtent(-100) === 0,
+				"viewport 負数 → extent 0 になりません",
+			);
+			assert(
+				computeSoTScrollPastEndExtent(500, 0.5) === 250,
+				"ratio=0.5 で extent が viewport/2 になりません",
+			);
+
+			// clampSoTPageDownDelta: vertical-rl
+			// scrollWidth=800, clientWidth=320, tailSpacerExtent=320
+			// contentOverflow = 800-320-320 = 160, contentEndMin = -160
+			const rlBase = {
+				scrollAxis: "x" as const,
+				writingMode: "vertical-rl",
+				scrollExtent: 800,
+				clientExtent: 320,
+				tailSpacerExtent: 320,
+			};
+			// scrollPosition=0, proposedDelta=-400 → cap to contentEndMin=-160 → delta=-160
+			assert(
+				clampSoTPageDownDelta({ ...rlBase, proposedDelta: -400, scrollPosition: 0 }) === -160,
+				"vertical-rl: PageDown delta が contentEndMin でクランプされません",
+			);
+			// 既に content end (-160) → proposedDelta=-400 → proposed=-560, max(-560,-160)=-160, delta=0 (逆方向)
+			assert(
+				clampSoTPageDownDelta({ ...rlBase, proposedDelta: -400, scrollPosition: -160 }) === 0,
+				"vertical-rl: content end から PageDown → delta 0 になりません",
+			);
+			// tail spacer 内 (-200) → proposed=-520, max=-160 → +40 > 0 → 0
+			assert(
+				clampSoTPageDownDelta({ ...rlBase, proposedDelta: -400, scrollPosition: -200 }) === 0,
+				"vertical-rl: tail spacer 内から PageDown → delta 0 になりません",
+			);
+			// PageUp (正数) はクランプしない
+			assert(
+				clampSoTPageDownDelta({ ...rlBase, proposedDelta: 320, scrollPosition: -100 }) === 320,
+				"vertical-rl: PageUp はクランプされるべきではありません",
+			);
+			// tailSpacerExtent=0 はそのまま通す
+			assert(
+				clampSoTPageDownDelta({ ...rlBase, tailSpacerExtent: 0, proposedDelta: -400, scrollPosition: 0 }) === -400,
+				"tailSpacerExtent=0 でデルタが変わるべきではありません",
+			);
+
+			// clampSoTPageDownDelta: horizontal-tb
+			const htbBase = {
+				scrollAxis: "y" as const,
+				writingMode: "horizontal-tb",
+				scrollExtent: 1000,
+				clientExtent: 400,
+				tailSpacerExtent: 400,
+			};
+			// contentMax = 1000-400-400 = 200
+			// scrollPosition=150, proposedDelta=400 → proposed=550, min(550,200)=200 → delta=50
+			assert(
+				clampSoTPageDownDelta({ ...htbBase, proposedDelta: 400, scrollPosition: 150 }) === 50,
+				"horizontal-tb: PageDown delta が contentMax でクランプされません",
+			);
+			// scrollPosition=200 (content end) → proposed=600, min=200 → delta=0 → 逆方向ではないので 0 以上
+			assert(
+				clampSoTPageDownDelta({ ...htbBase, proposedDelta: 400, scrollPosition: 200 }) === 0,
+				"horizontal-tb: content end から PageDown → delta 0 になりません",
+			);
+
+			// computeSoTContentScrollRemainingForPageDown: vertical-rl
+			// scrollWidth=800, clientWidth=320, tailSpacerExtent=320
+			// contentOverflow=160, contentEndMin=-160
+			// pos=0 (head), pageDelta=-320 → remaining = 0 - (-160) = 160
+			assert(
+				computeSoTContentScrollRemainingForPageDown({
+					scrollAxis: "x", writingMode: "vertical-rl", pageDelta: -320,
+					scrollPosition: 0, scrollExtent: 800, clientExtent: 320, tailSpacerExtent: 320,
+				}) === 160,
+				"vertical-rl: head から PageDown 残量が contentOverflow になりません",
+			);
+			// pos=-160 (content end) → remaining = 0
+			assert(
+				computeSoTContentScrollRemainingForPageDown({
+					scrollAxis: "x", writingMode: "vertical-rl", pageDelta: -320,
+					scrollPosition: -160, scrollExtent: 800, clientExtent: 320, tailSpacerExtent: 320,
+				}) === 0,
+				"vertical-rl: content end で PageDown 残量が 0 になりません",
+			);
+			// PageUp (pageDelta > 0): pos=-100 → remaining = 100 (tail spacer 無関係)
+			assert(
+				computeSoTContentScrollRemainingForPageDown({
+					scrollAxis: "x", writingMode: "vertical-rl", pageDelta: 320,
+					scrollPosition: -100, scrollExtent: 800, clientExtent: 320, tailSpacerExtent: 320,
+				}) === 100,
+				"vertical-rl: PageUp 残量が影響を受けてはなりません",
+			);
+			// tailSpacerExtent=0 はオリジナルの計算と一致する
+			// overflow=480, pos=-480 (end), pageDelta=-320 → remaining=0
+			assert(
+				computeSoTContentScrollRemainingForPageDown({
+					scrollAxis: "x", writingMode: "vertical-rl", pageDelta: -320,
+					scrollPosition: -480, scrollExtent: 800, clientExtent: 320, tailSpacerExtent: 0,
+				}) === 0,
+				"tailSpacerExtent=0: vertical-rl end → remaining 0 になりません",
+			);
+
+			// computeSoTContentScrollRemainingForPageDown: horizontal-tb
+			// scrollHeight=1000, clientHeight=400, tailSpacerExtent=400 → contentMax=200
+			assert(
+				computeSoTContentScrollRemainingForPageDown({
+					scrollAxis: "y", writingMode: "horizontal-tb", pageDelta: 400,
+					scrollPosition: 100, scrollExtent: 1000, clientExtent: 400, tailSpacerExtent: 400,
+				}) === 100,
+				"horizontal-tb: pos=100 → remaining=contentMax-pos=100 になりません",
+			);
+			assert(
+				computeSoTContentScrollRemainingForPageDown({
+					scrollAxis: "y", writingMode: "horizontal-tb", pageDelta: 400,
+					scrollPosition: 200, scrollExtent: 1000, clientExtent: 400, tailSpacerExtent: 400,
+				}) === 0,
+				"horizontal-tb: content end → remaining 0 になりません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "scroll past end helper が extent・clamp・remaining を仕様通り計算します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `scroll past end helper テスト失敗: ${(error as Error).message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTPageNavigationOffsetCandidateForOutcome(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: edge 判定時は fallback offset を優先する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			assert(
+				resolveSoTPageNavigationOffsetCandidateForOutcome(120, 0, "edge") === 0,
+				"edge 時に target offset が選ばれてしまいます (fallback 優先になりません)",
+			);
+			assert(
+				resolveSoTPageNavigationOffsetCandidateForOutcome(120, 999, "edge") === 999,
+				"edge 時に末尾 fallback が選ばれません",
+			);
+
+			assert(
+				resolveSoTPageNavigationOffsetCandidateForOutcome(120, null, "edge") === 120,
+				"edge かつ fallback なしで target を維持しません",
+			);
+			assert(
+				resolveSoTPageNavigationOffsetCandidateForOutcome(null, null, "edge") === null,
+				"全部 null なら null を返すべきです",
+			);
+
+			assert(
+				resolveSoTPageNavigationOffsetCandidateForOutcome(120, 0, "sufficient") === 120,
+				"sufficient 時に target offset が優先されません",
+			);
+			assert(
+				resolveSoTPageNavigationOffsetCandidateForOutcome(120, 0, "partial") === 120,
+				"partial 時に target offset が優先されません",
+			);
+			assert(
+				resolveSoTPageNavigationOffsetCandidateForOutcome(null, 42, "sufficient") === 42,
+				"sufficient 時に target が null なら fallback を返すべきです",
+			);
+
+			assert(
+				resolveSoTPageNavigationOffsetCandidate(120, 0) === 120,
+				"既存 helper の挙動が変わっています (target 優先のはず)",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"edge outcome は fallback を優先し、sufficient/partial は従来通り target を優先します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `outcome 別 offset 解決テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTTypewriterScrollHelper(): Promise<void> {
+		const testName = "SoT派生ビュー: Typewriter pure helper";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const extent = 1000;
+			const centeredTarget = resolveSoTTypewriterTarget(
+				extent,
+				"vertical-rl",
+				0,
+			);
+			assert(centeredTarget === 500, "offsetRatio=0 で中央 target になりません");
+
+			const forwardRl = resolveSoTTypewriterTarget(
+				extent,
+				"vertical-rl",
+				0.2,
+			);
+			const forwardLr = resolveSoTTypewriterTarget(
+				extent,
+				"vertical-lr",
+				0.2,
+			);
+			assert(
+				forwardRl === 300,
+				`vertical-rl の正方向 target が不正です: ${forwardRl}`,
+			);
+			assert(
+				forwardLr === 700,
+				`vertical-lr の正方向 target が不正です: ${forwardLr}`,
+			);
+			const forwardHorizontal = resolveSoTTypewriterTarget(
+				extent,
+				"horizontal-tb",
+				0.2,
+			);
+			assert(
+				forwardHorizontal === 700,
+				`horizontal-tb の正方向 target が不正です: ${forwardHorizontal}`,
+			);
+
+			const band = resolveSoTTypewriterFollowBand(extent, 500, 0.16);
+			assert(band.bandStart === 420, `bandStart が不正です: ${band.bandStart}`);
+			assert(band.bandEnd === 580, `bandEnd が不正です: ${band.bandEnd}`);
+
+			assert(
+				isSoTTypewriterCaretWithinBand(500, band),
+				"caret が帯内でも false になります",
+			);
+			assert(
+				resolveSoTTypewriterScrollDeltaToBand(500, band, "vertical-rl") === 0,
+				"帯内 caret で scroll delta が no-op になりません",
+			);
+
+			const leftOutsideDeltaRl = resolveSoTTypewriterScrollDeltaToBand(
+				300,
+				band,
+				"vertical-rl",
+			);
+			assert(
+				leftOutsideDeltaRl === -120,
+				`vertical-rl 左帯外の最小 scroll delta が不正です: ${leftOutsideDeltaRl}`,
+			);
+
+			const rightOutsideDeltaLr = resolveSoTTypewriterScrollDeltaToBand(
+				700,
+				band,
+				"vertical-lr",
+			);
+			assert(
+				rightOutsideDeltaLr === 120,
+				`vertical-lr 右帯外の最小 scroll delta が不正です: ${rightOutsideDeltaLr}`,
+			);
+			const horizontalMainAxis = resolveSoTTypewriterCaretMainAxisPosition(
+				{ left: 10, top: 100, width: 200, height: 400 },
+				{ left: 20, top: 240, width: 30, height: 20 },
+				"y",
+			);
+			assert(
+				horizontalMainAxis === 150,
+				`horizontal-tb の caret main axis が不正です: ${horizontalMainAxis}`,
+			);
+			const lowerOutsideDeltaHorizontal =
+				resolveSoTTypewriterScrollDeltaToBand(
+					700,
+					band,
+					"horizontal-tb",
+				);
+			assert(
+				lowerOutsideDeltaHorizontal === 120,
+				`horizontal-tb 下帯外の最小 scroll delta が不正です: ${lowerOutsideDeltaHorizontal}`,
+			);
+			const horizontalPlan = resolveSoTTypewriterScrollPlan({
+				viewportRect: { left: 10, top: 100, width: 320, height: 240 },
+				caretRect: { left: 20, top: 260, width: 10, height: 20 },
+				writingMode: "horizontal-tb",
+				offsetRatio: 0,
+				followBandRatio: 0.2,
+			});
+			if (!horizontalPlan) {
+				throw new Error("horizontal-tb の scroll plan が null です");
+			}
+			assert(
+				horizontalPlan.scrollAxis === "y",
+				`horizontal-tb の scroll axis が不正です: ${horizontalPlan.scrollAxis}`,
+			);
+			assert(
+				horizontalPlan.target === 120 &&
+					horizontalPlan.bandStart === 96 &&
+					horizontalPlan.bandEnd === 144,
+				`horizontal-tb の target/band が不正です: ${JSON.stringify(horizontalPlan)}`,
+			);
+			assert(
+				horizontalPlan.caretMainAxisPosition === 170,
+				`horizontal-tb の scroll plan caret main axis が不正です: ${horizontalPlan.caretMainAxisPosition}`,
+			);
+			assert(
+				horizontalPlan.scrollDelta === 26,
+				`horizontal-tb の scroll plan delta が不正です: ${horizontalPlan.scrollDelta}`,
+			);
+
+			const clampedTypewriter = validateV2Settings({
+				wysiwyg: {
+					sotTypewriterMode: true,
+					sotTypewriterOffsetRatio: 1,
+					sotTypewriterFollowBandRatio: 0.01,
+					sotTypewriterBlockHighlightOpacity: 2,
+					sotTypewriterCurrentLineHighlightOpacity: -1,
+					sotTypewriterNonFocusOpacity: 0.01,
+					sotTypewriterBlockHighlightColor: "invalid",
+				},
+			});
+			assert(
+				clampedTypewriter.wysiwyg.sotTypewriterMode === true,
+				"sotTypewriterMode の boolean 値が保持されません",
+			);
+			assert(
+				clampedTypewriter.wysiwyg.sotTypewriterOffsetRatio === 0.4,
+				`offsetRatio clamp が不正です: ${clampedTypewriter.wysiwyg.sotTypewriterOffsetRatio}`,
+			);
+			assert(
+				clampedTypewriter.wysiwyg.sotTypewriterFollowBandRatio === 0.05,
+				`followBandRatio clamp が不正です: ${clampedTypewriter.wysiwyg.sotTypewriterFollowBandRatio}`,
+			);
+			assert(
+				clampedTypewriter.wysiwyg.sotTypewriterBlockHighlightOpacity === 1,
+				`block highlight opacity clamp が不正です: ${clampedTypewriter.wysiwyg.sotTypewriterBlockHighlightOpacity}`,
+			);
+			assert(
+				clampedTypewriter.wysiwyg
+					.sotTypewriterCurrentLineHighlightOpacity === 0,
+				`current line highlight opacity clamp が不正です: ${clampedTypewriter.wysiwyg.sotTypewriterCurrentLineHighlightOpacity}`,
+			);
+			assert(
+				clampedTypewriter.wysiwyg.sotTypewriterNonFocusOpacity === 0.1,
+				`non-focus opacity clamp が不正です: ${clampedTypewriter.wysiwyg.sotTypewriterNonFocusOpacity}`,
+			);
+			assert(
+				clampedTypewriter.wysiwyg.sotTypewriterBlockHighlightColor ===
+					"#1e90ff",
+				`block highlight color fallback が不正です: ${clampedTypewriter.wysiwyg.sotTypewriterBlockHighlightColor}`,
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "Typewriter helper と settings clamp が期待通りです",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `Typewriter helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTTypewriterSuppressionHelper(): Promise<void> {
+		const testName = "SoT派生ビュー: Typewriter suppression helper";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const baseState = {
+				suppressAfterNavigation: false,
+				suppressAfterJumpOrCollapse: false,
+				isPointerSelecting: false,
+				autoScrollSelecting: false,
+				isScrolling: false,
+				hasPendingScrollSettle: false,
+				hasPendingNavigationCommit: false,
+				isFastScrollActive: false,
+				isOutlineJumpInProgress: false,
+			};
+
+			assert(
+				isSoTTypewriterSuppressedNavigationKey("Home"),
+				"Home が suppression 対象キーとして扱われません",
+			);
+			assert(
+				isSoTTypewriterSuppressedNavigationKey("End"),
+				"End が suppression 対象キーとして扱われません",
+			);
+			assert(
+				isSoTTypewriterSuppressedNavigationKey("PageUp"),
+				"PageUp が suppression 対象キーとして扱われません",
+			);
+			assert(
+				isSoTTypewriterSuppressedNavigationKey("PageDown"),
+				"PageDown が suppression 対象キーとして扱われません",
+			);
+			assert(
+				!isSoTTypewriterSuppressedNavigationKey("ArrowRight"),
+				"ArrowRight まで suppression 対象になっています",
+			);
+
+			const navigationSuppressed = resolveSoTTypewriterSuppressionDecision({
+				...baseState,
+				suppressAfterNavigation: true,
+			});
+			assert(
+				navigationSuppressed.suppress,
+				"Home/End/PageUp/PageDown 直後が suppress されません",
+			);
+			assert(
+				navigationSuppressed.consumeNavigationSuppression,
+				"navigation one-shot suppression が消費対象になりません",
+			);
+
+			const pendingNavigationCommit =
+				resolveSoTTypewriterSuppressionDecision({
+					...baseState,
+					suppressAfterNavigation: true,
+					hasPendingNavigationCommit: true,
+				});
+			assert(
+				pendingNavigationCommit.suppress,
+				"navigation commit 待ち中が suppress されません",
+			);
+			assert(
+				!pendingNavigationCommit.consumeNavigationSuppression,
+				"navigation commit 待ち中に one-shot suppression が早期消費されています",
+			);
+
+			const pointerDragSuppressed = resolveSoTTypewriterSuppressionDecision({
+				...baseState,
+				isPointerSelecting: true,
+			});
+			assert(
+				pointerDragSuppressed.suppress,
+				"pointer drag 中が suppress されません",
+			);
+
+			const fastScrollSuppressed = resolveSoTTypewriterSuppressionDecision({
+				...baseState,
+				hasPendingScrollSettle: true,
+				isFastScrollActive: true,
+			});
+			assert(
+				fastScrollSuppressed.suppress,
+				"fast scroll / debounce 中が suppress されません",
+			);
+
+			const autoScrollSelectionSuppressed =
+				resolveSoTTypewriterSuppressionDecision({
+					...baseState,
+					autoScrollSelecting: true,
+				});
+			assert(
+				autoScrollSelectionSuppressed.suppress,
+				"auto scroll selection 中が suppress されません",
+			);
+
+			const jumpSuppressed = resolveSoTTypewriterSuppressionDecision({
+				...baseState,
+				suppressAfterJumpOrCollapse: true,
+				isOutlineJumpInProgress: true,
+			});
+			assert(
+				jumpSuppressed.suppress,
+				"jump / collapse 直後が suppress されません",
+			);
+			assert(
+				jumpSuppressed.consumeJumpOrCollapseSuppression,
+				"jump / collapse one-shot suppression が消費対象になりません",
+			);
+
+			const normalCollapsedCaret = resolveSoTTypewriterSuppressionDecision(
+				baseState,
+			);
+			assert(
+				!normalCollapsedCaret.suppress,
+				"通常 collapsed caret まで suppress されています",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "Typewriter suppression helper が期待通りです",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `Typewriter suppression helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTTypewriterInputFollowRequestHelper(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: Typewriter 入力時 follow request helper";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const base = {
+				typewriterEnabled: true,
+				sourceModeEnabled: false,
+				plainTextViewEnabled: false,
+			};
+
+			assert(
+				shouldRequestSoTTypewriterFollowForInput({
+					...base,
+					origin: "text-input",
+					text: "あ",
+				}),
+				"Typewriter ON の通常文字入力で follow request が立ちません",
+			);
+			assert(
+				!shouldRequestSoTTypewriterFollowForInput({
+					...base,
+					origin: "pointer",
+				}),
+				"クリックだけで follow request が立っています",
+			);
+			assert(
+				shouldRequestSoTTypewriterFollowForInput({
+					...base,
+					origin: "text-input",
+					text: "い",
+				}),
+				"クリック後の最初の文字入力相当で follow request が立ちません",
+			);
+			assert(
+				!shouldRequestSoTTypewriterFollowForInput({
+					...base,
+					typewriterEnabled: false,
+					origin: "text-input",
+					text: "う",
+				}),
+				"Typewriter OFF の通常文字入力で follow request が立っています",
+			);
+			assert(
+				!shouldRequestSoTTypewriterFollowForInput({
+					...base,
+					sourceModeEnabled: true,
+					origin: "text-input",
+					text: "え",
+				}),
+				"source mode 中の入力で follow request が立っています",
+			);
+			const pendingBase = {
+				...base,
+				ceImeMode: false,
+				pendingTextLength: 12,
+				overlayFocused: true,
+				hasPendingCaretRect: true,
+			};
+			assert(
+				shouldUseSoTTypewriterPendingCaretForFollow({
+					...pendingBase,
+					origin: "pending-input",
+				}),
+				"pending input 中の follow 対象が pending caret になりません",
+			);
+			assert(
+				!shouldUseSoTTypewriterPendingCaretForFollow({
+					...pendingBase,
+					origin: "pointer",
+				}),
+				"クリックだけで pending caret follow が有効になっています",
+			);
+			assert(
+				!shouldUseSoTTypewriterPendingCaretForFollow({
+					...pendingBase,
+					typewriterEnabled: false,
+					origin: "pending-input",
+				}),
+				"Typewriter OFF で pending caret follow が有効になっています",
+			);
+			assert(
+				!shouldUseSoTTypewriterPendingCaretForFollow({
+					...pendingBase,
+					hasPendingCaretRect: false,
+					origin: "pending-input",
+				}),
+				"pending caret rect がない状態で pending caret follow が有効です",
+			);
+			assert(
+				!shouldUseSoTTypewriterPendingCaretForFollow({
+					...pendingBase,
+					ceImeMode: true,
+					origin: "pending-input",
+				}),
+				"ceImeMode で pending caret follow が有効になっています",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"通常入力と pending input では要求し、クリックのみ / Typewriter OFF では要求しません",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `Typewriter 入力 follow request helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTCaretScrollPolicySettingsPanel(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: 表示設定モーダル中は caret follow scroll を抑止する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const normal = resolveSoTCaretScrollPolicy({
+				settingsPanelOpen: false,
+				pendingCaretScroll: false,
+				pairedMarkdownLeafActive: true,
+				pendingTypewriterFollow: false,
+			});
+			assert(
+				normal.allowScrollWrites && normal.shouldScrollCaretIntoView,
+				"通常時の paired leaf caret follow が抑止されています",
+			);
+
+			const modalPaired = resolveSoTCaretScrollPolicy({
+				settingsPanelOpen: true,
+				pendingCaretScroll: false,
+				pairedMarkdownLeafActive: true,
+				pendingTypewriterFollow: false,
+			});
+			assert(
+				!modalPaired.allowScrollWrites &&
+					!modalPaired.shouldScrollCaretIntoView,
+				"表示設定モーダル中に paired leaf force scroll が許可されています",
+			);
+
+			const modalPending = resolveSoTCaretScrollPolicy({
+				settingsPanelOpen: true,
+				pendingCaretScroll: true,
+				pairedMarkdownLeafActive: false,
+				pendingTypewriterFollow: true,
+			});
+			assert(
+				!modalPending.shouldScrollCaretIntoView &&
+					!modalPending.shouldApplyPendingTypewriterFollow,
+				"表示設定モーダル中に pending/typewriter follow が許可されています",
+			);
+
+			const normalRender = resolveSoTRenderScrollRestorePolicy({
+				settingsPanelOpen: false,
+				suppressScrollRestore: false,
+				pointerSelecting: false,
+				autoScrollSelecting: false,
+				hasScrollAnchor: true,
+			});
+			assert(
+				normalRender.mode === "anchor-adjusted" &&
+					normalRender.allowScrollAnchorAdjustment,
+				"通常 render の scroll anchor 補正が無効になっています",
+			);
+
+			const modalRender = resolveSoTRenderScrollRestorePolicy({
+				settingsPanelOpen: true,
+				suppressScrollRestore: false,
+				pointerSelecting: false,
+				autoScrollSelecting: false,
+				hasScrollAnchor: true,
+			});
+			assert(
+				modalRender.mode === "captured-only" &&
+					!modalRender.allowScrollAnchorAdjustment,
+				"表示設定モーダル中に render scroll anchor 補正が許可されています",
+			);
+
+			const outlineJumpRender = resolveSoTRenderScrollRestorePolicy({
+				settingsPanelOpen: true,
+				suppressScrollRestore: true,
+				pointerSelecting: false,
+				autoScrollSelecting: false,
+				hasScrollAnchor: true,
+			});
+			assert(
+				outlineJumpRender.mode === "none" &&
+					!outlineJumpRender.allowScrollAnchorAdjustment,
+				"outline jump の scroll restore 抑止が維持されていません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"表示設定モーダル中のみ caret / Typewriter follow と render anchor scroll を抑止します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `caret scroll policy テスト失敗: ${error.message}`,
 				duration,
 			});
 		}
@@ -1060,6 +4082,105 @@ export class TategakiTestSuite {
 		}
 	}
 
+	private async testSoTPlainEditNormalLineRangeStaysSingleLine(): Promise<void> {
+		const testName =
+			"SoT plain edit は Phase V1 では通常段落を段落全体へ広げず 1 行のまま扱う";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const normalizeLinkLabel = (label: string) =>
+				label.trim().toLowerCase();
+			const text = "para1\npara2\n\n```ts\nconst x = 1;\n```";
+			const lines = text.split("\n");
+			const model = recomputeLineBlockKinds({
+				lines,
+				collapsedHeadingLines: new Set<number>(),
+				normalizeLinkLabel,
+			});
+			const lineRanges = computeLineRangesFromLines(lines);
+			const selection = { anchor: 7, head: 7 };
+			const controller = new SoTPlainEditController({
+				derivedRootEl: null,
+				plainEditOverlayEl: null,
+				plainEditRange: null,
+				plainEditComposing: false,
+				plainEditCommitting: false,
+				plainEditOutsidePointerHandler: null,
+				plainEditOverlayBaseRect: null,
+				sourceModeEnabled: true,
+				lineRanges,
+				lineBlockKinds: model.lineBlockKinds,
+				lineCodeBlockPart: model.lineCodeBlockPart,
+				lineMathBlockStart: model.lineMathBlockStart,
+				lineMathBlockEnd: model.lineMathBlockEnd,
+				lineCalloutBlockStart: model.lineCalloutBlockStart,
+				lineCalloutBlockEnd: model.lineCalloutBlockEnd,
+				lineTableBlockStart: model.lineTableBlockStart,
+				lineTableBlockEnd: model.lineTableBlockEnd,
+				lineDeflistBlockStart: model.lineDeflistBlockStart,
+				lineDeflistBlockEnd: model.lineDeflistBlockEnd,
+				lineHeadingSectionEnd: model.lineHeadingSectionEnd,
+				lineHeadingHiddenBy: model.lineHeadingHiddenBy,
+				sotEditor: {
+					getSelection: () => selection,
+				} as SoTEditor,
+				immediateRender: false,
+				updatePendingText: () => undefined,
+				setSelectionNormalized: () => undefined,
+				findLineIndex: (pos: number) => {
+					for (let i = 0; i < lineRanges.length; i += 1) {
+						const range = lineRanges[i];
+						if (!range) continue;
+						if (pos >= range.from && pos <= range.to) return i;
+					}
+					return null;
+				},
+				getLineElement: () => null,
+				ensureLineRendered: () => undefined,
+				getLineVisualRects: () => [],
+				toggleSourceMode: () => undefined,
+			});
+
+			const paragraphRange = controller.getBlockLineRange(1);
+			assert(
+				paragraphRange?.start === 1 && paragraphRange.end === 1,
+				`normal 行 plain edit が 1 行に留まりません: ${paragraphRange?.start}-${paragraphRange?.end}`,
+			);
+
+			const codeRange = controller.getBlockLineRange(4);
+			assert(
+				codeRange?.start === 3 && codeRange.end === 5,
+				`code block plain edit が従来どおり block 単位になりません: ${codeRange?.start}-${codeRange?.end}`,
+			);
+
+			const resolvedSelectionRange = controller.getRangeFromSelection();
+			assert(
+				resolvedSelectionRange?.startLine === 1 &&
+					resolvedSelectionRange.endLine === 1,
+				"getRangeFromSelection が通常段落を複数行 overlay に広げています",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "plain edit の normal 行 1 行維持と code block 維持を確認",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `plain edit normal 行範囲テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
 	private async testSoTPlainEditShiftHomeEndSelectionHelper(): Promise<void> {
 		const testName =
 			"SoT段落単位ソース編集: Shift+Home/End は論理行境界まで選択拡張する";
@@ -1249,7 +4370,7 @@ export class TategakiTestSuite {
 
 	private async testSoTVisualBoundaryNavigationHelper(): Promise<void> {
 		const testName =
-			"SoT派生ビュー: vertical boundary navigation helper は折り返し行先頭から前の visual line start を返す";
+			"SoT派生ビュー: vertical boundary navigation helper は折り返し行先頭から前後両方向の隣 visual line start を対称に返す";
 		const startTime = performance.now();
 
 		try {
@@ -1347,11 +4468,137 @@ export class TategakiTestSuite {
 				"targetVisualLineStartOffsets を作る rect 順が visual order になっていません",
 			);
 
+			// ───────────────────────────────────────────────────────────
+			// Phase 2 追加修正: next 側 (前進) への対称化検証
+			// 視覚行先頭から前進したとき、hit-test を経ずに次の視覚行先頭へスナップする。
+			// ───────────────────────────────────────────────────────────
+
+			// resolveSoTVisualBoundarySnapOffset の next 側 (双方向化) 検証
+			assert(
+				resolveSoTVisualBoundarySnapOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowLeft",
+					currentLocalOffset: 2,
+					visualLineStartOffsets,
+				}) === 7,
+				"vertical-rl の next 側で 1 つ次の visual line start を返しません",
+			);
+			assert(
+				resolveSoTVisualBoundarySnapOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowLeft",
+					currentLocalOffset: 7,
+					visualLineStartOffsets,
+				}) === 11,
+				"vertical-rl の next 側で連続スナップが機能しません",
+			);
+			assert(
+				resolveSoTVisualBoundarySnapOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowLeft",
+					currentLocalOffset: 11,
+					visualLineStartOffsets,
+				}) === null,
+				"next 方向に visual line がないのに boundary snap が発火しています",
+			);
+			assert(
+				resolveSoTVisualBoundarySnapOffset({
+					writingMode: "vertical-lr",
+					key: "ArrowRight",
+					currentLocalOffset: 2,
+					visualLineStartOffsets,
+				}) === 7,
+				"vertical-lr の next 側で 1 つ次の visual line start を返しません",
+			);
+			assert(
+				resolveSoTVisualBoundarySnapOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowLeft",
+					currentLocalOffset: 8,
+					visualLineStartOffsets,
+				}) === null,
+				"next 方向で行頭以外でも boundary snap helper が発火しています",
+			);
+
+			// resolveSoTNextLogicalLineVisualStartOffset (新規) の検証
+			assert(
+				resolveSoTNextLogicalLineVisualStartOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowLeft",
+					currentLocalOffset: 12,
+					currentLastVisibleStartOffset: 12,
+					targetVisualLineStartOffsets: [0, 6, 12],
+				}) === 0,
+				"next 方向の論理行またぎで次行の最初の visual line start を返しません",
+			);
+			assert(
+				resolveSoTNextLogicalLineVisualStartOffset({
+					writingMode: "vertical-lr",
+					key: "ArrowRight",
+					currentLocalOffset: 5,
+					currentLastVisibleStartOffset: 5,
+					targetVisualLineStartOffsets: [0, 5],
+				}) === 0,
+				"vertical-lr の next 跨ぎ移動で次行先頭を返しません",
+			);
+			assert(
+				resolveSoTNextLogicalLineVisualStartOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowLeft",
+					currentLocalOffset: 11,
+					currentLastVisibleStartOffset: 12,
+					targetVisualLineStartOffsets: [0, 6, 12],
+				}) === null,
+				"表示上の行末と一致しないのに next 跨ぎ helper が発火しています",
+			);
+			assert(
+				resolveSoTNextLogicalLineVisualStartOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowLeft",
+					currentLocalOffset: 12,
+					currentLastVisibleStartOffset: null,
+					targetVisualLineStartOffsets: [0, 6, 12],
+				}) === null,
+				"currentLastVisibleStartOffset が null でも next 跨ぎ helper が発火しています",
+			);
+			assert(
+				resolveSoTNextLogicalLineVisualStartOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowRight",
+					currentLocalOffset: 12,
+					currentLastVisibleStartOffset: 12,
+					targetVisualLineStartOffsets: [0, 6, 12],
+				}) === null,
+				"previous キー (ArrowRight in vertical-rl) で next 跨ぎ helper が発火しています",
+			);
+			assert(
+				resolveSoTNextLogicalLineVisualStartOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowLeft",
+					currentLocalOffset: 12,
+					currentLastVisibleStartOffset: 12,
+					targetVisualLineStartOffsets: [],
+				}) === null,
+				"次行 visualLineStartOffsets が空でも next 跨ぎ helper が発火しています",
+			);
+
+			// 既存の previous 側挙動が双方向化により壊れていないことを確認
+			assert(
+				resolveSoTVisualBoundarySnapOffset({
+					writingMode: "vertical-rl",
+					key: "ArrowRight",
+					currentLocalOffset: 11,
+					visualLineStartOffsets,
+				}) === 7,
+				"双方向化後に previous 側の連続スナップが壊れています",
+			);
+
 			const duration = performance.now() - startTime;
 			this.results.push({
 				name: testName,
 				success: true,
-				message: "折り返し行先頭から前の visual line start への補正だけを行います",
+				message:
+					"折り返し行先頭から前後両方向で隣の visual line start に対称的にスナップします",
 				duration,
 			});
 		} catch (error) {
@@ -1360,6 +4607,80 @@ export class TategakiTestSuite {
 				name: testName,
 				success: false,
 				message: `vertical boundary navigation helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTRunOffsetBoundaryResolution(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: run offset helper は隣接 run 境界で次 run start を優先する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			const window = new Window();
+			const document =
+				window.document as unknown as globalThis.Document;
+			const lineEl =
+				document.createElement("div") as unknown as HTMLElement;
+			lineEl.innerHTML =
+				'<span class="tategaki-sot-run" data-from="0" data-to="1">前</span>' +
+				'<span class="tategaki-sot-run tategaki-aozora-ruby" data-from="1" data-to="2">漢</span>' +
+				'<span class="tategaki-sot-run" data-from="4" data-to="5">後</span>';
+			const runs = Array.from(
+				lineEl.querySelectorAll<HTMLElement>(".tategaki-sot-run"),
+			);
+			const runInfos = runs.map((run) => ({
+				from: Number.parseInt(run.dataset.from ?? "", 10),
+				to: Number.parseInt(run.dataset.to ?? "", 10),
+				textNode: run.firstChild as Text,
+			}));
+
+			const adjacentBoundary = findSoTRunTextPositionAtOffset(runInfos, 1);
+			assert(
+				adjacentBoundary?.node === runs[1]?.firstChild &&
+					adjacentBoundary.offset === 0,
+				"隣接 run 境界で次 run start を返しません",
+			);
+
+			const hiddenGapBoundary = findSoTRunTextPositionAtOffset(runInfos, 2);
+			assert(
+				hiddenGapBoundary?.node === runs[1]?.firstChild &&
+					hiddenGapBoundary.offset === 1,
+				"不可視 gap の手前境界で現在 run end を維持しません",
+			);
+
+			const hiddenGapInterior = findSoTRunTextPositionAtOffset(runInfos, 3);
+			assert(
+				hiddenGapInterior?.node === runs[2]?.firstChild &&
+					hiddenGapInterior.offset === 0,
+				"不可視 gap 内で次の可視 run 先頭へ寄せません",
+			);
+
+			const lineEnd = findSoTRunTextPositionAtOffset(runInfos, 5);
+			assert(
+				lineEnd?.node === runs[2]?.firstChild && lineEnd.offset === 1,
+				"行末で最後の run end を返しません",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"隣接 run 境界では次 run start、不可視 gap では既存 end/次 start を使い分けます",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `run offset helper テスト失敗: ${error.message}`,
 				duration,
 			});
 		}
@@ -3456,6 +6777,315 @@ export class TategakiTestSuite {
 		}
 	}
 
+	private async testSoTTypewriterEffectiveSelectionMode(): Promise<void> {
+		const testName =
+			"SoT Typewriter ON 時: native-drag 保存値でも pointerdown 判定が fast-click 相当になる";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			// Typewriter OFF + native-drag → 保存値どおり native-drag
+			assert(
+				resolveEffectiveSelectionMode("native-drag", false) === "native-drag",
+				"Typewriter OFF + native-drag 保存値が native-drag にならない",
+			);
+			// Typewriter OFF + fast-click → 保存値どおり fast-click
+			assert(
+				resolveEffectiveSelectionMode("fast-click", false) === "fast-click",
+				"Typewriter OFF + fast-click 保存値が fast-click にならない",
+			);
+			// Typewriter ON + native-drag → 実効値は fast-click
+			assert(
+				resolveEffectiveSelectionMode("native-drag", true) === "fast-click",
+				"Typewriter ON + native-drag 保存値の実効モードが fast-click にならない",
+			);
+			// Typewriter ON + fast-click → 従来どおり fast-click
+			assert(
+				resolveEffectiveSelectionMode("fast-click", true) === "fast-click",
+				"Typewriter ON + fast-click 保存値が fast-click にならない",
+			);
+
+			// Typewriter ON + native-drag → pointerdown 判定が deactivate になること
+			const twOnNativeDrag = decideOnPointerDown({
+				ceImeMode: false,
+				sourceModeEnabled: false,
+				button: 0,
+				onScrollbar: false,
+				targetStrategy: "native-first",
+				selectionMode: resolveEffectiveSelectionMode("native-drag", true),
+			});
+			assert(
+				twOnNativeDrag.action === "deactivate" &&
+					twOnNativeDrag.reason === "pointerdown-content",
+				"Typewriter ON + native-drag 保存値で native assist が deactivate にならない",
+			);
+
+			// Typewriter OFF + native-drag → pointerdown 判定が activate になること（従来通り）
+			const twOffNativeDrag = decideOnPointerDown({
+				ceImeMode: false,
+				sourceModeEnabled: false,
+				button: 0,
+				onScrollbar: false,
+				targetStrategy: "native-first",
+				selectionMode: resolveEffectiveSelectionMode("native-drag", false),
+			});
+			assert(
+				twOffNativeDrag.action === "activate" &&
+					twOffNativeDrag.reason === "pointerdown-content-native",
+				"Typewriter OFF + native-drag 保存値で native assist が activate にならない",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"Typewriter ON/OFF × native-drag/fast-click の実効 selection mode と pointerdown 判定を確認",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `実効 selection mode エラー: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTSelectionOverlayTailSpacerVisibleRange(): Promise<void> {
+		const testName =
+			"SoT selection overlay: tail spacer表示時も通常visible rangeが最終可視行を落とさない";
+		const startTime = performance.now();
+		const originalElementsFromPoint = document.elementsFromPoint;
+		const originalElementFromPoint = document.elementFromPoint;
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const setRect = (
+				element: Element,
+				rect: { left: number; top: number; width: number; height: number },
+			) => {
+				Object.defineProperty(element, "getBoundingClientRect", {
+					value: () =>
+						DOMRect.fromRect({
+							x: rect.left,
+							y: rect.top,
+							width: rect.width,
+							height: rect.height,
+						}),
+					configurable: true,
+				});
+			};
+
+			Object.defineProperty(document, "elementsFromPoint", {
+				value: () => [],
+				configurable: true,
+			});
+			Object.defineProperty(document, "elementFromPoint", {
+				value: () => null,
+				configurable: true,
+			});
+
+			const rootEl = document.createElement("div");
+			rootEl.style.writingMode = "horizontal-tb";
+			setRect(rootEl, { left: 0, top: 0, width: 200, height: 100 });
+			const contentEl = document.createElement("div");
+			setRect(contentEl, { left: 0, top: 0, width: 200, height: 220 });
+			const selectionLayerEl = document.createElement("div");
+			const lineRects = [
+				{ left: 0, top: -70, width: 200, height: 20 },
+				{ left: 0, top: -35, width: 200, height: 20 },
+				{ left: 0, top: 15, width: 200, height: 20 },
+				{ left: 0, top: 55, width: 200, height: 20 },
+			];
+			const lineEls = lineRects.map((rect, index) => {
+				const lineEl = document.createElement("div");
+				lineEl.className = "tategaki-sot-line";
+				lineEl.dataset.line = String(index);
+				setRect(lineEl, rect);
+				contentEl.appendChild(lineEl);
+				return lineEl;
+			});
+			rootEl.append(contentEl, selectionLayerEl);
+			document.body.appendChild(rootEl);
+
+			const lineRanges: LineRange[] = [
+				{ from: 0, to: 10 },
+				{ from: 10, to: 20 },
+				{ from: 20, to: 30 },
+				{ from: 30, to: 40 },
+			];
+			const overlay = new SoTSelectionOverlay({
+				getDerivedRootEl: () => rootEl,
+				getDerivedContentEl: () => contentEl,
+				getSelectionLayerEl: () => selectionLayerEl,
+				getSotEditor: () =>
+					({
+						getSelection: () => ({ anchor: 0, head: 40 }),
+					}) as SoTEditor,
+				isCeImeMode: () => false,
+				isNativeSelectionEnabled: () => false,
+				ensureLineRendered: () => undefined,
+				getPendingSelectionState: () => ({
+					pendingText: "",
+					pendingSelectionFrom: null,
+				}),
+				getLineRanges: () => lineRanges,
+				findLineIndex: (offset) => {
+					const index = lineRanges.findIndex(
+						(range) => offset >= range.from && offset <= range.to,
+					);
+					return index >= 0 ? index : null;
+				},
+				getLineElement: (lineIndex) => lineEls[lineIndex] ?? null,
+				getLineVisualRects: (lineEl) => [lineEl.getBoundingClientRect()],
+				getLineTextNodes: () => [],
+				findTextNodeAtOffset: () => null,
+				isPointerSelecting: () => false,
+				isAutoScrollSelecting: () => false,
+			});
+
+			overlay.updateSelectionOverlay();
+			assert(
+				selectionLayerEl.children.length === 2,
+				"hit-testがtail spacerに落ちる状態で可視最終行のoverlayが描画されない",
+			);
+
+			rootEl.remove();
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "通常visible rangeがline rect交差で末尾可視行を補完します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `selection overlay tail spacer エラー: ${error.message}`,
+				duration,
+			});
+		} finally {
+			Object.defineProperty(document, "elementsFromPoint", {
+				value: originalElementsFromPoint,
+				configurable: true,
+			});
+			Object.defineProperty(document, "elementFromPoint", {
+				value: originalElementFromPoint,
+				configurable: true,
+			});
+		}
+	}
+
+	private async testSoTTailSpacerPointerSnapIsFinalLineOnly(): Promise<void> {
+		const testName =
+			"SoT pointer: tail spacer補正は最終lineのblock-end側だけに限定される";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+			const lineRect = DOMRect.fromRect({
+				x: 40,
+				y: 20,
+				width: 30,
+				height: 80,
+			});
+			assert(
+				shouldSnapSoTTailSpacerPointerToDocumentEnd({
+					writingMode: "horizontal-tb",
+					lineIndex: 2,
+					totalLines: 3,
+					pointerClientX: 50,
+					pointerClientY: 104,
+					lineRect,
+				}),
+				"horizontal-tbの最終line下側tail spacerで末尾snapしない",
+			);
+			assert(
+				!shouldSnapSoTTailSpacerPointerToDocumentEnd({
+					writingMode: "horizontal-tb",
+					lineIndex: 1,
+					totalLines: 3,
+					pointerClientX: 50,
+					pointerClientY: 104,
+					lineRect,
+				}),
+				"最終line以外にもtail spacer snapが広がっている",
+			);
+			assert(
+				!shouldSnapSoTTailSpacerPointerToDocumentEnd({
+					writingMode: "horizontal-tb",
+					lineIndex: 2,
+					totalLines: 3,
+					pointerClientX: 50,
+					pointerClientY: 80,
+					lineRect,
+				}),
+				"最終line内のpointerまで末尾snapしている",
+			);
+			assert(
+				shouldSnapSoTTailSpacerPointerToDocumentEnd({
+					writingMode: "vertical-rl",
+					lineIndex: 2,
+					totalLines: 3,
+					pointerClientX: 36,
+					pointerClientY: 60,
+					lineRect,
+				}),
+				"vertical-rlの左側tail spacerで末尾snapしない",
+			);
+			assert(
+				!shouldSnapSoTTailSpacerPointerToDocumentEnd({
+					writingMode: "vertical-rl",
+					lineIndex: 2,
+					totalLines: 3,
+					pointerClientX: 72,
+					pointerClientY: 60,
+					lineRect,
+				}),
+				"vertical-rlのline内/逆側pointerまで末尾snapしている",
+			);
+			assert(
+				shouldSnapSoTTailSpacerPointerToDocumentEnd({
+					writingMode: "vertical-lr",
+					lineIndex: 2,
+					totalLines: 3,
+					pointerClientX: 74,
+					pointerClientY: 60,
+					lineRect,
+				}),
+				"vertical-lrの右側tail spacerで末尾snapしない",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message: "pointer補正が最終line / tail spacer方向に限定されています",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `tail spacer pointer snap エラー: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
 	private async testSoTLineElementContract(): Promise<void> {
 		const testName = "SoT派生ビュー: line element意味論契約";
 		const startTime = performance.now();
@@ -4604,8 +8234,10 @@ export class TategakiTestSuite {
 			const invalidMode = validateV2Settings({
 				wysiwyg: { sotSelectionMode: "invalid-value" as never },
 			});
-			if (invalidMode.wysiwyg.sotSelectionMode !== "native-drag") {
-				throw new Error("sotSelectionModeの不正値がnative-dragにフォールバックしない");
+			if (invalidMode.wysiwyg.sotSelectionMode !== "fast-click") {
+				throw new Error(
+					"sotSelectionModeの不正値がデフォルト（fast-click）にフォールバックしない",
+				);
 			}
 			// sotSelectionMode バリデーション: 有効値は保持
 			const validMode = validateV2Settings({
@@ -4639,6 +8271,24 @@ export class TategakiTestSuite {
 			}
 			if (swappedAutoTcyDigits.wysiwyg.autoTcyMaxDigits !== 4) {
 				throw new Error("autoTcyMaxDigits の min > max 補正に失敗");
+			}
+
+			const invalidAutoTcyDigitsOnly = validateV2Settings({
+				wysiwyg: {
+					autoTcyDigitsOnly: "true" as never,
+				},
+			});
+			if (invalidAutoTcyDigitsOnly.wysiwyg.autoTcyDigitsOnly !== false) {
+				throw new Error("autoTcyDigitsOnly の不正値が false に補正されない");
+			}
+
+			const validAutoTcyDigitsOnly = validateV2Settings({
+				wysiwyg: {
+					autoTcyDigitsOnly: true,
+				},
+			});
+			if (validAutoTcyDigitsOnly.wysiwyg.autoTcyDigitsOnly !== true) {
+				throw new Error("autoTcyDigitsOnly の有効値 true が保持されない");
 			}
 
 			const forcedFrontmatterMode =
@@ -4725,11 +8375,54 @@ export class TategakiTestSuite {
 				);
 			}
 
+			// Typewriter OFF: enabled のまま
+			const twOffState = resolveSelectionModeSettingUiState("sot", false);
+			if (twOffState.disabled !== false) {
+				throw new Error(
+					"Typewriter OFF + SoT の disabled 判定が true です",
+				);
+			}
+			if (twOffState.disabledReason !== undefined) {
+				throw new Error(
+					`Typewriter OFF + SoT に disabled reason が残っています: ${twOffState.disabledReason}`,
+				);
+			}
+
+			// Typewriter ON: disabled になり注意書きが出る
+			const twOnState = resolveSelectionModeSettingUiState("sot", true);
+			if (twOnState.disabled !== true) {
+				throw new Error(
+					"Typewriter ON + SoT の disabled 判定が false です",
+				);
+			}
+			if (!twOnState.disabledReason) {
+				throw new Error(
+					"Typewriter ON + SoT に disabled reason がありません",
+				);
+			}
+
+			// 互換モードは Typewriter ON/OFF に関わらず disabled
+			const compatTwOnState = resolveSelectionModeSettingUiState(
+				"compat",
+				true,
+			);
+			if (compatTwOnState.disabled !== true) {
+				throw new Error(
+					"互換モード + Typewriter ON の disabled 判定が false です",
+				);
+			}
+			if (compatTwOnState.disabledReason !== "互換モードでは反映されません") {
+				throw new Error(
+					`互換モード + Typewriter ON の disabled reason が不正です: ${compatTwOnState.disabledReason}`,
+				);
+			}
+
 			const duration = performance.now() - startTime;
 			this.results.push({
 				name: testName,
 				success: true,
-				message: "選択モード設定の互換モード無効化判定が期待通り",
+				message:
+					"選択モード設定の互換モード・Typewriter ON/OFF 無効化判定が期待通り",
 				duration,
 			});
 		} catch (error) {
@@ -4738,6 +8431,96 @@ export class TategakiTestSuite {
 				name: testName,
 				success: false,
 				message: `選択モード設定 UI 状態テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTTypewriterSettingsUiHelpers(): Promise<void> {
+		const testName =
+			"表示設定: SoT Typewriter UI helper は表示値と内部値を対応づける";
+		const startTime = performance.now();
+
+		try {
+			if (formatSoTTypewriterOffsetRatioForUi(0) !== "0%") {
+				throw new Error("offsetRatio=0 の UI 表示が 0% になりません");
+			}
+			if (formatSoTTypewriterOffsetRatioForUi(0.2) !== "+20%") {
+				throw new Error(
+					"offsetRatio=0.2 の UI 表示が +20% になりません",
+				);
+			}
+			if (formatSoTTypewriterOffsetRatioForUi(-0.2) !== "-20%") {
+				throw new Error(
+					"offsetRatio=-0.2 の UI 表示が -20% になりません",
+				);
+			}
+			if (formatSoTTypewriterFollowBandRatioForUi(0.16) !== "16%") {
+				throw new Error(
+					"followBandRatio=0.16 の UI 表示が 16% になりません",
+				);
+			}
+			if (formatSoTTypewriterFollowBandRatioForUi(0.05) !== "5%") {
+				throw new Error(
+					"followBandRatio=0.05 の UI 表示が 5% になりません",
+				);
+			}
+			if (resolveSoTTypewriterOffsetRatioFromUiPercent(80) !== 0.4) {
+				throw new Error("offsetRatio UI clamp が 0.4 になりません");
+			}
+			if (resolveSoTTypewriterOffsetRatioFromUiPercent(-80) !== -0.4) {
+				throw new Error("offsetRatio UI clamp が -0.4 になりません");
+			}
+			if (resolveSoTTypewriterFollowBandRatioFromUiPercent(30) !== 0.25) {
+				throw new Error(
+					"followBandRatio UI clamp が 0.25 になりません",
+				);
+			}
+			if (resolveSoTTypewriterFollowBandRatioFromUiPercent(5) !== 0.05) {
+				throw new Error("followBandRatio UI clamp が 0.05 になりません");
+			}
+			if (resolveSoTTypewriterFollowBandRatioFromUiPercent(3) !== 0.05) {
+				throw new Error(
+					"followBandRatio UI 下限未満 clamp が 0.05 になりません",
+				);
+			}
+			if (formatSoTTypewriterHighlightOpacityForUi(0.28) !== "28%") {
+				throw new Error(
+					"highlightOpacity=0.28 の UI 表示が 28% になりません",
+				);
+			}
+			if (formatSoTTypewriterNonFocusOpacityForUi(0.42) !== "42%") {
+				throw new Error(
+					"nonFocusOpacity=0.42 の UI 表示が 42% になりません",
+				);
+			}
+			if (resolveSoTTypewriterHighlightOpacityFromUiPercent(120) !== 1) {
+				throw new Error("highlightOpacity UI clamp が 1 になりません");
+			}
+			if (resolveSoTTypewriterHighlightOpacityFromUiPercent(-10) !== 0) {
+				throw new Error("highlightOpacity UI clamp が 0 になりません");
+			}
+			if (resolveSoTTypewriterNonFocusOpacityFromUiPercent(5) !== 0.1) {
+				throw new Error("nonFocusOpacity UI 下限 clamp が 0.1 になりません");
+			}
+			if (resolveSoTTypewriterNonFocusOpacityFromUiPercent(150) !== 1) {
+				throw new Error("nonFocusOpacity UI 上限 clamp が 1 になりません");
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"SoT Typewriter UI helper の表示値と内部値対応が期待通り",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `SoT Typewriter UI helper テスト失敗: ${error.message}`,
 				duration,
 			});
 		}
@@ -4768,8 +8551,8 @@ export class TategakiTestSuite {
 			if (!defaults.themes.length) {
 				throw new Error("テーマリストが空");
 			}
-			if (defaults.wysiwyg.sotSelectionMode !== "native-drag") {
-				throw new Error("sotSelectionModeのデフォルトがnative-dragでない");
+			if (defaults.wysiwyg.sotSelectionMode !== "fast-click") {
+				throw new Error("sotSelectionModeのデフォルトがfast-clickでない");
 			}
 			if (
 				defaults.wysiwyg.autoTcyMinDigits !==
@@ -4782,6 +8565,72 @@ export class TategakiTestSuite {
 				DEFAULT_AUTO_TCY_MAX_DIGITS
 			) {
 				throw new Error("autoTcyMaxDigits のデフォルトが 4 でない");
+			}
+			if (defaults.wysiwyg.autoTcyDigitsOnly !== false) {
+				throw new Error("autoTcyDigitsOnly のデフォルトが false でない");
+			}
+			if (defaults.wysiwyg.sotTypewriterMode !== false) {
+				throw new Error("sotTypewriterMode のデフォルトが false でない");
+			}
+			if (defaults.wysiwyg.sotTypewriterOffsetRatio !== 0) {
+				throw new Error("sotTypewriterOffsetRatio のデフォルトが 0 でない");
+			}
+			if (defaults.wysiwyg.sotTypewriterFollowBandRatio !== 0.16) {
+				throw new Error(
+					"sotTypewriterFollowBandRatio のデフォルトが 0.16 でない",
+				);
+			}
+			if (defaults.wysiwyg.sotTypewriterBlockHighlightEnabled !== true) {
+				throw new Error(
+					"sotTypewriterBlockHighlightEnabled のデフォルトが true でない",
+				);
+			}
+			if (
+				defaults.wysiwyg.sotTypewriterCurrentLineHighlightEnabled !== true
+			) {
+				throw new Error(
+					"sotTypewriterCurrentLineHighlightEnabled のデフォルトが true でない",
+				);
+			}
+			if (defaults.wysiwyg.sotTypewriterNonFocusDimEnabled !== true) {
+				throw new Error(
+					"sotTypewriterNonFocusDimEnabled のデフォルトが true でない",
+				);
+			}
+			if (
+				defaults.wysiwyg.sotTypewriterBlockHighlightColor !== "#1e90ff"
+			) {
+				throw new Error(
+					"sotTypewriterBlockHighlightColor のデフォルトが #1e90ff でない",
+				);
+			}
+			if (
+				defaults.wysiwyg.sotTypewriterBlockHighlightOpacity !== 0.16
+			) {
+				throw new Error(
+					"sotTypewriterBlockHighlightOpacity のデフォルトが 0.16 でない",
+				);
+			}
+			if (
+				defaults.wysiwyg.sotTypewriterCurrentLineHighlightColor !==
+				"#1e90ff"
+			) {
+				throw new Error(
+					"sotTypewriterCurrentLineHighlightColor のデフォルトが #1e90ff でない",
+				);
+			}
+			if (
+				defaults.wysiwyg.sotTypewriterCurrentLineHighlightOpacity !==
+				0.28
+			) {
+				throw new Error(
+					"sotTypewriterCurrentLineHighlightOpacity のデフォルトが 0.28 でない",
+				);
+			}
+			if (defaults.wysiwyg.sotTypewriterNonFocusOpacity !== 0.42) {
+				throw new Error(
+					"sotTypewriterNonFocusOpacity のデフォルトが 0.42 でない",
+				);
 			}
 			
 			const duration = performance.now() - startTime;
@@ -5862,7 +9711,7 @@ export class TategakiTestSuite {
 	}
 
 	private async testAutoTcyRangeDetection(): Promise<void> {
-		const testName = "自動TCY抽出は桁数設定と記号ペアルールを反映する";
+		const testName = "自動TCY抽出は digits-only と記号ペアルールを反映する";
 		const startTime = performance.now();
 
 		try {
@@ -5870,7 +9719,7 @@ export class TategakiTestSuite {
 				if (!condition) throw new Error(message);
 			};
 
-			const sample = "A 12 B 123 1234 HELLO ｟34｠ !! !? ??";
+			const sample = "AB A1 abc 12 123 1234 HELLO ｟34｠ !! !? ??";
 			const defaultBodies = collectAutoTcyRanges(sample).map(
 				(range) => range.text,
 			);
@@ -5882,25 +9731,42 @@ export class TategakiTestSuite {
 				minDigits: 1,
 				maxDigits: 2,
 			}).map((range) => range.text);
+			const digitsOnlyBodies = collectAutoTcyRanges(sample, {
+				minDigits: 1,
+				maxDigits: 4,
+				digitsOnly: true,
+			}).map((range) => range.text);
 
 			assert(defaultBodies.includes("12"), "既定設定で 12 が抽出されていません");
 			assert(defaultBodies.includes("123"), "既定設定で 123 が抽出されていません");
 			assert(defaultBodies.includes("1234"), "既定設定で 1234 が抽出されていません");
-			assert(!defaultBodies.includes("A"), "既定設定で 1 桁英数字が抽出されています");
-			assert(!defaultBodies.includes("B"), "既定設定で 1 桁英数字が抽出されています");
+			assert(defaultBodies.includes("AB"), "既定設定で AB が抽出されていません");
+			assert(defaultBodies.includes("A1"), "既定設定で A1 が抽出されていません");
+			assert(defaultBodies.includes("abc"), "既定設定で abc が抽出されていません");
 			assert(!defaultBodies.includes("HELLO"), "既定設定で 5 文字英字が抽出されています");
 			assert(!defaultBodies.includes("34"), "明示TCY内の本文は抽出対象外です");
 
-			assert(oneToFourBodies.includes("A"), "1〜4 設定で A が抽出されていません");
-			assert(oneToFourBodies.includes("B"), "1〜4 設定で B が抽出されていません");
+			assert(oneToFourBodies.includes("AB"), "1〜4 設定で AB が抽出されていません");
+			assert(oneToFourBodies.includes("A1"), "1〜4 設定で A1 が抽出されていません");
 			assert(oneToFourBodies.includes("1234"), "1〜4 設定で 1234 が抽出されていません");
 
-			assert(oneToTwoBodies.includes("A"), "1〜2 設定で A が抽出されていません");
+			assert(oneToTwoBodies.includes("AB"), "1〜2 設定で AB が抽出されていません");
 			assert(oneToTwoBodies.includes("12"), "1〜2 設定で 12 が抽出されていません");
 			assert(!oneToTwoBodies.includes("123"), "1〜2 設定で 3 桁英数字が抽出されています");
 			assert(!oneToTwoBodies.includes("1234"), "1〜2 設定で 4 桁英数字が抽出されています");
 
-			for (const bodies of [defaultBodies, oneToFourBodies, oneToTwoBodies]) {
+			assert(digitsOnlyBodies.includes("12"), "digits-only 設定で 12 が抽出されていません");
+			assert(digitsOnlyBodies.includes("123"), "digits-only 設定で 123 が抽出されていません");
+			assert(!digitsOnlyBodies.includes("AB"), "digits-only 設定で AB が抽出されています");
+			assert(!digitsOnlyBodies.includes("A1"), "digits-only 設定で A1 が抽出されています");
+			assert(!digitsOnlyBodies.includes("abc"), "digits-only 設定で abc が抽出されています");
+
+			for (const bodies of [
+				defaultBodies,
+				oneToFourBodies,
+				oneToTwoBodies,
+				digitsOnlyBodies,
+			]) {
 				assert(bodies.includes("!!"), "!! が抽出されていません");
 				assert(bodies.includes("!?"), "!? が抽出されていません");
 				assert(bodies.includes("??"), "?? が抽出されていません");
@@ -5910,7 +9776,7 @@ export class TategakiTestSuite {
 			this.results.push({
 				name: testName,
 				success: true,
-				message: "自動TCYの抽出条件が桁数設定ごとに期待通りです",
+				message: "自動TCYの抽出条件が digits-only を含めて期待通りです",
 				duration,
 			});
 		} catch (error) {
@@ -5925,7 +9791,7 @@ export class TategakiTestSuite {
 	}
 
 	private async testAutoTcySettingsDriveSharedHelper(): Promise<void> {
-		const testName = "自動TCY共通helperは settings に応じて桁数判定を変える";
+		const testName = "自動TCY共通helperは settings に応じて digits-only と SoT 判定を変える";
 		const startTime = performance.now();
 
 		try {
@@ -5938,6 +9804,13 @@ export class TategakiTestSuite {
 				wysiwyg: {
 					autoTcyMinDigits: 1,
 					autoTcyMaxDigits: 2,
+				},
+			});
+			const digitsOnlySettings = validateV2Settings({
+				wysiwyg: {
+					autoTcyMinDigits: 1,
+					autoTcyMaxDigits: 4,
+					autoTcyDigitsOnly: true,
 				},
 			});
 
@@ -5958,8 +9831,12 @@ export class TategakiTestSuite {
 					oneToTwoDigitRange.maxDigits === 2,
 				`1〜2 の桁数レンジが不正です: ${JSON.stringify(oneToTwoDigitRange)}`,
 			);
+			assert(
+				digitsOnlySettings.wysiwyg.autoTcyDigitsOnly === true,
+				"digits-only settings が有効になっていません",
+			);
 
-			const sample = "A 12 123";
+			const sample = "AB A1 abc 12 123 !!";
 			const defaultBodies = collectAutoTcyRanges(
 				sample,
 				defaultSettings.wysiwyg,
@@ -5968,14 +9845,18 @@ export class TategakiTestSuite {
 				sample,
 				oneToTwoSettings.wysiwyg,
 			).map((range) => range.text);
+			const digitsOnlyBodies = collectAutoTcyRanges(
+				sample,
+				digitsOnlySettings.wysiwyg,
+			).map((range) => range.text);
 
 			assert(
-				!defaultBodies.includes("A"),
-				"既定 settings で 1 桁英数字が抽出されています",
+				defaultBodies.includes("AB"),
+				"既定 settings で AB が抽出されていません",
 			);
 			assert(
-				oneToTwoBodies.includes("A"),
-				"1〜2 settings で 1 桁英数字が抽出されていません",
+				oneToTwoBodies.includes("AB"),
+				"1〜2 settings で AB が抽出されていません",
 			);
 			assert(
 				defaultBodies.includes("123"),
@@ -5985,12 +9866,66 @@ export class TategakiTestSuite {
 				!oneToTwoBodies.includes("123"),
 				"1〜2 settings で 3 桁英数字が抽出されています",
 			);
+			assert(
+				digitsOnlyBodies.includes("12"),
+				"digits-only settings で 12 が抽出されていません",
+			);
+			assert(
+				!digitsOnlyBodies.includes("AB"),
+				"digits-only settings で AB が抽出されています",
+			);
+			assert(
+				!digitsOnlyBodies.includes("A1"),
+				"digits-only settings で A1 が抽出されています",
+			);
+			assert(
+				!digitsOnlyBodies.includes("abc"),
+				"digits-only settings で abc が抽出されています",
+			);
+			assert(
+				digitsOnlyBodies.includes("!!"),
+				"digits-only settings で !! が抽出されていません",
+			);
+
+			const sotTcyRanges: Array<{ from: number; to: number }> = [];
+			collectRenderableTcyRangesForLine(
+				0,
+				sample.length,
+				sample,
+				[],
+				[],
+				sotTcyRanges,
+				{
+					enableAutoTcy: true,
+					autoTcyDigitRange: resolveAutoTcyDigitRange(
+						digitsOnlySettings.wysiwyg,
+					),
+					autoTcyDigitsOnly:
+						digitsOnlySettings.wysiwyg.autoTcyDigitsOnly,
+					rubyRanges: [],
+				},
+			);
+			const sotBodies = sotTcyRanges.map((range) =>
+				sample.slice(range.from, range.to),
+			);
+			assert(
+				sotBodies.includes("12"),
+				"SoT 側で digits-only の 12 が抽出されていません",
+			);
+			assert(
+				!sotBodies.includes("AB"),
+				"SoT 側で digits-only の AB が抽出されています",
+			);
+			assert(
+				sotBodies.includes("!!"),
+				"SoT 側で digits-only の !! が抽出されていません",
+			);
 
 			const duration = performance.now() - startTime;
 			this.results.push({
 				name: testName,
 				success: true,
-				message: "共通helperの桁数判定が settings に応じて変化します",
+				message: "共通helperの digits-only 判定が settings に応じて SoT と共有されます",
 				duration,
 			});
 		} catch (error) {

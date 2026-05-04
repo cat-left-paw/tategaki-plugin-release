@@ -138,3 +138,21 @@ export function shouldDeactivateOnPointerEnd(button: number): boolean {
 
 // escape / setCeImeMode は常に OFF → 呼び出し側で直接 false を渡す。
 // 定数化の必要がないため関数は用意しない。
+
+// ---------------------------------------------------------------------------
+// Typewriter 実効 selection mode
+// ---------------------------------------------------------------------------
+
+/**
+ * 保存値の sotSelectionMode と sotTypewriterMode を受け取り、
+ * pointerdown 判定で使う実効 selection mode を返す純粋関数。
+ *
+ * Typewriter ON 中は保存値に関わらず "fast-click" を返す。
+ * 保存値そのものは変更しない。
+ */
+export function resolveEffectiveSelectionMode(
+	saved: SoTSelectionMode,
+	typewriterMode: boolean,
+): SoTSelectionMode {
+	return typewriterMode ? "fast-click" : saved;
+}

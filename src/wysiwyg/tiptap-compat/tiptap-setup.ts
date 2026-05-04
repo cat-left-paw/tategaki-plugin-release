@@ -45,7 +45,6 @@ import {
 } from "../../shared/aozora-ruby";
 import {
 	convertAozoraTcySyntaxToHtml,
-	resolveAutoTcyDigitRange,
 } from "../../shared/aozora-tcy";
 
 export interface TategakiCompatEditorOptions {
@@ -96,7 +95,7 @@ export function createTategakiCompatEditor(options: TategakiCompatEditorOptions)
 			AozoraTcyNode,
 			AutoTcyDecoration.configure({
 				isEnabled: () => settings.wysiwyg.enableAutoTcy === true,
-				getDigitRange: () => resolveAutoTcyDigitRange(settings.wysiwyg),
+				getOptions: () => settings.wysiwyg,
 			}),
 			Heading.configure({
 				levels: [1, 2, 3, 4, 5, 6],

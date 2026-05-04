@@ -1,5 +1,6 @@
 import type { LineRange } from "./line-ranges";
 import type { SoTEditor } from "./sot-editor";
+import { resolveSoTFocusBlockForLineIndex } from "./sot-focus-block-resolver";
 import { resolveSoTPlainEditHomeEndSelection } from "./sot-plain-edit-navigation";
 import { getRectUnion } from "./sot-selection-geometry";
 
@@ -29,6 +30,13 @@ type PlainEditHost = {
 	sourceModeEnabled: boolean;
 	lineRanges: LineRange[];
 	lineBlockKinds: string[];
+	lineCodeBlockPart: (
+		| null
+		| "single"
+		| "start"
+		| "middle"
+		| "end"
+	)[];
 	lineMathBlockStart: Array<number | null>;
 	lineMathBlockEnd: Array<number | null>;
 	lineCalloutBlockStart: Array<number | null>;
@@ -37,6 +45,8 @@ type PlainEditHost = {
 	lineTableBlockEnd: Array<number | null>;
 	lineDeflistBlockStart: Array<number | null>;
 	lineDeflistBlockEnd: Array<number | null>;
+	lineHeadingSectionEnd: Array<number | null>;
+	lineHeadingHiddenBy: Array<number | null>;
 	sotEditor: SoTEditor | null;
 	immediateRender: boolean;
 	updatePendingText: (text: string, force?: boolean) => void;
@@ -45,9 +55,6 @@ type PlainEditHost = {
 	getLineElement: (index: number) => HTMLElement | null;
 	ensureLineRendered: (lineEl: HTMLElement) => void;
 	getLineVisualRects: (lineEl: HTMLElement) => DOMRect[];
-	getCodeBlockRangeForLine: (
-		lineIndex: number
-	) => { start: number; end: number } | null;
 	toggleSourceMode: () => void;
 	isLeafActive?: () => boolean;
 };
@@ -698,64 +705,37 @@ export class SoTPlainEditController {
 	getBlockLineRange(
 		lineIndex: number
 	): { start: number; end: number } | null {
-		if (lineIndex < 0 || lineIndex >= this.host.lineBlockKinds.length) {
-			return null;
-		}
-		const kind = this.host.lineBlockKinds[lineIndex] ?? "normal";
-		if (kind === "code" || kind === "code-fence") {
-			return this.host.getCodeBlockRangeForLine(lineIndex) ?? {
-				start: lineIndex,
-				end: lineIndex,
+		const resolved = resolveSoTFocusBlockForLineIndex(
+			{
+				lineRanges: this.host.lineRanges,
+				lineBlockKinds: this.host.lineBlockKinds,
+				lineCodeBlockPart: this.host.lineCodeBlockPart,
+				lineMathBlockStart: this.host.lineMathBlockStart,
+				lineMathBlockEnd: this.host.lineMathBlockEnd,
+				lineCalloutBlockStart: this.host.lineCalloutBlockStart,
+				lineCalloutBlockEnd: this.host.lineCalloutBlockEnd,
+				lineTableBlockStart: this.host.lineTableBlockStart,
+				lineTableBlockEnd: this.host.lineTableBlockEnd,
+				lineDeflistBlockStart: this.host.lineDeflistBlockStart,
+				lineDeflistBlockEnd: this.host.lineDeflistBlockEnd,
+				lineHeadingSectionEnd: this.host.lineHeadingSectionEnd,
+				lineHeadingHiddenBy: this.host.lineHeadingHiddenBy,
+			},
+			lineIndex,
+		);
+		if (!resolved) return null;
+		// Phase V1 では resolver helper だけを先行導入し、
+		// plain edit の通常段落編集体験は従来どおり 1 行に保つ。
+		if (resolved.kind === "paragraph") {
+			return {
+				start: resolved.lineIndex,
+				end: resolved.lineIndex,
 			};
 		}
-		if (kind === "math" || kind === "math-fence") {
-			const start = this.host.lineMathBlockStart[lineIndex];
-			const end = this.host.lineMathBlockEnd[lineIndex];
-			if (start !== null && end !== null) {
-				return { start, end };
-			}
-		}
-		if (kind === "callout" || kind === "callout-title") {
-			const start = this.host.lineCalloutBlockStart[lineIndex];
-			const end = this.host.lineCalloutBlockEnd[lineIndex];
-			if (start !== null && end !== null) {
-				return { start, end };
-			}
-		}
-		if (kind === "table-row" || kind === "table-sep") {
-			const start = this.host.lineTableBlockStart[lineIndex];
-			const end = this.host.lineTableBlockEnd[lineIndex];
-			if (start !== null && end !== null) {
-				return { start, end };
-			}
-		}
-		if (kind === "deflist") {
-			const start = this.host.lineDeflistBlockStart[lineIndex];
-			const end = this.host.lineDeflistBlockEnd[lineIndex];
-			if (start !== null && end !== null) {
-				return { start, end };
-			}
-		}
-		if (kind === "frontmatter" || kind === "frontmatter-fence") {
-			let start = lineIndex;
-			let end = lineIndex;
-			while (start > 0) {
-				const prev = this.host.lineBlockKinds[start - 1] ?? "normal";
-				if (prev !== "frontmatter" && prev !== "frontmatter-fence") {
-					break;
-				}
-				start -= 1;
-			}
-			while (end + 1 < this.host.lineBlockKinds.length) {
-				const next = this.host.lineBlockKinds[end + 1] ?? "normal";
-				if (next !== "frontmatter" && next !== "frontmatter-fence") {
-					break;
-				}
-				end += 1;
-			}
-			return { start, end };
-		}
-		return { start: lineIndex, end: lineIndex };
+		return {
+			start: resolved.blockStartLine,
+			end: resolved.blockEndLine,
+		};
 	}
 
 	updateOverlayPosition(range: { startLine: number; endLine: number }): void {

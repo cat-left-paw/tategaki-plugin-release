@@ -51,6 +51,11 @@ const jaDict = {
 	"toolbar.ruby.toggle": "ルビ表示のオン/オフ",
 	"toolbar.ruby.enable": "ルビ表示をオンにする",
 	"toolbar.ruby.disable": "ルビ表示をオフにする",
+	"toolbar.typewriter.menu": "タイプライターモード",
+	"toolbar.typewriter.scroll": "Typewriter scroll",
+	"toolbar.typewriter.blockHighlight": "編集ブロックハイライト",
+	"toolbar.typewriter.currentLineHighlight": "現在行ハイライト",
+	"toolbar.typewriter.nonFocusDim": "非フォーカス減光",
 	"toolbar.plainText.toggle": "全文プレーン表示",
 	"toolbar.plainText.enable": "全文プレーン表示をオンにする",
 	"toolbar.plainText.disable": "全文プレーン表示をオフにする",
@@ -115,6 +120,59 @@ const jaDict = {
 	"settings.showModeDialog.name": "ビュー起動時にモード選択を表示",
 	"settings.showModeDialog.desc":
 		"縦書きビューを開くときに、表示モードを選ぶダイアログを表示します",
+	"settings.section.sotWysiwyg": "執筆・参照モード",
+	"settings.currentValue": "現在値: {value}",
+	"settings.typewriter.section": "タイプライターモード",
+	"settings.value.enabled": "有効",
+	"settings.value.disabled": "無効",
+	"settings.sotTypewriterMode.name": "タイプライタースクロール",
+	"settings.sotTypewriterMode.desc":
+		"執筆・参照モードで、キャレットを追従帯の範囲に保つようスクロールを追従させます。視覚フォーカス（編集ブロック / 現在行 / 非フォーカス減光）はこの設定に依存せず個別に切り替えられます",
+	"settings.sotTypewriterOffsetRatio.name": "追従位置",
+	"settings.sotTypewriterOffsetRatio.desc":
+		"画面中央からの相対位置です。正の値ほど進行方向へ寄ります",
+	"settings.sotTypewriterFollowBandRatio.name": "追従帯の幅",
+	"settings.sotTypewriterFollowBandRatio.desc":
+		"追従帯の幅です。この範囲内では追加スクロールしません",
+	"settings.sotTypewriterVisualFocus.section": "視覚フォーカス",
+	"settings.sotTypewriterBlockHighlightEnabled.name":
+		"編集ブロックハイライト",
+	"settings.sotTypewriterBlockHighlightEnabled.desc":
+		"現在の編集ブロックに背景ハイライトを表示します",
+	"settings.sotTypewriterCurrentLineHighlightEnabled.name":
+		"現在行ハイライト",
+	"settings.sotTypewriterCurrentLineHighlightEnabled.desc":
+		"キャレットがある現在行を強調表示します",
+	"settings.sotTypewriterNonFocusDimEnabled.name":
+		"非フォーカス減光",
+	"settings.sotTypewriterNonFocusDimEnabled.desc":
+		"現在の編集ブロック以外を opacity で減光します",
+	"settings.sotTypewriterBlockHighlightColor.name":
+		"編集ブロック色",
+	"settings.sotTypewriterBlockHighlightColor.desc":
+		"編集ブロックハイライトの色です",
+	"settings.sotTypewriterBlockHighlightOpacity.name":
+		"編集ブロック透明度",
+	"settings.sotTypewriterBlockHighlightOpacity.desc":
+		"編集ブロックハイライトの濃さです",
+	"settings.sotTypewriterCurrentLineHighlightColor.name":
+		"現在行色",
+	"settings.sotTypewriterCurrentLineHighlightColor.desc":
+		"現在行ハイライトの色です",
+	"settings.sotTypewriterCurrentLineHighlightOpacity.name":
+		"現在行透明度",
+	"settings.sotTypewriterCurrentLineHighlightOpacity.desc":
+		"現在行ハイライトの濃さです",
+	"settings.sotTypewriterNonFocusOpacity.name":
+		"非フォーカス透明度",
+	"settings.sotTypewriterNonFocusOpacity.desc":
+		"非フォーカス段落/ブロックの透明度です",
+	"settings.sotTypewriter.unavailable.sourceMode":
+		"ソーステキスト編集中はタイプライター機能が一時的に利用できません。通常の SoT に戻ると、保存されている設定がそのまま復帰します",
+	"settings.sotTypewriter.unavailable.plainTextView":
+		"プレーンテキスト表示中はタイプライター機能が一時的に利用できません。プレーンテキスト表示を解除すると、保存されている設定がそのまま復帰します",
+	"settings.sotTypewriter.unavailable.plainEdit":
+		"段落プレーン編集中はタイプライター機能が一時的に利用できません。プレーン編集を抜けると、保存されている設定がそのまま復帰します",
 	"settings.section.syncAndUpdateCompat": "互換モード",
 	"settings.updateInterval.name": "外部同期の更新間隔(ms)",
 	"settings.updateInterval.desc":
@@ -170,6 +228,21 @@ const jaDict = {
 	"settings.theme.obsidianBase.name": "アプリテーマ",
 	"settings.theme.obsidianBase.desc":
 		"現在適用中のアプリテーマをベースにしたテーマです",
+	"settings.theme.preset.default.name": "デフォルト",
+	"settings.theme.preset.default.desc": "標準的な縦書きテーマ",
+	"settings.theme.preset.ashberryLight.name": "アッシュベリー（ライト）",
+	"settings.theme.preset.ashberryLight.desc":
+		"淡いアッシュベリー調の明るいテーマ（丸ゴシック）",
+	"settings.theme.preset.ashberryDark.name": "アッシュベリー（ダーク）",
+	"settings.theme.preset.ashberryDark.desc":
+		"アッシュベリー調の落ち着いたダークテーマ（丸ゴシック）",
+	"settings.theme.preset.dustyNavy.name": "ダスティネイビー",
+	"settings.theme.preset.dustyNavy.desc":
+		"くすんだダークブルーの落ち着いたテーマ（明朝）",
+	"settings.theme.preset.dark.name": "ダーク",
+	"settings.theme.preset.dark.desc": "ダークモード縦書きテーマ",
+	"settings.theme.preset.paperLike.name": "紙風",
+	"settings.theme.preset.paperLike.desc": "紙のような温かみのあるテーマ",
 	"settings.theme.unknown": "未知のテーマ",
 	"settings.theme.current": "現在のテーマ: {themeName}",
 	"settings.theme.saved": "保存されているテーマ",
@@ -474,6 +547,11 @@ const enDict: Record<I18nKey, string> = {
 	"toolbar.ruby.toggle": "Toggle ruby display",
 	"toolbar.ruby.enable": "Enable ruby display",
 	"toolbar.ruby.disable": "Disable ruby display",
+	"toolbar.typewriter.menu": "Typewriter mode",
+	"toolbar.typewriter.scroll": "Typewriter scroll",
+	"toolbar.typewriter.blockHighlight": "Edit block highlight",
+	"toolbar.typewriter.currentLineHighlight": "Current line highlight",
+	"toolbar.typewriter.nonFocusDim": "Dim non-focused blocks",
 	"toolbar.plainText.toggle": "Full plain-text view",
 	"toolbar.plainText.enable": "Enable full plain-text view",
 	"toolbar.plainText.disable": "Disable full plain-text view",
@@ -535,6 +613,57 @@ const enDict: Record<I18nKey, string> = {
 	"settings.showModeDialog.name": "Show mode selection when opening view",
 	"settings.showModeDialog.desc":
 		"Show a dialog to choose a view mode when opening the vertical writing view.",
+	"settings.section.sotWysiwyg": "Writing & Reference",
+	"settings.currentValue": "Current: {value}",
+	"settings.typewriter.section": "Typewriter mode",
+	"settings.value.enabled": "Enabled",
+	"settings.value.disabled": "Disabled",
+	"settings.sotTypewriterMode.name": "Typewriter scroll",
+	"settings.sotTypewriterMode.desc":
+		"Scroll automatically to keep the caret within the follow band in Writing & Reference mode. Visual focus (edit block / current line / dim) is independent of this setting.",
+	"settings.sotTypewriterOffsetRatio.name": "Follow position",
+	"settings.sotTypewriterOffsetRatio.desc":
+		"Relative position from the viewport center. Positive values move toward the reading direction.",
+	"settings.sotTypewriterFollowBandRatio.name": "Follow band width",
+	"settings.sotTypewriterFollowBandRatio.desc":
+		"Width of the follow band. No extra scroll occurs while the caret stays inside it.",
+	"settings.sotTypewriterVisualFocus.section": "Visual focus",
+	"settings.sotTypewriterBlockHighlightEnabled.name":
+		"Edit block highlight",
+	"settings.sotTypewriterBlockHighlightEnabled.desc":
+		"Show a background highlight for the current editing block.",
+	"settings.sotTypewriterCurrentLineHighlightEnabled.name":
+		"Current line highlight",
+	"settings.sotTypewriterCurrentLineHighlightEnabled.desc":
+		"Emphasize the current line containing the caret.",
+	"settings.sotTypewriterNonFocusDimEnabled.name":
+		"Dim non-focused blocks",
+	"settings.sotTypewriterNonFocusDimEnabled.desc":
+		"Reduce opacity outside the current editing block.",
+	"settings.sotTypewriterBlockHighlightColor.name": "Edit block color",
+	"settings.sotTypewriterBlockHighlightColor.desc":
+		"Color used for the editing block highlight.",
+	"settings.sotTypewriterBlockHighlightOpacity.name":
+		"Edit block opacity",
+	"settings.sotTypewriterBlockHighlightOpacity.desc":
+		"Strength of the editing block highlight.",
+	"settings.sotTypewriterCurrentLineHighlightColor.name":
+		"Current line color",
+	"settings.sotTypewriterCurrentLineHighlightColor.desc":
+		"Color used for the current line highlight.",
+	"settings.sotTypewriterCurrentLineHighlightOpacity.name":
+		"Current line opacity",
+	"settings.sotTypewriterCurrentLineHighlightOpacity.desc":
+		"Strength of the current line highlight.",
+	"settings.sotTypewriterNonFocusOpacity.name": "Non-focus opacity",
+	"settings.sotTypewriterNonFocusOpacity.desc":
+		"Opacity applied to non-focused paragraphs and blocks.",
+	"settings.sotTypewriter.unavailable.sourceMode":
+		"Typewriter features are temporarily unavailable while editing source text. Returning to regular SoT restores the saved settings.",
+	"settings.sotTypewriter.unavailable.plainTextView":
+		"Typewriter features are temporarily unavailable while plain text view is on. Disabling plain text view restores the saved settings.",
+	"settings.sotTypewriter.unavailable.plainEdit":
+		"Typewriter features are temporarily unavailable while editing a paragraph in plain mode. Exiting plain edit restores the saved settings.",
 	"settings.section.syncAndUpdateCompat": "Compatibility mode",
 	"settings.updateInterval.name": "External sync update interval (ms)",
 	"settings.updateInterval.desc":
@@ -590,6 +719,21 @@ const enDict: Record<I18nKey, string> = {
 	"settings.theme.obsidianBase.name": "App theme",
 	"settings.theme.obsidianBase.desc":
 		"A theme based on the current app theme.",
+	"settings.theme.preset.default.name": "Default",
+	"settings.theme.preset.default.desc": "Standard vertical-writing theme.",
+	"settings.theme.preset.ashberryLight.name": "Ashberry (Light)",
+	"settings.theme.preset.ashberryLight.desc":
+		"Light ashberry-toned theme with rounded gothic fonts.",
+	"settings.theme.preset.ashberryDark.name": "Ashberry (Dark)",
+	"settings.theme.preset.ashberryDark.desc":
+		"Calm dark ashberry-toned theme with rounded gothic fonts.",
+	"settings.theme.preset.dustyNavy.name": "Dusty Navy",
+	"settings.theme.preset.dustyNavy.desc":
+		"Muted dark blue theme with a calm Mincho style.",
+	"settings.theme.preset.dark.name": "Dark",
+	"settings.theme.preset.dark.desc": "Dark-mode vertical-writing theme.",
+	"settings.theme.preset.paperLike.name": "Paper",
+	"settings.theme.preset.paperLike.desc": "Warm paper-like theme.",
 	"settings.theme.unknown": "Unknown theme",
 	"settings.theme.current": "Current theme: {themeName}",
 	"settings.theme.saved": "Saved themes",
@@ -919,4 +1063,61 @@ export function t(
 		const value = params[token];
 		return value === undefined ? match : String(value);
 	});
+}
+
+export function localizePresetThemeName(
+	themeId: string,
+	fallbackName: string,
+): string {
+	switch (themeId) {
+		case "default":
+			return t("settings.theme.preset.default.name");
+		case "ashberry-light":
+			return t("settings.theme.preset.ashberryLight.name");
+		case "ashberry-dark":
+			return t("settings.theme.preset.ashberryDark.name");
+		case "dusty-navy":
+			return t("settings.theme.preset.dustyNavy.name");
+		case "dark":
+			return t("settings.theme.preset.dark.name");
+		case "paper-like":
+			return t("settings.theme.preset.paperLike.name");
+		default:
+			return fallbackName;
+	}
+}
+
+export function localizePresetThemeDescription(
+	themeId: string,
+	fallbackDescription: string,
+): string {
+	switch (themeId) {
+		case "default":
+			return t("settings.theme.preset.default.desc");
+		case "ashberry-light":
+			return t("settings.theme.preset.ashberryLight.desc");
+		case "ashberry-dark":
+			return t("settings.theme.preset.ashberryDark.desc");
+		case "dusty-navy":
+			return t("settings.theme.preset.dustyNavy.desc");
+		case "dark":
+			return t("settings.theme.preset.dark.desc");
+		case "paper-like":
+			return t("settings.theme.preset.paperLike.desc");
+		default:
+			return fallbackDescription;
+	}
+}
+
+export function localizeThemeDescription(
+	themeId: string,
+	fallbackDescription: string,
+): string {
+	if (
+		fallbackDescription === jaDict["theme.userCreatedDescription"] ||
+		fallbackDescription === enDict["theme.userCreatedDescription"]
+	) {
+		return t("theme.userCreatedDescription");
+	}
+	return localizePresetThemeDescription(themeId, fallbackDescription);
 }

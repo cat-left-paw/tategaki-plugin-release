@@ -27,6 +27,7 @@ export type SoTSelectionOverlayContext = {
 	getLineRanges: () => LineRange[];
 	findLineIndex: (offset: number) => number | null;
 	getLineElement: (lineIndex: number) => HTMLElement | null;
+	getLineVisualRects?: (lineEl: HTMLElement) => DOMRect[];
 	getLineTextNodes: (lineEl: HTMLElement) => Text[];
 	findTextNodeAtOffset: (
 		lineEl: HTMLElement,
@@ -353,8 +354,49 @@ export class SoTSelectionOverlay {
 			}
 		}
 
-		if (topIndex === null || bottomIndex === null) return null;
-		return { start: topIndex, end: bottomIndex };
+		const sampledRange =
+			topIndex === null || bottomIndex === null
+				? null
+				: { start: topIndex, end: bottomIndex };
+		const intersectingRange = this.findViewportIntersectingLineRange(rect);
+		if (sampledRange === null) return intersectingRange;
+		if (intersectingRange === null) return sampledRange;
+		return {
+			start: Math.min(sampledRange.start, intersectingRange.start),
+			end: Math.max(sampledRange.end, intersectingRange.end),
+		};
+	}
+
+	private findViewportIntersectingLineRange(
+		viewportRect: DOMRect
+	): { start: number; end: number } | null {
+		const contentEl = this.context.getDerivedContentEl();
+		if (!contentEl) return null;
+		const lineRanges = this.context.getLineRanges();
+		let start: number | null = null;
+		let end: number | null = null;
+		const lineEls = Array.from(
+			contentEl.querySelectorAll(".tategaki-sot-line")
+		);
+		for (const lineElRaw of lineEls) {
+			const lineEl = lineElRaw as HTMLElement;
+			const i = Number.parseInt(lineEl.dataset.line ?? "", 10);
+			if (!Number.isFinite(i) || !lineRanges[i]) continue;
+			const lineRect = lineEl.getBoundingClientRect();
+			if (!rectsIntersect(viewportRect, lineRect)) continue;
+			const rects =
+				this.context.getLineVisualRects?.(lineEl) ??
+				[lineRect];
+			const hasVisibleRect =
+				rects.length === 0
+					? rectsIntersect(viewportRect, lineRect)
+					: rects.some((rect) => rectsIntersect(viewportRect, rect));
+			if (!hasVisibleRect) continue;
+			if (start === null || i < start) start = i;
+			if (end === null || i > end) end = i;
+		}
+		if (start === null || end === null) return null;
+		return { start, end };
 	}
 
 	private findApproxVisibleLineRange(
@@ -416,4 +458,14 @@ export class SoTSelectionOverlay {
 		overlay.style.width = `${width}px`;
 		overlay.style.height = `${height}px`;
 	}
+}
+
+function rectsIntersect(a: DOMRect, b: DOMRect): boolean {
+	const minOverlap = 0.5;
+	return (
+		a.left < b.right - minOverlap &&
+		a.right > b.left + minOverlap &&
+		a.top < b.bottom - minOverlap &&
+		a.bottom > b.top + minOverlap
+	);
 }

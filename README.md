@@ -22,9 +22,11 @@ Status:
   - Images (standard Markdown images and Obsidian embeds)
   - Outline navigation and heading folding
   - Selection mode options for Writing & Reference mode (`fast-click` / `native-drag`)
+    - New installs now default to `fast-click`
   - Outliner-style list editing: move items, change nesting with `Tab` / `Shift+Tab`, and keep ordered lists renumbered
   - Improved `Enter` / `Shift+Enter` behavior in list items and blockquotes
     - `Enter` continues or exits naturally, and `Shift+Enter` can be used for in-item line breaks and continuing blank lines
+  - Horizontal rules can be deleted directly in Writing & Reference mode with `Delete` / `Backspace`
 - Book mode
   - Measured pagination for reading
   - Frontmatter can be shown on a separate cover page
@@ -40,6 +42,7 @@ Status:
   - Planned for removal in a future update; migration to Writing & Reference mode is recommended
 - Theme and display settings
   - Fonts, spacing, heading layout, IME offsets, and related display options
+  - Typewriter settings are temporarily disabled while source mode / plain text view / paragraph plain edit is active, then restored when returning to normal Writing & Reference mode
 
 ## Installation (current)
 

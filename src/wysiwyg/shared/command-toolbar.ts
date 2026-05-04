@@ -1,6 +1,7 @@
 import { Menu, Platform, setIcon } from "obsidian";
 import type { CommandUiAdapter } from "./command-adapter";
 import { t } from "../../shared/i18n";
+import { isTypewriterMenuActive } from "./typewriter-menu-active";
 
 type ButtonState = {
 	id: string;
@@ -27,6 +28,7 @@ export class CommandToolbar {
 	private horizontalRuleButton: HTMLButtonElement | null = null;
 	private sourceToggleButton: HTMLButtonElement | null = null;
 	private rubyToggleButton: HTMLButtonElement | null = null;
+	private typewriterMenuButton: HTMLButtonElement | null = null;
 	constructor(container: HTMLElement, adapter: CommandUiAdapter) {
 		this.container = container;
 		this.adapter = adapter;
@@ -42,6 +44,7 @@ export class CommandToolbar {
 		this.horizontalRuleButton = null;
 		this.sourceToggleButton = null;
 		this.rubyToggleButton = null;
+		this.typewriterMenuButton = null;
 	}
 
 	update(): void {
@@ -86,6 +89,10 @@ export class CommandToolbar {
 		if (this.adapter.toggleRuby) {
 			this.createSeparator();
 			this.createRubyToggleButton();
+		}
+		if (this.adapter.toggleTypewriterScroll) {
+			this.createSeparator();
+			this.createTypewriterMenuButton();
 		}
 		if (this.adapter.togglePlainTextView) {
 			this.createSeparator();
@@ -496,6 +503,89 @@ export class CommandToolbar {
 				this.adapter.isRubyEnabled?.() === false
 					? t("toolbar.ruby.enable")
 					: t("toolbar.ruby.disable"),
+		);
+	}
+
+	private createTypewriterMenuButton(): void {
+		const isAvailable = (): boolean =>
+			this.adapter.isTypewriterAvailable?.() ?? true;
+		const getFlags = () => {
+			// 利用不可 (source mode / plain text view / 段落プレーン編集中) の間は
+			// 保存値が ON でも active 表示にしない
+			if (!isAvailable()) {
+				return {
+					scrollEnabled: false,
+					blockHighlightEnabled: false,
+					currentLineHighlightEnabled: false,
+					nonFocusDimEnabled: false,
+				};
+			}
+			return {
+				scrollEnabled:
+					this.adapter.isTypewriterScrollEnabled?.() ?? false,
+				blockHighlightEnabled:
+					this.adapter.isTypewriterBlockHighlightEnabled?.() ?? false,
+				currentLineHighlightEnabled:
+					this.adapter.isTypewriterCurrentLineHighlightEnabled?.() ??
+					false,
+				nonFocusDimEnabled:
+					this.adapter.isTypewriterNonFocusDimEnabled?.() ?? false,
+			};
+		};
+		this.typewriterMenuButton = this.createButton(
+			"typewriterMenu",
+			"scroll-text",
+			t("toolbar.typewriter.menu"),
+			() => {
+				if (!this.typewriterMenuButton) return;
+				if (!isAvailable()) return;
+				const flags = getFlags();
+				const menu = new Menu();
+				if (this.adapter.toggleTypewriterScroll) {
+					menu.addItem((item) => {
+						item.setTitle(t("toolbar.typewriter.scroll"))
+							.setIcon("move-vertical")
+							.setChecked(flags.scrollEnabled)
+							.onClick(() => {
+								void this.adapter.toggleTypewriterScroll?.();
+							});
+					});
+				}
+				if (this.adapter.toggleTypewriterBlockHighlight) {
+					menu.addItem((item) => {
+						item.setTitle(t("toolbar.typewriter.blockHighlight"))
+							.setIcon("square")
+							.setChecked(flags.blockHighlightEnabled)
+							.onClick(() => {
+								void this.adapter.toggleTypewriterBlockHighlight?.();
+							});
+					});
+				}
+				if (this.adapter.toggleTypewriterCurrentLineHighlight) {
+					menu.addItem((item) => {
+						item.setTitle(t("toolbar.typewriter.currentLineHighlight"))
+							.setIcon("spotlight")
+							.setChecked(flags.currentLineHighlightEnabled)
+							.onClick(() => {
+								void this.adapter.toggleTypewriterCurrentLineHighlight?.();
+							});
+					});
+				}
+				if (this.adapter.toggleTypewriterNonFocusDim) {
+					menu.addItem((item) => {
+						item.setTitle(t("toolbar.typewriter.nonFocusDim"))
+							.setIcon("sun-dim")
+							.setChecked(flags.nonFocusDimEnabled)
+							.onClick(() => {
+								void this.adapter.toggleTypewriterNonFocusDim?.();
+							});
+					});
+				}
+				const rect = this.typewriterMenuButton.getBoundingClientRect();
+				menu.showAtPosition({ x: rect.left, y: rect.bottom });
+			},
+			() => isTypewriterMenuActive(getFlags()),
+			() => !this.adapter.toggleTypewriterScroll || !isAvailable(),
 		);
 	}
 

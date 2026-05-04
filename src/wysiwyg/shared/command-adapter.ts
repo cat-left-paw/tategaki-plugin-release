@@ -73,4 +73,19 @@ export interface CommandUiAdapter {
 	copy?: () => void | Promise<void>;
 	paste?: () => void | Promise<void>;
 	selectAll?: () => void;
+
+	toggleTypewriterScroll?: () => void | Promise<void>;
+	isTypewriterScrollEnabled?: () => boolean;
+	toggleTypewriterBlockHighlight?: () => void | Promise<void>;
+	isTypewriterBlockHighlightEnabled?: () => boolean;
+	toggleTypewriterCurrentLineHighlight?: () => void | Promise<void>;
+	isTypewriterCurrentLineHighlightEnabled?: () => boolean;
+	toggleTypewriterNonFocusDim?: () => void | Promise<void>;
+	isTypewriterNonFocusDimEnabled?: () => boolean;
+	/**
+	 * Typewriter 系機能が現在のモードで利用可能か。
+	 * 保存値ではなく、source mode / plain text view / 段落プレーン編集など
+	 * 「現在は使えない」状態を示す実効フラグ。未定義のときは利用可能扱い。
+	 */
+	isTypewriterAvailable?: () => boolean;
 }

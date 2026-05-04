@@ -13,6 +13,15 @@ export type AutoTcyDigitRange = {
 	maxDigits: number;
 };
 
+export type AutoTcyDetectionOptions = {
+	minDigits?: unknown;
+	maxDigits?: unknown;
+	autoTcyMinDigits?: unknown;
+	autoTcyMaxDigits?: unknown;
+	digitsOnly?: unknown;
+	autoTcyDigitsOnly?: unknown;
+};
+
 export type AutoTcyRange = {
 	from: number;
 	to: number;
@@ -20,12 +29,7 @@ export type AutoTcyRange = {
 };
 
 export function resolveAutoTcyDigitRange(
-	input?: {
-		minDigits?: unknown;
-		maxDigits?: unknown;
-		autoTcyMinDigits?: unknown;
-		autoTcyMaxDigits?: unknown;
-	} | null,
+	input?: AutoTcyDetectionOptions | null,
 ): AutoTcyDigitRange {
 	const rawMin = normalizeAutoTcyDigitValue(
 		input?.minDigits ?? input?.autoTcyMinDigits,
@@ -41,6 +45,12 @@ export function resolveAutoTcyDigitRange(
 		: { minDigits: rawMax, maxDigits: rawMin };
 }
 
+export function resolveAutoTcyDigitsOnly(
+	input?: AutoTcyDetectionOptions | null,
+): boolean {
+	return input?.digitsOnly === true || input?.autoTcyDigitsOnly === true;
+}
+
 export function createAozoraTcyRegExp(): RegExp {
 	return new RegExp(
 		`${escapeRegExp(TCY_START_MARK)}(?<body>${TCY_BODY_PATTERN})${escapeRegExp(TCY_END_MARK)}`,
@@ -54,32 +64,30 @@ export function isValidAozoraTcyBody(text: string): boolean {
 
 export function isValidAutoTcyBody(
 	text: string,
-	options?: {
-		minDigits?: unknown;
-		maxDigits?: unknown;
-		autoTcyMinDigits?: unknown;
-		autoTcyMaxDigits?: unknown;
-	},
+	options?: AutoTcyDetectionOptions,
 ): boolean {
-	const digitRange = resolveAutoTcyDigitRange(options);
-	if (/^[A-Za-z0-9]+$/.test(text)) {
-		const length = text.length;
-		return (
-			length >= digitRange.minDigits &&
-			length <= digitRange.maxDigits
-		);
+	if (AUTO_TCY_SYMBOLS.has(text)) {
+		return true;
 	}
-	return AUTO_TCY_SYMBOLS.has(text);
+
+	const digitRange = resolveAutoTcyDigitRange(options);
+	const bodyPattern = resolveAutoTcyDigitsOnly(options)
+		? /^[0-9]+$/
+		: /^[A-Za-z0-9]+$/;
+	if (!bodyPattern.test(text)) {
+		return false;
+	}
+
+	const length = text.length;
+	return (
+		length >= digitRange.minDigits &&
+		length <= digitRange.maxDigits
+	);
 }
 
 export function collectAutoTcyRanges(
 	text: string,
-	options?: {
-		minDigits?: unknown;
-		maxDigits?: unknown;
-		autoTcyMinDigits?: unknown;
-		autoTcyMaxDigits?: unknown;
-	},
+	options?: AutoTcyDetectionOptions,
 ): AutoTcyRange[] {
 	if (!text) return [];
 	const ranges: AutoTcyRange[] = [];

@@ -8,11 +8,33 @@ import {
 } from "obsidian";
 import TategakiV2Plugin from "../../core/plugin";
 import { showConfirmModal } from "./confirm-modal";
-import { TategakiV2Settings, PRESET_THEME_IDS } from "../../types/settings";
+import {
+	DEFAULT_V2_SETTINGS,
+	TategakiV2Settings,
+	PRESET_THEME_IDS,
+} from "../../types/settings";
 import { compareSemver } from "../version";
 import { openExternalUrl } from "../open-external-url";
-import { t } from "../i18n";
+import {
+	localizeThemeDescription,
+	localizePresetThemeName,
+	t,
+} from "../i18n";
 import { debugError } from "../logger";
+import {
+	formatSoTTypewriterHighlightOpacityForUi,
+	formatSoTTypewriterNonFocusOpacityForUi,
+	formatSoTTypewriterFollowBandRatioForUi,
+	formatSoTTypewriterOffsetRatioForUi,
+	resolveSoTTypewriterHighlightOpacityFromUiPercent,
+	resolveSoTTypewriterNonFocusOpacityFromUiPercent,
+	resolveSoTTypewriterFollowBandRatioFromUiPercent,
+	resolveSoTTypewriterOffsetRatioFromUiPercent,
+} from "../../wysiwyg/contenteditable/settings-panel-state";
+import {
+	SoTWysiwygView,
+	TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
+} from "../../wysiwyg/sot-wysiwyg-view";
 
 const UPDATE_CHECK_URL =
 	"https://raw.githubusercontent.com/cat-left-paw/tategaki-plugin-release/main/latest.json";
@@ -34,6 +56,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 		this.addSectionHeading(containerEl, t("settings.section.main"));
 
 		this.addTiptapSettings(this.plugin.settings);
+		this.addSoTTypewriterSettings(this.plugin.settings);
 		const legacyEnabled = this.plugin.settings.enableLegacyTiptap ?? true;
 		this.addUpdateAndSupportSection(legacyEnabled);
 		this.addThemeSettings(this.plugin.settings);
@@ -41,6 +64,20 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 
 	private addSectionHeading(containerEl: HTMLElement, title: string): void {
 		new Setting(containerEl).setName(title).setHeading();
+	}
+
+	private getThemeDisplayName(theme: {
+		id: string;
+		name: string;
+	}): string {
+		return localizePresetThemeName(theme.id, theme.name);
+	}
+
+	private getThemeDisplayDescription(theme: {
+		id: string;
+		description: string;
+	}): string {
+		return localizeThemeDescription(theme.id, theme.description);
 	}
 
 	private bindDeferredSlider(
@@ -107,6 +144,24 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 		slider.sliderEl.addEventListener("change", commitHandler);
 		slider.sliderEl.addEventListener("blur", commitHandler);
 		slider.sliderEl.addEventListener("pointerup", commitHandler);
+	}
+
+	private addColorPickerSetting(
+		setting: Setting,
+		initialColor: string,
+		onCommit: (value: string) => Promise<void>,
+		options?: { disabled?: boolean },
+	): void {
+		const colorInput = setting.controlEl.createEl("input", {
+			type: "color",
+		});
+		colorInput.value = initialColor;
+		if (options?.disabled) {
+			colorInput.disabled = true;
+		}
+		colorInput.addEventListener("input", () => {
+			void onCommit(colorInput.value);
+		});
 	}
 
 	private addTiptapSettings(settings: TategakiV2Settings) {
@@ -272,6 +327,452 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 		}
 	}
 
+	private resolveSoTTypewriterUnavailableForActiveView(): {
+		unavailable: boolean;
+		reason: string | null;
+	} {
+		const leaves = this.plugin.app.workspace.getLeavesOfType(
+			TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
+		);
+		for (const leaf of leaves) {
+			const view = leaf.view;
+			if (view instanceof SoTWysiwygView) {
+				const a = view.getTypewriterAvailability();
+				if (!a.available) {
+					let reason: string | null = null;
+					if (a.reason === "source-mode") {
+						reason = t(
+							"settings.sotTypewriter.unavailable.sourceMode",
+						);
+					} else if (a.reason === "plain-text-view") {
+						reason = t(
+							"settings.sotTypewriter.unavailable.plainTextView",
+						);
+					} else if (a.reason === "plain-edit") {
+						reason = t(
+							"settings.sotTypewriter.unavailable.plainEdit",
+						);
+					}
+					return { unavailable: true, reason };
+				}
+			}
+		}
+		return { unavailable: false, reason: null };
+	}
+
+	private addSoTTypewriterSettings(settings: TategakiV2Settings): void {
+		const { containerEl } = this;
+		this.addSectionHeading(containerEl, t("settings.section.sotWysiwyg"));
+
+		const tw = this.resolveSoTTypewriterUnavailableForActiveView();
+		const twDisabled = tw.unavailable;
+		if (twDisabled && tw.reason) {
+			containerEl.createDiv({
+				cls: "tategaki-settings-section-disabled-banner tategaki-settings-item-disabled-reason",
+				text: tw.reason,
+			});
+		}
+
+		new Setting(containerEl)
+			.setName(t("settings.sotTypewriterMode.name"))
+			.setDesc(t("settings.sotTypewriterMode.desc"))
+			.setDisabled(twDisabled)
+			.addToggle((toggle) => {
+				toggle
+					.setDisabled(twDisabled)
+					.setValue(!!settings.wysiwyg.sotTypewriterMode)
+					.onChange(async (value) => {
+						await this.plugin.updateSettings({
+							wysiwyg: {
+								...this.plugin.settings.wysiwyg,
+								sotTypewriterMode: value,
+							},
+						});
+					});
+			});
+
+		const offsetRatio =
+			settings.wysiwyg.sotTypewriterOffsetRatio ??
+			DEFAULT_V2_SETTINGS.wysiwyg.sotTypewriterOffsetRatio ??
+			0;
+		const offsetSetting = new Setting(containerEl)
+			.setName(t("settings.sotTypewriterOffsetRatio.name"))
+			.setDesc(t("settings.sotTypewriterOffsetRatio.desc"))
+			.setDisabled(twDisabled)
+			.addSlider((slider) => {
+				slider
+					.setDisabled(twDisabled)
+					.setLimits(-40, 40, 1)
+					.setDynamicTooltip()
+					.setValue(Math.round(offsetRatio * 100));
+				slider.onChange((value) => {
+					offsetValueEl.setText(
+						t("settings.currentValue", {
+							value: formatSoTTypewriterOffsetRatioForUi(
+								resolveSoTTypewriterOffsetRatioFromUiPercent(
+									value,
+								),
+							),
+						}),
+					);
+				});
+				this.bindDeferredSlider(slider, offsetRatio, {
+					debounce: 200,
+					transform: (value) =>
+						resolveSoTTypewriterOffsetRatioFromUiPercent(value),
+					onCommit: async (value) => {
+						if (
+							value ===
+							this.plugin.settings.wysiwyg
+								.sotTypewriterOffsetRatio
+						)
+							return;
+						await this.plugin.updateSettings({
+							wysiwyg: {
+								...this.plugin.settings.wysiwyg,
+								sotTypewriterOffsetRatio: value,
+							},
+						});
+					},
+				});
+			});
+		const offsetValueEl = offsetSetting.descEl.createDiv({
+			text: t("settings.currentValue", {
+				value: formatSoTTypewriterOffsetRatioForUi(offsetRatio),
+			}),
+			cls: "setting-item-description",
+		});
+
+		const followBandRatio =
+			settings.wysiwyg.sotTypewriterFollowBandRatio ??
+			DEFAULT_V2_SETTINGS.wysiwyg.sotTypewriterFollowBandRatio ??
+			0.16;
+		const followBandSetting = new Setting(containerEl)
+			.setName(t("settings.sotTypewriterFollowBandRatio.name"))
+			.setDesc(t("settings.sotTypewriterFollowBandRatio.desc"))
+			.setDisabled(twDisabled)
+			.addSlider((slider) => {
+				slider
+					.setDisabled(twDisabled)
+					.setLimits(5, 25, 1)
+					.setDynamicTooltip()
+					.setValue(Math.round(followBandRatio * 100));
+				slider.onChange((value) => {
+					followBandValueEl.setText(
+						t("settings.currentValue", {
+							value: formatSoTTypewriterFollowBandRatioForUi(
+								resolveSoTTypewriterFollowBandRatioFromUiPercent(
+									value,
+								),
+							),
+						}),
+					);
+				});
+				this.bindDeferredSlider(slider, followBandRatio, {
+					debounce: 200,
+					transform: (value) =>
+						resolveSoTTypewriterFollowBandRatioFromUiPercent(value),
+					onCommit: async (value) => {
+						if (
+							value ===
+							this.plugin.settings.wysiwyg
+								.sotTypewriterFollowBandRatio
+						)
+							return;
+						await this.plugin.updateSettings({
+							wysiwyg: {
+								...this.plugin.settings.wysiwyg,
+								sotTypewriterFollowBandRatio: value,
+							},
+						});
+					},
+				});
+			});
+		const followBandValueEl = followBandSetting.descEl.createDiv({
+			text: t("settings.currentValue", {
+				value: formatSoTTypewriterFollowBandRatioForUi(
+					followBandRatio,
+				),
+			}),
+			cls: "setting-item-description",
+		});
+
+		new Setting(containerEl)
+			.setName(t("settings.sotTypewriterVisualFocus.section"))
+			.setHeading();
+
+		new Setting(containerEl)
+			.setName(t("settings.sotTypewriterBlockHighlightEnabled.name"))
+			.setDesc(t("settings.sotTypewriterBlockHighlightEnabled.desc"))
+			.setDisabled(twDisabled)
+			.addToggle((toggle) => {
+				toggle
+					.setDisabled(twDisabled)
+					.setValue(
+						settings.wysiwyg.sotTypewriterBlockHighlightEnabled !==
+							false,
+					)
+					.onChange(async (value) => {
+						await this.plugin.updateSettings({
+							wysiwyg: {
+								...this.plugin.settings.wysiwyg,
+								sotTypewriterBlockHighlightEnabled: value,
+							},
+						});
+					});
+			});
+
+		new Setting(containerEl)
+			.setName(t("settings.sotTypewriterCurrentLineHighlightEnabled.name"))
+			.setDesc(t("settings.sotTypewriterCurrentLineHighlightEnabled.desc"))
+			.setDisabled(twDisabled)
+			.addToggle((toggle) => {
+				toggle
+					.setDisabled(twDisabled)
+					.setValue(
+						settings.wysiwyg
+							.sotTypewriterCurrentLineHighlightEnabled !== false,
+					)
+					.onChange(async (value) => {
+						await this.plugin.updateSettings({
+							wysiwyg: {
+								...this.plugin.settings.wysiwyg,
+								sotTypewriterCurrentLineHighlightEnabled: value,
+							},
+						});
+					});
+			});
+
+		new Setting(containerEl)
+			.setName(t("settings.sotTypewriterNonFocusDimEnabled.name"))
+			.setDesc(t("settings.sotTypewriterNonFocusDimEnabled.desc"))
+			.setDisabled(twDisabled)
+			.addToggle((toggle) => {
+				toggle
+					.setDisabled(twDisabled)
+					.setValue(
+						settings.wysiwyg.sotTypewriterNonFocusDimEnabled !==
+							false,
+					)
+					.onChange(async (value) => {
+						await this.plugin.updateSettings({
+							wysiwyg: {
+								...this.plugin.settings.wysiwyg,
+								sotTypewriterNonFocusDimEnabled: value,
+							},
+						});
+					});
+			});
+
+		const blockHighlightColor =
+			settings.wysiwyg.sotTypewriterBlockHighlightColor ??
+			DEFAULT_V2_SETTINGS.wysiwyg.sotTypewriterBlockHighlightColor ??
+			"#1e90ff";
+		const blockColorSetting = new Setting(containerEl)
+			.setName(t("settings.sotTypewriterBlockHighlightColor.name"))
+			.setDesc(t("settings.sotTypewriterBlockHighlightColor.desc"))
+			.setDisabled(twDisabled);
+		this.addColorPickerSetting(
+			blockColorSetting,
+			blockHighlightColor,
+			async (value) => {
+				await this.plugin.updateSettings({
+					wysiwyg: {
+						...this.plugin.settings.wysiwyg,
+						sotTypewriterBlockHighlightColor: value,
+					},
+				});
+			},
+			{ disabled: twDisabled },
+		);
+
+		const blockHighlightOpacity =
+			settings.wysiwyg.sotTypewriterBlockHighlightOpacity ??
+			DEFAULT_V2_SETTINGS.wysiwyg.sotTypewriterBlockHighlightOpacity ??
+			0.16;
+		const blockHighlightOpacitySetting = new Setting(containerEl)
+			.setName(t("settings.sotTypewriterBlockHighlightOpacity.name"))
+			.setDesc(t("settings.sotTypewriterBlockHighlightOpacity.desc"))
+			.setDisabled(twDisabled)
+			.addSlider((slider) => {
+				slider
+					.setDisabled(twDisabled)
+					.setLimits(0, 100, 1)
+					.setDynamicTooltip()
+					.setValue(Math.round(blockHighlightOpacity * 100));
+				slider.onChange((value) => {
+					blockHighlightOpacityValueEl.setText(
+						t("settings.currentValue", {
+							value: formatSoTTypewriterHighlightOpacityForUi(
+								resolveSoTTypewriterHighlightOpacityFromUiPercent(
+									value,
+								),
+							),
+						}),
+					);
+				});
+				this.bindDeferredSlider(slider, blockHighlightOpacity, {
+					debounce: 200,
+					transform: (value) =>
+						resolveSoTTypewriterHighlightOpacityFromUiPercent(value),
+					onCommit: async (value) => {
+						if (
+							value ===
+							this.plugin.settings.wysiwyg
+								.sotTypewriterBlockHighlightOpacity
+						)
+							return;
+						await this.plugin.updateSettings({
+							wysiwyg: {
+								...this.plugin.settings.wysiwyg,
+								sotTypewriterBlockHighlightOpacity: value,
+							},
+						});
+					},
+				});
+			});
+		const blockHighlightOpacityValueEl =
+			blockHighlightOpacitySetting.descEl.createDiv({
+				text: t("settings.currentValue", {
+					value: formatSoTTypewriterHighlightOpacityForUi(
+						blockHighlightOpacity,
+					),
+				}),
+				cls: "setting-item-description",
+			});
+
+		const currentLineColor =
+			settings.wysiwyg.sotTypewriterCurrentLineHighlightColor ??
+			DEFAULT_V2_SETTINGS.wysiwyg
+				.sotTypewriterCurrentLineHighlightColor ??
+			"#1e90ff";
+		const currentLineColorSetting = new Setting(containerEl)
+			.setName(t("settings.sotTypewriterCurrentLineHighlightColor.name"))
+			.setDesc(t("settings.sotTypewriterCurrentLineHighlightColor.desc"))
+			.setDisabled(twDisabled);
+		this.addColorPickerSetting(
+			currentLineColorSetting,
+			currentLineColor,
+			async (value) => {
+				await this.plugin.updateSettings({
+					wysiwyg: {
+						...this.plugin.settings.wysiwyg,
+						sotTypewriterCurrentLineHighlightColor: value,
+					},
+				});
+			},
+			{ disabled: twDisabled },
+		);
+
+		const currentLineOpacity =
+			settings.wysiwyg.sotTypewriterCurrentLineHighlightOpacity ??
+			DEFAULT_V2_SETTINGS.wysiwyg
+				.sotTypewriterCurrentLineHighlightOpacity ??
+			0.28;
+		const currentLineOpacitySetting = new Setting(containerEl)
+			.setName(t("settings.sotTypewriterCurrentLineHighlightOpacity.name"))
+			.setDesc(t("settings.sotTypewriterCurrentLineHighlightOpacity.desc"))
+			.setDisabled(twDisabled)
+			.addSlider((slider) => {
+				slider
+					.setDisabled(twDisabled)
+					.setLimits(0, 100, 1)
+					.setDynamicTooltip()
+					.setValue(Math.round(currentLineOpacity * 100));
+				slider.onChange((value) => {
+					currentLineOpacityValueEl.setText(
+						t("settings.currentValue", {
+							value: formatSoTTypewriterHighlightOpacityForUi(
+								resolveSoTTypewriterHighlightOpacityFromUiPercent(
+									value,
+								),
+							),
+						}),
+					);
+				});
+				this.bindDeferredSlider(slider, currentLineOpacity, {
+					debounce: 200,
+					transform: (value) =>
+						resolveSoTTypewriterHighlightOpacityFromUiPercent(value),
+					onCommit: async (value) => {
+						if (
+							value ===
+							this.plugin.settings.wysiwyg
+								.sotTypewriterCurrentLineHighlightOpacity
+						)
+							return;
+						await this.plugin.updateSettings({
+							wysiwyg: {
+								...this.plugin.settings.wysiwyg,
+								sotTypewriterCurrentLineHighlightOpacity: value,
+							},
+						});
+					},
+				});
+			});
+		const currentLineOpacityValueEl =
+			currentLineOpacitySetting.descEl.createDiv({
+				text: t("settings.currentValue", {
+					value: formatSoTTypewriterHighlightOpacityForUi(
+						currentLineOpacity,
+					),
+				}),
+				cls: "setting-item-description",
+			});
+
+		const nonFocusOpacity =
+			settings.wysiwyg.sotTypewriterNonFocusOpacity ??
+			DEFAULT_V2_SETTINGS.wysiwyg.sotTypewriterNonFocusOpacity ??
+			0.42;
+		const nonFocusOpacitySetting = new Setting(containerEl)
+			.setName(t("settings.sotTypewriterNonFocusOpacity.name"))
+			.setDesc(t("settings.sotTypewriterNonFocusOpacity.desc"))
+			.setDisabled(twDisabled)
+			.addSlider((slider) => {
+				slider
+					.setDisabled(twDisabled)
+					.setLimits(10, 100, 1)
+					.setDynamicTooltip()
+					.setValue(Math.round(nonFocusOpacity * 100));
+				slider.onChange((value) => {
+					nonFocusOpacityValueEl.setText(
+						t("settings.currentValue", {
+							value: formatSoTTypewriterNonFocusOpacityForUi(
+								resolveSoTTypewriterNonFocusOpacityFromUiPercent(
+									value,
+								),
+							),
+						}),
+					);
+				});
+				this.bindDeferredSlider(slider, nonFocusOpacity, {
+					debounce: 200,
+					transform: (value) =>
+						resolveSoTTypewriterNonFocusOpacityFromUiPercent(value),
+					onCommit: async (value) => {
+						if (
+							value ===
+							this.plugin.settings.wysiwyg
+								.sotTypewriterNonFocusOpacity
+						)
+							return;
+						await this.plugin.updateSettings({
+							wysiwyg: {
+								...this.plugin.settings.wysiwyg,
+								sotTypewriterNonFocusOpacity: value,
+							},
+						});
+					},
+				});
+			});
+		const nonFocusOpacityValueEl = nonFocusOpacitySetting.descEl.createDiv({
+			text: t("settings.currentValue", {
+				value: formatSoTTypewriterNonFocusOpacityForUi(nonFocusOpacity),
+			}),
+			cls: "setting-item-description",
+		});
+	}
+
 	private addUpdateAndSupportSection(legacyEnabled: boolean): void {
 		const { containerEl } = this;
 
@@ -406,7 +907,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 			settings.activeTheme === "obsidian-base"
 				? t("settings.theme.obsidianBase.name")
 				: currentTheme
-					? currentTheme.name
+					? this.getThemeDisplayName(currentTheme)
 					: t("settings.theme.unknown");
 
 		containerEl.createEl("p", {
@@ -464,7 +965,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 
 			const allThemes = [obsidianBaseTheme, ...settings.themes];
 
-			allThemes.forEach((theme, index) => {
+			allThemes.forEach((theme) => {
 				const themeItem = themeItems.createDiv(
 					"theme-item tategaki-theme-item",
 				);
@@ -474,17 +975,20 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 					themeItem.addClass("is-active");
 				}
 
+				const themeName = this.getThemeDisplayName(theme);
+				const themeDescription = this.getThemeDisplayDescription(theme);
+
 				const themeInfo = themeItem.createDiv(
 					"theme-info tategaki-theme-info",
 				);
 
 				themeInfo.createEl("div", {
-					text: theme.name,
+					text: themeName,
 					cls: "tategaki-theme-name",
 				});
 
 				themeInfo.createEl("div", {
-					text: theme.description,
+					text: themeDescription,
 					cls: "tategaki-theme-desc",
 				});
 

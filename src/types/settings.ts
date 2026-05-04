@@ -214,6 +214,7 @@ export interface WysiwygSettings {
 	enableAutoTcy: boolean; // 記号を増やさない自動縦中横（表示のみ）
 	autoTcyMinDigits?: number; // 自動TCY対象の最小桁数
 	autoTcyMaxDigits?: number; // 自動TCY対象の最大桁数
+	autoTcyDigitsOnly?: boolean; // 自動TCYを数字列だけに限定
 	enableAssistantInput: boolean; // 補助入力パネル
 	enableSyncBackup: boolean; // 互換モードの同期バックアップ
 	plainTextView?: boolean; // SoTビューの全文プレーン表示
@@ -227,13 +228,24 @@ export interface WysiwygSettings {
 	sotSelectionMode?: SoTSelectionMode; // SoT選択モード
 	sotPaddingTop?: number; // SoTビューの上余白（px）
 	sotPaddingBottom?: number; // SoTビューの下余白（px）
+	sotTypewriterMode?: boolean; // SoT Typewriter モード
+	sotTypewriterOffsetRatio?: number; // SoT Typewriter 目標位置の中心相対オフセット
+	sotTypewriterFollowBandRatio?: number; // SoT Typewriter 追従帯の幅比率
+	sotTypewriterBlockHighlightEnabled?: boolean; // SoT Typewriter 編集ブロックハイライト
+	sotTypewriterCurrentLineHighlightEnabled?: boolean; // SoT Typewriter 現在行ハイライト
+	sotTypewriterNonFocusDimEnabled?: boolean; // SoT Typewriter 非フォーカス減光
+	sotTypewriterBlockHighlightColor?: string; // SoT Typewriter 編集ブロックハイライト色
+	sotTypewriterBlockHighlightOpacity?: number; // SoT Typewriter 編集ブロックハイライト透明度
+	sotTypewriterCurrentLineHighlightColor?: string; // SoT Typewriter 現在行ハイライト色
+	sotTypewriterCurrentLineHighlightOpacity?: number; // SoT Typewriter 現在行ハイライト透明度
+	sotTypewriterNonFocusOpacity?: number; // SoT Typewriter 非フォーカス opacity
 }
 
 /**
  * 現在の設定バージョン
  * 新しい設定が追加された時にインクリメントする
  */
-export const CURRENT_SETTINGS_VERSION = 4;
+export const CURRENT_SETTINGS_VERSION = 6;
 
 /**
  * メイン設定インターフェース
@@ -386,6 +398,7 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		enableAutoTcy: false,
 		autoTcyMinDigits: DEFAULT_AUTO_TCY_MIN_DIGITS,
 		autoTcyMaxDigits: DEFAULT_AUTO_TCY_MAX_DIGITS,
+		autoTcyDigitsOnly: false,
 		enableAssistantInput: false,
 		enableSyncBackup: true,
 		plainTextView: false,
@@ -395,9 +408,20 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		caretColorMode: "accent",
 		caretCustomColor: "#1e90ff",
 		caretWidthPx: 3,
-			sotSelectionMode: "native-drag",
+		sotSelectionMode: "fast-click",
 		sotPaddingTop: 32,
 		sotPaddingBottom: 16,
+		sotTypewriterMode: false,
+		sotTypewriterOffsetRatio: 0,
+		sotTypewriterFollowBandRatio: 0.16,
+		sotTypewriterBlockHighlightEnabled: true,
+		sotTypewriterCurrentLineHighlightEnabled: true,
+		sotTypewriterNonFocusDimEnabled: true,
+		sotTypewriterBlockHighlightColor: "#1e90ff",
+		sotTypewriterBlockHighlightOpacity: 0.16,
+		sotTypewriterCurrentLineHighlightColor: "#1e90ff",
+		sotTypewriterCurrentLineHighlightOpacity: 0.28,
+		sotTypewriterNonFocusOpacity: 0.42,
 	},
 
 	// テーマシステム
@@ -744,6 +768,10 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 				validated.wysiwyg.enableAutoTcy =
 					DEFAULT_V2_SETTINGS.wysiwyg.enableAutoTcy;
 			}
+			validated.wysiwyg.autoTcyDigitsOnly = normalizeBooleanSetting(
+				(validated.wysiwyg as any).autoTcyDigitsOnly,
+				DEFAULT_V2_SETTINGS.wysiwyg.autoTcyDigitsOnly ?? false,
+			);
 			const autoTcyDigitRange = resolveAutoTcyDigitRange({
 				minDigits: (validated.wysiwyg as any).autoTcyMinDigits,
 				maxDigits: (validated.wysiwyg as any).autoTcyMaxDigits,
@@ -813,6 +841,67 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 			validated.wysiwyg.sotPaddingBottom = Number.isFinite(sotPaddingBottom)
 				? Math.max(0, Math.min(200, sotPaddingBottom))
 				: DEFAULT_V2_SETTINGS.wysiwyg.sotPaddingBottom;
+			if (typeof (validated.wysiwyg as any).sotTypewriterMode !== "boolean") {
+				validated.wysiwyg.sotTypewriterMode =
+					DEFAULT_V2_SETTINGS.wysiwyg.sotTypewriterMode;
+			}
+			validated.wysiwyg.sotTypewriterOffsetRatio =
+				normalizeSoTTypewriterOffsetRatio(
+					(validated.wysiwyg as any).sotTypewriterOffsetRatio
+				);
+			validated.wysiwyg.sotTypewriterFollowBandRatio =
+				normalizeSoTTypewriterFollowBandRatio(
+					(validated.wysiwyg as any).sotTypewriterFollowBandRatio
+				);
+			validated.wysiwyg.sotTypewriterBlockHighlightEnabled =
+				normalizeBooleanSetting(
+					(validated.wysiwyg as any).sotTypewriterBlockHighlightEnabled,
+					DEFAULT_V2_SETTINGS.wysiwyg
+						.sotTypewriterBlockHighlightEnabled ?? true
+				);
+			validated.wysiwyg.sotTypewriterCurrentLineHighlightEnabled =
+				normalizeBooleanSetting(
+					(validated.wysiwyg as any)
+						.sotTypewriterCurrentLineHighlightEnabled,
+					DEFAULT_V2_SETTINGS.wysiwyg
+						.sotTypewriterCurrentLineHighlightEnabled ?? true
+				);
+			validated.wysiwyg.sotTypewriterNonFocusDimEnabled =
+				normalizeBooleanSetting(
+					(validated.wysiwyg as any).sotTypewriterNonFocusDimEnabled,
+					DEFAULT_V2_SETTINGS.wysiwyg
+						.sotTypewriterNonFocusDimEnabled ?? true
+				);
+			validated.wysiwyg.sotTypewriterBlockHighlightColor =
+				normalizeColorSetting(
+					(validated.wysiwyg as any).sotTypewriterBlockHighlightColor,
+					DEFAULT_V2_SETTINGS.wysiwyg
+						.sotTypewriterBlockHighlightColor ?? "#1e90ff"
+				);
+			validated.wysiwyg.sotTypewriterBlockHighlightOpacity =
+				normalizeSoTTypewriterHighlightOpacity(
+					(validated.wysiwyg as any).sotTypewriterBlockHighlightOpacity,
+					DEFAULT_V2_SETTINGS.wysiwyg
+						.sotTypewriterBlockHighlightOpacity ?? 0.16
+				);
+			validated.wysiwyg.sotTypewriterCurrentLineHighlightColor =
+				normalizeColorSetting(
+					(validated.wysiwyg as any)
+						.sotTypewriterCurrentLineHighlightColor,
+					DEFAULT_V2_SETTINGS.wysiwyg
+						.sotTypewriterCurrentLineHighlightColor ?? "#1e90ff"
+				);
+			validated.wysiwyg.sotTypewriterCurrentLineHighlightOpacity =
+				normalizeSoTTypewriterHighlightOpacity(
+					(validated.wysiwyg as any)
+						.sotTypewriterCurrentLineHighlightOpacity,
+					DEFAULT_V2_SETTINGS.wysiwyg
+						.sotTypewriterCurrentLineHighlightOpacity ?? 0.28
+				);
+			validated.wysiwyg.sotTypewriterNonFocusOpacity =
+				normalizeSoTTypewriterNonFocusOpacity(
+					(validated.wysiwyg as any).sotTypewriterNonFocusOpacity
+				);
 			validated.wysiwyg.customEmphasisChars = normalizeCustomEmphasisChars(
 				validated.wysiwyg.customEmphasisChars
 			);
@@ -842,6 +931,10 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 					autoTcyDigitRange.minDigits;
 				validated.wysiwyg.autoTcyMaxDigits =
 					autoTcyDigitRange.maxDigits;
+				validated.wysiwyg.autoTcyDigitsOnly = normalizeBooleanSetting(
+					validated.wysiwyg.autoTcyDigitsOnly,
+					DEFAULT_V2_SETTINGS.wysiwyg.autoTcyDigitsOnly ?? false,
+				);
 			}
 
 		if (
@@ -931,6 +1024,16 @@ const IME_OFFSET_RELATIVE_RANGE = 1;
 const CARET_WIDTH_MIN = 1;
 const CARET_WIDTH_MAX = 8;
 const MAX_CUSTOM_EMPHASIS_COUNT = 20;
+const SOT_TYPEWRITER_OFFSET_RATIO_MIN = -0.4;
+const SOT_TYPEWRITER_OFFSET_RATIO_MAX = 0.4;
+const SOT_TYPEWRITER_FOLLOW_BAND_RATIO_MIN = 0.05;
+const SOT_TYPEWRITER_FOLLOW_BAND_RATIO_MAX = 0.25;
+const SOT_TYPEWRITER_HIGHLIGHT_OPACITY_MIN = 0;
+const SOT_TYPEWRITER_HIGHLIGHT_OPACITY_MAX = 1;
+const SOT_TYPEWRITER_NONFOCUS_OPACITY_MIN = 0.1;
+const SOT_TYPEWRITER_NONFOCUS_OPACITY_MAX = 1;
+const HEX_COLOR_PATTERN =
+	/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
 function normalizeRubySize(value: unknown): number {
 	const num = Number(value);
@@ -965,6 +1068,75 @@ function normalizeImeOffset(
 	const max = fallback + relativeRange;
 	if (num < min) return min;
 	if (num > max) return max;
+	return num;
+}
+
+function normalizeSoTTypewriterOffsetRatio(value: unknown): number {
+	const num = Number(value);
+	if (!Number.isFinite(num)) {
+		return DEFAULT_V2_SETTINGS.wysiwyg.sotTypewriterOffsetRatio ?? 0;
+	}
+	if (num < SOT_TYPEWRITER_OFFSET_RATIO_MIN) {
+		return SOT_TYPEWRITER_OFFSET_RATIO_MIN;
+	}
+	if (num > SOT_TYPEWRITER_OFFSET_RATIO_MAX) {
+		return SOT_TYPEWRITER_OFFSET_RATIO_MAX;
+	}
+	return num;
+}
+
+function normalizeSoTTypewriterFollowBandRatio(value: unknown): number {
+	const num = Number(value);
+	if (!Number.isFinite(num)) {
+		return DEFAULT_V2_SETTINGS.wysiwyg.sotTypewriterFollowBandRatio ?? 0.16;
+	}
+	if (num < SOT_TYPEWRITER_FOLLOW_BAND_RATIO_MIN) {
+		return SOT_TYPEWRITER_FOLLOW_BAND_RATIO_MIN;
+	}
+	if (num > SOT_TYPEWRITER_FOLLOW_BAND_RATIO_MAX) {
+		return SOT_TYPEWRITER_FOLLOW_BAND_RATIO_MAX;
+	}
+	return num;
+}
+
+function normalizeBooleanSetting(value: unknown, fallback: boolean): boolean {
+	return typeof value === "boolean" ? value : fallback;
+}
+
+function normalizeColorSetting(value: unknown, fallback: string): string {
+	if (typeof value !== "string") return fallback;
+	const trimmed = value.trim();
+	return HEX_COLOR_PATTERN.test(trimmed) ? trimmed : fallback;
+}
+
+function normalizeSoTTypewriterHighlightOpacity(
+	value: unknown,
+	fallback: number,
+): number {
+	const num = Number(value);
+	if (!Number.isFinite(num)) {
+		return fallback;
+	}
+	if (num < SOT_TYPEWRITER_HIGHLIGHT_OPACITY_MIN) {
+		return SOT_TYPEWRITER_HIGHLIGHT_OPACITY_MIN;
+	}
+	if (num > SOT_TYPEWRITER_HIGHLIGHT_OPACITY_MAX) {
+		return SOT_TYPEWRITER_HIGHLIGHT_OPACITY_MAX;
+	}
+	return num;
+}
+
+function normalizeSoTTypewriterNonFocusOpacity(value: unknown): number {
+	const num = Number(value);
+	if (!Number.isFinite(num)) {
+		return DEFAULT_V2_SETTINGS.wysiwyg.sotTypewriterNonFocusOpacity ?? 0.42;
+	}
+	if (num < SOT_TYPEWRITER_NONFOCUS_OPACITY_MIN) {
+		return SOT_TYPEWRITER_NONFOCUS_OPACITY_MIN;
+	}
+	if (num > SOT_TYPEWRITER_NONFOCUS_OPACITY_MAX) {
+		return SOT_TYPEWRITER_NONFOCUS_OPACITY_MAX;
+	}
 	return num;
 }
 
