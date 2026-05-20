@@ -1,8 +1,12 @@
-# deny all by default
+# Deny all by default. Keep the public release repository intentionally small.
 *
 !.gitignore
 
-# docs
+# GitHub automation
+!.github/
+!.github/**
+
+# Docs
 !README.md
 !README.ja.md
 !INSTALL.md
@@ -15,13 +19,40 @@
 !THIRD_PARTY_LICENSES.md
 !NOTICE
 
-# manifest / versions
+# Manifest / styles
 !manifest.json
 !versions.json
 !styles.css
 
-# source (for review)
+# Buildable source package
+!main.ts
+!package.json
+!package-lock.json
+!tsconfig.json
+!esbuild.config.mjs
 !src/
 !src/**
 
+# Generated or local-only files must never be committed.
+main.js
+node_modules/
+dist/
+.env.local
+data.json
+eslint-report.json
+eslint-reachability-report.json
+reports/
+playwright-report/
+test-results/
+
+# Local editor / OS files
 .DS_Store
+.cursor/
+.claude/
+.serena/
+.specstory/
+.cursorindexingignore
+.vscode/
+.idea/
+*.iml
+*.map
