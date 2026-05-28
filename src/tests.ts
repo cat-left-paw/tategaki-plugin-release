@@ -73,6 +73,10 @@ import {
 	type SoTListOutlinerHost,
 } from "./wysiwyg/sot/sot-list-outliner";
 	import { AozoraRubyNode } from "./wysiwyg/tiptap-compat/extensions/aozora-ruby";
+	import {
+		groupRubyPunctuationRuns,
+		RUBY_ADSORB_PUNCTUATION_CHARS,
+	} from "./wysiwyg/sot/sot-ruby-punctuation-run";
 	import { AozoraTcyNode } from "./wysiwyg/tiptap-compat/extensions/aozora-tcy";
 	import { resolveTipTapRubySelection } from "./wysiwyg/tiptap-compat/ruby-selection";
 import {
@@ -332,6 +336,7 @@ export class TategakiTestSuite {
 				await this.testSoTOrderedListRenumber();
 				await this.testSoTListIndentKeepsCaretAfterMarker();
 					await this.testSoTRubyEditPreservesDelimiter();
+				await this.testSoTRubyPunctuationRunHelper();
 				await this.testSoTDisplayChunksModel();
 				await this.testSoTCollapsedGapRanges();
 				await this.testSoTCollapsedGapDom();
@@ -9705,6 +9710,411 @@ export class TategakiTestSuite {
 				name: testName,
 				success: false,
 				message: `SoT既存ルビ delimiter 維持テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTRubyPunctuationRunHelper(): Promise<void> {
+		const testName =
+			"SoT疑似ルビ + 直後の対象約物を不可分単位にまとめる helper";
+		const startTime = performance.now();
+
+		type Seg = {
+			from: number;
+			to: number;
+			text: string;
+			classNames: string[];
+			href?: string;
+			ruby?: string;
+			rubyNotationFrom?: number;
+			rubyNotationTo?: number;
+		};
+		const ruby = (
+			from: number,
+			text: string,
+			rubyText: string,
+			extraClasses: string[] = [],
+		): Seg => ({
+			from,
+			to: from + text.length,
+			text,
+			classNames: ["tategaki-sot-run", "tategaki-aozora-ruby", ...extraClasses],
+			ruby: rubyText,
+		});
+		// 青空ルビ実体構造（`親文字《よみ》` / `｜親文字《よみ》`）を再現する factory。
+		// `《...》` は SoT 上 hidden range として消されるため、production では
+		// ruby 親文字 segment の `to` と直後の punctuation segment の `from` の間に
+		// `《...》` 長分の gap が空く。`rubyNotationTo` はその注釈終端の source offset。
+		const productionRuby = (
+			notationFrom: number,
+			baseText: string,
+			rubyText: string,
+			hasDelimiter: boolean,
+		): Seg => {
+			const baseFrom = notationFrom + (hasDelimiter ? 1 : 0);
+			const baseTo = baseFrom + baseText.length;
+			// `《` + rubyText + `》`
+			const notationTo = baseTo + 1 + rubyText.length + 1;
+			return {
+				from: baseFrom,
+				to: baseTo,
+				text: baseText,
+				classNames: ["tategaki-sot-run", "tategaki-aozora-ruby"],
+				ruby: rubyText,
+				rubyNotationFrom: notationFrom,
+				rubyNotationTo: notationTo,
+			};
+		};
+		const plain = (
+			from: number,
+			text: string,
+			extraClasses: string[] = [],
+		): Seg => ({
+			from,
+			to: from + text.length,
+			text,
+			classNames: ["tategaki-sot-run", ...extraClasses],
+		});
+		const withHref = (from: number, text: string, href: string): Seg => ({
+			from,
+			to: from + text.length,
+			text,
+			classNames: ["tategaki-sot-run"],
+			href,
+		});
+
+		try {
+			const assert = (cond: boolean, message: string) => {
+				if (!cond) throw new Error(message);
+			};
+
+			for (const ch of ["、", "。", "」", "』", "）"]) {
+				assert(
+					RUBY_ADSORB_PUNCTUATION_CHARS.has(ch),
+					`対象約物セットに ${ch} が含まれていない`,
+				);
+			}
+			assert(
+				!RUBY_ADSORB_PUNCTUATION_CHARS.has(","),
+				"半角カンマが対象になっている",
+			);
+
+			{
+				const segs: Seg[] = [ruby(0, "煙草", "たばこ"), plain(2, "、")];
+				const grouped = groupRubyPunctuationRuns(segs);
+				assert(grouped.length === 1, "ruby + 、 が 1 つの run に集約されない");
+				const item = grouped[0]!;
+				assert(
+					item.kind === "ruby-punctuation-run",
+					"ruby + 、 が ruby-punctuation-run になっていない",
+				);
+				if (item.kind === "ruby-punctuation-run") {
+					assert(item.rubySegment.text === "煙草", "ルビ親文字が変更されている");
+					assert(
+						item.punctuationSegment.text === "、",
+						"吸着された約物が `、` ではない",
+					);
+				}
+			}
+
+			{
+				const segs: Seg[] = [
+					ruby(0, "煙草", "たばこ"),
+					plain(2, "、そして"),
+				];
+				const grouped = groupRubyPunctuationRuns(segs);
+				assert(grouped.length === 2, "残り segment が分離されていない");
+				assert(
+					grouped[0]!.kind === "ruby-punctuation-run",
+					"先頭 1 文字の吸着が起きていない",
+				);
+				if (grouped[0]!.kind === "ruby-punctuation-run") {
+					assert(
+						grouped[0]!.punctuationSegment.text === "、",
+						"先頭文字以外まで吸着している",
+					);
+					assert(
+						grouped[0]!.punctuationSegment.from === 2 &&
+							grouped[0]!.punctuationSegment.to === 3,
+						"吸着 punctuation の from/to が分割後にズレている",
+					);
+				}
+				assert(
+					grouped[1]!.kind === "segment",
+					"残り segment が segment kind でない",
+				);
+				if (grouped[1]!.kind === "segment") {
+					assert(
+						grouped[1]!.segment.text === "そして",
+						"残り segment のテキストが正しくない",
+					);
+					assert(
+						grouped[1]!.segment.from === 3 && grouped[1]!.segment.to === 5,
+						"残り segment の from/to が分割後にズレている",
+					);
+				}
+			}
+
+			{
+				const segs: Seg[] = [
+					ruby(0, "あいうえお", "あいうえお"),
+					plain(5, "、"),
+				];
+				const grouped = groupRubyPunctuationRuns(segs);
+				assert(grouped.length === 2, "5 文字親文字で吸着が発生している");
+				assert(
+					grouped[0]!.kind === "segment" && grouped[1]!.kind === "segment",
+					"5 文字親文字で吸着が発生している",
+				);
+			}
+
+			{
+				const segs: Seg[] = [
+					ruby(0, "煙草", "たばこ"),
+					withHref(2, "、", "https://example.com"),
+				];
+				const grouped = groupRubyPunctuationRuns(segs);
+				assert(
+					grouped.length === 2 &&
+						grouped[0]!.kind === "segment" &&
+						grouped[1]!.kind === "segment",
+					"href を持つ次 segment が吸着されている",
+				);
+			}
+
+			{
+				const segs: Seg[] = [
+					ruby(0, "煙草", "たばこ"),
+					ruby(2, "、", "ten"),
+				];
+				const grouped = groupRubyPunctuationRuns(segs);
+				assert(
+					grouped.length === 2 &&
+						grouped[0]!.kind === "segment" &&
+						grouped[1]!.kind === "segment",
+					"ruby を持つ次 segment が吸着されている",
+				);
+			}
+
+			{
+				const segs: Seg[] = [
+					ruby(0, "煙草", "たばこ"),
+					plain(2, "、", ["tategaki-md-tcy"]),
+				];
+				const grouped = groupRubyPunctuationRuns(segs);
+				assert(
+					grouped.length === 2 &&
+						grouped[0]!.kind === "segment" &&
+						grouped[1]!.kind === "segment",
+					"tategaki-md-tcy が含まれる次 segment が吸着されている",
+				);
+			}
+
+			{
+				const segs: Seg[] = [ruby(0, "煙草", "たばこ"), plain(3, "、")];
+				const grouped = groupRubyPunctuationRuns(segs);
+				assert(
+					grouped.length === 2 &&
+						grouped[0]!.kind === "segment" &&
+						grouped[1]!.kind === "segment",
+					"非連続 segment が吸着されている",
+				);
+			}
+
+			{
+				const segs: Seg[] = [ruby(0, "煙草", "たばこ"), plain(2, ",")];
+				const grouped = groupRubyPunctuationRuns(segs);
+				assert(
+					grouped.length === 2 &&
+						grouped[0]!.kind === "segment" &&
+						grouped[1]!.kind === "segment",
+					"半角カンマで吸着が発生している",
+				);
+			}
+
+			{
+				const segs: Seg[] = [
+					{
+						from: 0,
+						to: 2,
+						text: "煙草",
+						classNames: ["tategaki-sot-run"],
+						ruby: "たばこ",
+					},
+					plain(2, "、"),
+				];
+				const grouped = groupRubyPunctuationRuns(segs);
+				assert(
+					grouped.length === 2 &&
+						grouped[0]!.kind === "segment" &&
+						grouped[1]!.kind === "segment",
+					"aozora-ruby class なしで吸着が発生している",
+				);
+			}
+
+			// === 青空ルビ実体構造（`煙草《たばこ》、` 等）の production ケース ===
+			// SoT では `《...》` を hidden 化するため、ruby 親文字 segment の `to` と
+			// 直後の punctuation segment の `from` の間に注釈分の gap が空く。
+			// `rubyNotationTo` を根拠とした吸着が機能することを確認する。
+			{
+				// `煙草《たばこ》、`
+				// notationFrom=0, base="煙草" (1..3 のように振る舞うが production offset では
+				// base from=0, to=2 / 《=2, よみ=3..6, 》=6 / 、=7..8 となる）
+				// helper には base from/to と notation 範囲だけ渡せばよい。
+				const rubySeg: Seg = {
+					from: 0,
+					to: 2,
+					text: "煙草",
+					classNames: ["tategaki-sot-run", "tategaki-aozora-ruby"],
+					ruby: "たばこ",
+					rubyNotationFrom: 0,
+					rubyNotationTo: 7,
+				};
+				const punctSeg: Seg = {
+					from: 7,
+					to: 8,
+					text: "、",
+					classNames: ["tategaki-sot-run"],
+				};
+				const grouped = groupRubyPunctuationRuns([rubySeg, punctSeg]);
+				assert(
+					grouped.length === 1 && grouped[0]!.kind === "ruby-punctuation-run",
+					"青空ルビ実体構造で wrapper 化が発火していない (notationTo 経由の吸着が動いていない)",
+				);
+				if (grouped[0]!.kind === "ruby-punctuation-run") {
+					assert(
+						grouped[0]!.rubySegment.from === 0 &&
+							grouped[0]!.rubySegment.to === 2,
+						"production ケースで rubySegment の from/to が変更されている",
+					);
+					assert(
+						grouped[0]!.punctuationSegment.from === 7 &&
+							grouped[0]!.punctuationSegment.to === 8,
+						"production ケースで punctuationSegment の from/to が変更されている",
+					);
+				}
+			}
+
+			// delimiter (`｜`) ありの青空ルビ：`｜親文字《よみ》。` 構造
+			{
+				const rubySeg = productionRuby(0, "機嫌", "きげん", true);
+				// rubyNotationTo は `》` 直後 = 1 + 2 + 1 + 3 + 1 = 8
+				assert(rubySeg.rubyNotationTo === 8, "productionRuby の notationTo 計算誤り");
+				const punctSeg: Seg = {
+					from: 8,
+					to: 9,
+					text: "。",
+					classNames: ["tategaki-sot-run"],
+				};
+				const grouped = groupRubyPunctuationRuns([rubySeg, punctSeg]);
+				assert(
+					grouped.length === 1 &&
+						grouped[0]!.kind === "ruby-punctuation-run",
+					"delimiter ありの青空ルビで wrapper 化が発火していない",
+				);
+			}
+
+			// production ケース + 次 segment が複数文字 (`、続き`) → 先頭 `、` のみ吸着
+			{
+				const rubySeg = productionRuby(0, "煙草", "たばこ", false);
+				// rubyNotationTo = 0 + 0 + 2 + 1 + 3 + 1 = 7
+				const punctSeg: Seg = {
+					from: 7,
+					to: 10,
+					text: "、続き",
+					classNames: ["tategaki-sot-run"],
+				};
+				const grouped = groupRubyPunctuationRuns([rubySeg, punctSeg]);
+				assert(grouped.length === 2, "production + 残りテキストが分離されていない");
+				assert(
+					grouped[0]!.kind === "ruby-punctuation-run",
+					"production + 残りテキストで先頭吸着が起きていない",
+				);
+				if (grouped[0]!.kind === "ruby-punctuation-run") {
+					assert(
+						grouped[0]!.punctuationSegment.from === 7 &&
+							grouped[0]!.punctuationSegment.to === 8 &&
+							grouped[0]!.punctuationSegment.text === "、",
+						"production ケースで先頭 1 文字の split が不正",
+					);
+				}
+				if (grouped[1]!.kind === "segment") {
+					assert(
+						grouped[1]!.segment.from === 8 &&
+							grouped[1]!.segment.to === 10 &&
+							grouped[1]!.segment.text === "続き",
+						"production ケースで remainder の from/to/text が不正",
+					);
+				}
+			}
+
+			// === 根拠のない gap 越し吸着は禁止 ===
+			// current.to !== next.from かつ rubyNotationTo !== next.from の場合は吸着しない
+			{
+				const rubySeg: Seg = {
+					from: 0,
+					to: 2,
+					text: "煙草",
+					classNames: ["tategaki-sot-run", "tategaki-aozora-ruby"],
+					ruby: "たばこ",
+					rubyNotationFrom: 0,
+					rubyNotationTo: 7,
+				};
+				// `、` が notationTo (= 7) ではなく別 offset (10) にある
+				const punctSeg: Seg = {
+					from: 10,
+					to: 11,
+					text: "、",
+					classNames: ["tategaki-sot-run"],
+				};
+				const grouped = groupRubyPunctuationRuns([rubySeg, punctSeg]);
+				assert(
+					grouped.length === 2 &&
+						grouped[0]!.kind === "segment" &&
+						grouped[1]!.kind === "segment",
+					"根拠のない gap 越しで吸着が発生している",
+				);
+			}
+
+			// rubyNotationTo が未設定（legacy / 非 SoT 経路想定）かつ source 連続でもない → 吸着しない
+			{
+				const rubySeg: Seg = {
+					from: 0,
+					to: 2,
+					text: "煙草",
+					classNames: ["tategaki-sot-run", "tategaki-aozora-ruby"],
+					ruby: "たばこ",
+				};
+				const punctSeg: Seg = {
+					from: 7,
+					to: 8,
+					text: "、",
+					classNames: ["tategaki-sot-run"],
+				};
+				const grouped = groupRubyPunctuationRuns([rubySeg, punctSeg]);
+				assert(
+					grouped.length === 2 &&
+						grouped[0]!.kind === "segment" &&
+						grouped[1]!.kind === "segment",
+					"rubyNotationTo 未設定で根拠のない gap が許可されている",
+				);
+			}
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"ルビ + 対象約物 1 文字を不可分 run に集約し、対象外条件では fallback する",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `SoT疑似ルビ punctuation-run helper テスト失敗: ${(error as Error).message}`,
 				duration,
 			});
 		}

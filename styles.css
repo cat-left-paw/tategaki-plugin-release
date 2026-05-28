@@ -68,9 +68,9 @@
 }
 
 .tategaki-hidden-probe {
-	position: absolute !important;
-	visibility: hidden !important;
-	pointer-events: none !important;
+	position: absolute;
+	visibility: hidden;
+	pointer-events: none;
 }
 
 /* 編集・プレビュー共通の本文レイアウト */
@@ -103,7 +103,6 @@
 	border-radius: 0;
 	line-break: strict;
 	word-break: normal;
-	hanging-punctuation: first allow-end;
 	text-wrap: pretty;
 }
 
@@ -210,7 +209,6 @@
 .tategaki-preview div.markdown-preview-section > div {
 	line-break: strict;
 	word-break: normal;
-	hanging-punctuation: first allow-end;
 	text-wrap: pretty;
 }
 
@@ -265,7 +263,6 @@
 	max-width: 100%;
 	text-align: justify;
 	text-align-last: auto;
-	text-justify: inter-character;
 }
 
 /* 縦書きモード: コンテンツ幅に合わせる */
@@ -274,7 +271,6 @@
 	height: 100%;
 	text-align: justify;
 	text-align-last: auto;
-	text-justify: inter-character;
 }
 
 .tategaki-wysiwyg-editor[data-writing-mode="vertical-lr"] .ProseMirror {
@@ -282,7 +278,6 @@
 	height: 100%;
 	text-align: justify;
 	text-align-last: auto;
-	text-justify: inter-character;
 }
 
 .tategaki-wysiwyg-editor .ProseMirror p,
@@ -481,21 +476,11 @@
 .tategaki-wysiwyg-editor.text-justify-enabled {
 	text-align: justify;
 	text-align-last: auto;
-	text-justify: inter-character;
-}
-
-.tategaki-wysiwyg-editor.text-justify-enabled[data-writing-mode="vertical-rl"] {
-	text-justify: inter-character;
-}
-
-.tategaki-wysiwyg-editor.text-justify-enabled[data-writing-mode="horizontal-tb"] {
-	text-justify: inter-character;
 }
 
 .tategaki-wysiwyg-editor.text-justify-enabled .ProseMirror {
 	text-align: inherit;
 	text-align-last: auto;
-	text-justify: inherit;
 }
 
 .tategaki-wysiwyg-editor .ProseMirror em {
@@ -697,7 +682,7 @@
 
 /* ネイティブキャレット使用時はカスタムキャレットを非表示 */
 .tategaki-editor.native-caret ~ .tategaki-caret {
-	display: none !important;
+	display: none;
 }
 
 /* カスタムキャレット */
@@ -720,8 +705,8 @@
 
 /* キャレットの実線表示 */
 .tategaki-caret--solid {
-	animation: none !important;
-	opacity: 1 !important;
+	animation: none;
+	opacity: 1;
 }
 
 @keyframes tategakiCaretBlink {
@@ -863,8 +848,8 @@
 	display: inline-block;
 	width: 2px;
 	height: 1em;
-	background-color: var(--tategaki-text-color, var(--text-normal)) !important;
-	animation: cursor-blink 1s step-start infinite !important;
+	background-color: var(--tategaki-text-color, var(--text-normal));
+	animation: cursor-blink 1s step-start infinite;
 	pointer-events: none;
 	position: relative;
 	vertical-align: baseline;
@@ -876,25 +861,19 @@
 		--tategaki-text-color,
 		var(--interactive-accent)
 	) !important;
-	animation: none !important;
+	animation: none;
 	opacity: 0.9;
-	box-shadow: 0 0 0 1px var(--tategaki-text-color, var(--interactive-accent)) !important;
+	box-shadow: 0 0 0 1px var(--tategaki-text-color, var(--interactive-accent));
 }
 
 
 
 /* TipTap（開発版）縦書き時の外部カーソル */
 .tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"] .cursor-indicator {
-	width: 1em !important;
-	height: 2px !important;
+	width: 1em;
+	height: 2px;
 	display: inline-block;
 }
-
-.line-end-allow-end {
-	hanging-punctuation: allow-end;
-}
-
-
 
 /* TipTap検索ハイライト */
 .tategaki-search-match {
@@ -1026,11 +1005,6 @@ ruby {
 	.ProseMirror
 	.tategaki-aozora-ruby {
 	height: auto;
-}
-
-.tategaki-wysiwyg-editor[data-writing-mode="vertical-rl"]
-	.ProseMirror
-	.tategaki-aozora-ruby {
 	--tategaki-ruby-side-gap: var(--tategaki-ruby-gap-vertical, 2em);
 }
 
@@ -1068,6 +1042,18 @@ ruby {
 	);
 	writing-mode: vertical-rl;
 	text-orientation: upright;
+}
+
+/* SoT派生ビュー: 疑似ルビ + 直後の対象約物を不可分単位として扱う wrapper。
+   ブラウザに「ルビ付き親文字 + 句読点・閉じ括弧」を改行・justify の単位として認識させるための表示専用 span。
+   wrapper 自体は data-from / data-to を持たないため、内部の .tategaki-sot-run が caret / click / 選択補助の参照対象となる。 */
+.tategaki-sot-derived-root .tategaki-ruby-run {
+	display: inline-block;
+	white-space: nowrap;
+	text-align: initial;
+	text-align-last: auto;
+	writing-mode: inherit;
+	text-orientation: inherit;
 }
 
 /* SoT派生ビューの疑似ルビ（data-ruby を使う） */
@@ -1266,7 +1252,6 @@ ruby {
 }
 
 .tategaki-plain-overlay:focus {
-	background-color: var(--background-primary-alt);
 	background-color: color-mix(
 		in srgb,
 		var(--tategaki-background-color, var(--background-primary)) 85%,
@@ -1409,7 +1394,7 @@ ruby {
 .tategaki-frontmatter-original-title {
 	font-size: 1.5em;
 	font-weight: bold;
-	margin: 0.5em 0 0 0;
+	margin: 0.5em 0 0;
 	padding: 0;
 	writing-mode: inherit;
 	text-orientation: inherit;
@@ -1852,8 +1837,8 @@ ruby {
 	background-color: var(
 		--tategaki-color-swatch,
 		var(--background-primary)
-	) !important;
-	background-image: none !important;
+	);
+	background-image: none;
 }
 
 .tategaki-font-setting-wrapper {
@@ -2454,7 +2439,7 @@ ruby {
 }
 
 .tategaki-color-picker-title {
-	margin: 0 0 16px 0;
+	margin: 0 0 16px;
 	color: var(--text-normal);
 }
 
@@ -2500,10 +2485,10 @@ ruby {
 	box-sizing: border-box;
 	margin: 0;
 	padding: 0;
-	padding-inline-start: 0 !important;
-	padding-inline-end: 0 !important;
-	padding-left: 0 !important;
-	padding-right: 0 !important;
+	padding-inline-start: 0;
+	padding-inline-end: 0;
+	padding-left: 0;
+	padding-right: 0;
 }
 
 .tategaki-reading-toolbar-row {
@@ -2653,7 +2638,7 @@ ruby {
 
 .contenteditable-toolbar .contenteditable-toolbar-button.is-hidden,
 .contenteditable-toolbar .contenteditable-toolbar-separator.is-hidden {
-	display: none !important;
+	display: none;
 }
 
 .contenteditable-toolbar-status {
@@ -2771,8 +2756,8 @@ ruby {
 
 .tategaki-frontmatter-inline-end {
 	display: block;
-	text-align: end !important;
-	text-align-last: end !important;
+	text-align: end;
+	text-align-last: end;
 	margin-inline-start: auto;
 	margin-inline-end: 0;
 	margin-left: auto;
@@ -2795,10 +2780,10 @@ ruby {
 	box-sizing: border-box;
 	margin: 0;
 	padding: 0;
-	padding-inline-start: 0 !important;
-	padding-inline-end: 0 !important;
-	padding-left: 0 !important;
-	padding-right: 0 !important;
+	padding-inline-start: 0;
+	padding-inline-end: 0;
+	padding-left: 0;
+	padding-right: 0;
 }
 
 .tategaki-sot-toolbar-row {
@@ -2834,7 +2819,7 @@ ruby {
 	justify-content: center;
 	min-width: 0;
 	min-height: 0;
-	padding: 40px 32px 22px 32px;
+	padding: 40px 32px 22px;
 	box-sizing: border-box;
 	overflow: visible;
 	background: transparent;
@@ -2846,13 +2831,13 @@ ruby {
 	height: 100%;
 	min-width: 0;
 	min-height: 0;
-	border: none !important;
-	outline: none !important;
+	border: none;
+	outline: none;
 	border-radius: 0;
 	background: var(
 		--tategaki-sot-runtime-bg,
 		var(--tategaki-background-color, var(--background-primary))
-	) !important;
+	);
 	box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
 	box-sizing: border-box;
 	overflow: hidden;
@@ -2868,8 +2853,8 @@ ruby {
 	flex-direction: column;
 	width: 100%;
 	height: 100%;
-	border: none !important;
-	outline: none !important;
+	border: none;
+	outline: none;
 	background: var(
 		--tategaki-sot-runtime-bg,
 		var(--tategaki-background-color, var(--background-primary))
@@ -2889,10 +2874,10 @@ ruby {
 	box-sizing: border-box;
 	margin: 0;
 	padding: 0;
-	padding-inline-start: 0 !important;
-	padding-inline-end: 0 !important;
-	padding-left: 0 !important;
-	padding-right: 0 !important;
+	padding-inline-start: 0;
+	padding-inline-end: 0;
+	padding-left: 0;
+	padding-right: 0;
 }
 
 .tategaki-tiptap-compat-toolbar-row {
@@ -2949,7 +2934,7 @@ ruby {
 	justify-content: center;
 	min-width: 0;
 	min-height: 0;
-	padding: 40px 32px 22px 32px;
+	padding: 40px 32px 22px;
 	box-sizing: border-box;
 	overflow: visible;
 	background: transparent;
@@ -2961,13 +2946,13 @@ ruby {
 	height: 100%;
 	min-width: 0;
 	min-height: 0;
-	border: none !important;
-	outline: none !important;
+	border: none;
+	outline: none;
 	border-radius: 0;
 	background: var(
 		--tategaki-background-color,
 		var(--background-primary)
-	) !important;
+	);
 	box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
 	box-sizing: border-box;
 	overflow: hidden;
@@ -2983,8 +2968,8 @@ ruby {
 	flex-direction: column;
 	width: 100%;
 	height: 100%;
-	border: none !important;
-	outline: none !important;
+	border: none;
+	outline: none;
 	background: var(--tategaki-background-color, var(--background-primary));
 	color: var(--text-normal);
 	overflow: hidden;
@@ -3188,8 +3173,6 @@ ruby {
 .tategaki-page[data-writing-mode="vertical-rl"] {
 	text-align: justify;
 	text-align-last: start;
-	text-justify: inter-character;
-	hanging-punctuation: first allow-end;
 	text-wrap: pretty;
 }
 
@@ -3199,8 +3182,6 @@ ruby {
 	text-orientation: initial;
 	text-align: justify;
 	text-align-last: start;
-	text-justify: inter-character;
-	hanging-punctuation: first allow-end;
 	text-wrap: pretty;
 }
 
@@ -3592,7 +3573,6 @@ ruby {
 	text-orientation: mixed;
 	word-break: break-word;
 	overflow-wrap: anywhere;
-	hanging-punctuation: first allow-end;
 	text-wrap: pretty;
 }
 
@@ -4561,11 +4541,6 @@ ruby {
 .tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
 	.tategaki-sot-line.tategaki-md-codeblock {
 	text-orientation: sideways;
-}
-
-/* 縦書き時：コードブロックの「まとまり」は横方向に伸びるため、枠線/角丸も横方向に揃える */
-.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
-	.tategaki-sot-line.tategaki-md-codeblock {
 	border-top: 1px solid var(--background-modifier-border);
 	border-bottom: 1px solid var(--background-modifier-border);
 	border-left: 0;
@@ -5083,9 +5058,6 @@ ruby {
 	pointer-events: none;
 	user-select: none;
 	z-index: 1100;
-}
-
-.tategaki-sot-caret {
 	animation: tategaki-caret-blink 1s steps(1, end) infinite;
 }
 
@@ -5418,8 +5390,8 @@ ruby {
 
 .tategaki-frontmatter-layout-center .tategaki-frontmatter-top,
 .tategaki-frontmatter-layout-center .tategaki-frontmatter-bottom {
-	text-align: center !important;
-	text-align-last: center !important;
+	text-align: center;
+	text-align-last: center;
 }
 
 .tategaki-frontmatter-layout-center .tategaki-frontmatter-title,
@@ -5429,8 +5401,8 @@ ruby {
 .tategaki-frontmatter-layout-center .tategaki-frontmatter-co-author,
 .tategaki-frontmatter-layout-center .tategaki-frontmatter-translator,
 .tategaki-frontmatter-layout-center .tategaki-frontmatter-co-translator {
-	text-align: center !important;
-	text-align-last: center !important;
+	text-align: center;
+	text-align-last: center;
 }
 
 /* 縦書きコンテキストの中央配置：

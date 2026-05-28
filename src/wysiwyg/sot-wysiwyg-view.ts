@@ -52,6 +52,7 @@ import {
 	trySoTHorizontalRuleCollapsedBackspace,
 	trySoTHorizontalRuleCollapsedDeleteForward,
 } from "./sot/sot-hr-line-delete";
+import { groupRubyPunctuationRuns } from "./sot/sot-ruby-punctuation-run";
 import {
 	clearPlainEditSelectionFormatting,
 	getPlainEditSelectionRange,
@@ -335,6 +336,11 @@ type RenderSegment = {
 	classNames: string[];
 	href?: string;
 	ruby?: string;
+	// 疑似ルビ親文字 segment に対して、青空注釈全体（`《...》` を含む）の
+	// source offset 範囲を保持する内部 metadata。DOM には出さない。
+	// hidden 化される `《...》` を跨いで直後の対象約物と隣接判定するために使う。
+	rubyNotationFrom?: number;
+	rubyNotationTo?: number;
 };
 
 type HighlightNode = {
@@ -351,9 +357,14 @@ type ClearableSpan = {
 };
 
 type RubyRange = {
+	// 親文字（ベース）の source offset 範囲
 	from: number;
 	to: number;
 	ruby: string;
+	// 青空注釈全体（`｜` または親文字開始 〜 `》` の直後）の source offset 範囲。
+	// hidden range 化される `《...》` を跨いだ「表示上隣接」判定に使う。
+	notationFrom: number;
+	notationTo: number;
 };
 
 type InlineWidget = {
@@ -4058,6 +4069,8 @@ export class SoTWysiwygView extends ItemView {
 				from: absBaseFrom,
 				to: absBaseTo,
 				ruby: rubyText,
+				notationFrom: absFrom + start,
+				notationTo: absFrom + start + closeIndex + 1,
 			});
 		}
 	}
@@ -4084,6 +4097,8 @@ export class SoTWysiwygView extends ItemView {
 				...seg,
 				classNames,
 				ruby: ruby.ruby,
+				rubyNotationFrom: ruby.notationFrom,
+				rubyNotationTo: ruby.notationTo,
 			};
 		});
 	}
@@ -4557,13 +4572,13 @@ export class SoTWysiwygView extends ItemView {
 			return undefined;
 		};
 
-		const collectRubyText = (
+		const collectRubyRange = (
 			from: number,
 			to: number,
-		): string | undefined => {
+		): RubyRange | undefined => {
 			for (const range of rubyRanges) {
 				if (from >= range.from && to <= range.to) {
-					return range.ruby;
+					return range;
 				}
 			}
 			return undefined;
@@ -4586,7 +4601,8 @@ export class SoTWysiwygView extends ItemView {
 			const text = doc.slice(from, to);
 			if (text.length === 0) continue;
 			const classNames = collectClasses(from, to);
-			const rubyText = collectRubyText(from, to);
+			const rubyRange = collectRubyRange(from, to);
+			const rubyText = rubyRange?.ruby;
 			if (rubyText && !classNames.includes("tategaki-aozora-ruby")) {
 				classNames.push("tategaki-aozora-ruby");
 			}
@@ -4600,7 +4616,9 @@ export class SoTWysiwygView extends ItemView {
 				last.to === from &&
 				last.classNames.join("|") === classNames.join("|") &&
 				last.href === href &&
-				last.ruby === rubyText
+				last.ruby === rubyText &&
+				last.rubyNotationFrom === rubyRange?.notationFrom &&
+				last.rubyNotationTo === rubyRange?.notationTo
 			) {
 				last.to = to;
 				last.text += text;
@@ -4612,6 +4630,8 @@ export class SoTWysiwygView extends ItemView {
 					classNames,
 					href,
 					ruby: rubyText,
+					rubyNotationFrom: rubyRange?.notationFrom,
+					rubyNotationTo: rubyRange?.notationTo,
 				});
 			}
 		}
@@ -13643,6 +13663,8 @@ export class SoTWysiwygView extends ItemView {
 						classNames: seg.classNames,
 						href: seg.href,
 						ruby: seg.ruby,
+						rubyNotationFrom: seg.rubyNotationFrom,
+						rubyNotationTo: seg.rubyNotationTo,
 					});
 				}
 			}
@@ -13657,6 +13679,8 @@ export class SoTWysiwygView extends ItemView {
 						classNames: seg.classNames,
 						href: seg.href,
 						ruby: seg.ruby,
+						rubyNotationFrom: seg.rubyNotationFrom,
+						rubyNotationTo: seg.rubyNotationTo,
 					});
 				}
 			}
@@ -13705,6 +13729,8 @@ export class SoTWysiwygView extends ItemView {
 					classNames: seg.classNames,
 					href: seg.href,
 					ruby: seg.ruby,
+					rubyNotationFrom: seg.rubyNotationFrom,
+					rubyNotationTo: seg.rubyNotationTo,
 				});
 			}
 			if (rightText.length > 0) {
@@ -13715,6 +13741,8 @@ export class SoTWysiwygView extends ItemView {
 					classNames: seg.classNames,
 					href: seg.href,
 					ruby: seg.ruby,
+					rubyNotationFrom: seg.rubyNotationFrom,
+					rubyNotationTo: seg.rubyNotationTo,
 				});
 			}
 		}
@@ -13739,7 +13767,10 @@ export class SoTWysiwygView extends ItemView {
 			.slice()
 			.sort((a, b) => a.from - b.from || a.to - b.to);
 
-		const appendSegment = (segment: RenderSegment) => {
+		const appendSegment = (
+			segment: RenderSegment,
+			target: HTMLElement = parent,
+		) => {
 			const span = document.createElement("span");
 			span.className = segment.classNames.join(" ");
 			span.dataset.from = String(segment.from - lineRange.from);
@@ -13775,7 +13806,21 @@ export class SoTWysiwygView extends ItemView {
 				delete span.dataset.aozoraRuby;
 			}
 			span.textContent = segment.text;
-			parent.appendChild(span);
+			target.appendChild(span);
+		};
+
+		const appendRubyPunctuationRun = (
+			rubySegment: RenderSegment,
+			punctuationSegment: RenderSegment,
+		) => {
+			// wrapper は不可分単位を表すための表示専用 span。
+			// click / caret / selection 系は既存の `.tategaki-sot-run` を参照しているので、
+			// wrapper 自体に data-from / data-to は付けない。
+			const wrap = document.createElement("span");
+			wrap.className = "tategaki-ruby-run";
+			appendSegment(rubySegment, wrap);
+			appendSegment(punctuationSegment, wrap);
+			parent.appendChild(wrap);
 		};
 
 		const appendWidget = (widget: InlineWidget) => {
@@ -13810,14 +13855,46 @@ export class SoTWysiwygView extends ItemView {
 			Array.from(new Set(splitOffsets)),
 		);
 
-		let segIndex = 0;
+		// 疑似ルビ + 直後の対象約物を不可分単位（ruby-punctuation-run）に束ねる。
+		// widget / pending offset が ruby と punctuation の境界 (= punctuationSegment.from)
+		// に挟まる場合は wrapper にしない。SoT 青空ルビでは `《...》` を hidden 化するため
+		// `rubySegment.to` と `punctuationSegment.from` の間には注釈分の gap が空いている。
+		const blockerOffsets = new Set<number>();
+		for (const w of widgets) blockerOffsets.add(w.from);
+		if (insertOffset !== null) blockerOffsets.add(insertOffset);
+		const groupedRaw = groupRubyPunctuationRuns(sliced);
+		const grouped: typeof groupedRaw = [];
+		for (const item of groupedRaw) {
+			if (
+				item.kind === "ruby-punctuation-run" &&
+				blockerOffsets.has(item.punctuationSegment.from)
+			) {
+				grouped.push({ kind: "segment", segment: item.rubySegment });
+				grouped.push({
+					kind: "segment",
+					segment: item.punctuationSegment,
+				});
+				continue;
+			}
+			grouped.push(item);
+		}
+
+		const groupedFrom = (
+			item: (typeof grouped)[number] | undefined,
+		): number | null => {
+			if (!item) return null;
+			return item.kind === "segment"
+				? item.segment.from
+				: item.rubySegment.from;
+		};
+
+		let groupIndex = 0;
 		let widgetIndex = 0;
 		let pendingInserted = insertOffset === null;
 
 		const nextFrom = (): number | null => {
-			const seg = sliced[segIndex];
+			const segFrom = groupedFrom(grouped[groupIndex]);
 			const widget = widgets[widgetIndex];
-			const segFrom = seg ? seg.from : null;
 			const widgetFrom = widget ? widget.from : null;
 			const pendingFrom = pendingInserted ? null : insertOffset;
 			let best: number | null = null;
@@ -13850,10 +13927,17 @@ export class SoTWysiwygView extends ItemView {
 				widgetIndex += 1;
 				continue;
 			}
-			const seg = sliced[segIndex];
-			if (seg && seg.from === at) {
-				appendSegment(seg);
-				segIndex += 1;
+			const item = grouped[groupIndex];
+			if (item && groupedFrom(item) === at) {
+				if (item.kind === "ruby-punctuation-run") {
+					appendRubyPunctuationRun(
+						item.rubySegment,
+						item.punctuationSegment,
+					);
+				} else {
+					appendSegment(item.segment);
+				}
+				groupIndex += 1;
 				continue;
 			}
 			break;
@@ -13862,8 +13946,16 @@ export class SoTWysiwygView extends ItemView {
 		for (; widgetIndex < widgets.length; widgetIndex += 1) {
 			appendWidget(widgets[widgetIndex]!);
 		}
-		for (; segIndex < sliced.length; segIndex += 1) {
-			appendSegment(sliced[segIndex]!);
+		for (; groupIndex < grouped.length; groupIndex += 1) {
+			const item = grouped[groupIndex]!;
+			if (item.kind === "ruby-punctuation-run") {
+				appendRubyPunctuationRun(
+					item.rubySegment,
+					item.punctuationSegment,
+				);
+			} else {
+				appendSegment(item.segment);
+			}
 		}
 		if (!pendingInserted && insertOffset !== null) {
 			const spacer = document.createElement("span");
