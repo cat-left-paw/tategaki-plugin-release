@@ -239,7 +239,7 @@ export interface WysiwygSettings {
 	sotTypewriterCurrentLineHighlightColor?: string; // SoT Typewriter 現在行ハイライト色
 	sotTypewriterCurrentLineHighlightOpacity?: number; // SoT Typewriter 現在行ハイライト透明度
 	sotTypewriterNonFocusOpacity?: number; // SoT Typewriter 非フォーカス opacity
-	// 縦書きの列境界レイアウト nudge（既定 ON / 表示 DOM 限定 / 保存データには非干渉）。
+	// 縦書きの列境界レイアウト nudge（実験的 / 既定 OFF / 表示 DOM 限定 / 保存データには非干渉）。
 	// SoT（執筆・参照モード）と書籍モードの縦書きに適用する。
 	verticalLayoutNudgeEnabled?: boolean;
 	// 旧キー（〜v1.3.x、SoT 限定時代）。validateV2Settings で verticalLayoutNudgeEnabled へ移行し削除する。
@@ -250,7 +250,7 @@ export interface WysiwygSettings {
  * 現在の設定バージョン
  * 新しい設定が追加された時にインクリメントする
  */
-export const CURRENT_SETTINGS_VERSION = 6;
+export const CURRENT_SETTINGS_VERSION = 7;
 
 /**
  * メイン設定インターフェース
@@ -427,7 +427,7 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		sotTypewriterCurrentLineHighlightColor: "#1e90ff",
 		sotTypewriterCurrentLineHighlightOpacity: 0.28,
 		sotTypewriterNonFocusOpacity: 0.42,
-		verticalLayoutNudgeEnabled: true,
+		verticalLayoutNudgeEnabled: false,
 	},
 
 	// テーマシステム
@@ -598,7 +598,6 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 	if (settings && typeof settings === "object") {
 		// 設定バージョンを確認してマイグレーションを行う
 		const oldVersion = typeof settings.settingsVersion === "number" ? settings.settingsVersion : 0;
-		const needsMigration = oldVersion < CURRENT_SETTINGS_VERSION;
 
 		validated.defaultMode = "tiptap";
 		if (
@@ -622,12 +621,10 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 			validated.lastViewOpenPlacement = settings.lastViewOpenPlacement;
 		}
 
-		// showModeDialog: バージョン2で追加
-		// 古いバージョンからのマイグレーション時はデフォルト値(true)を使用
-		if (typeof settings.showModeDialog === "boolean" && !needsMigration) {
+		// showModeDialog: バージョン2で追加。保存済み boolean は後続 migration でも保持する。
+		if (typeof settings.showModeDialog === "boolean") {
 			validated.showModeDialog = settings.showModeDialog;
 		}
-		// needsMigration の場合はデフォルト値(true)のまま
 
 		// 設定バージョンを更新
 		validated.settingsVersion = CURRENT_SETTINGS_VERSION;
@@ -856,14 +853,21 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 				.sotVerticalLayoutNudgeEnabled;
 			const currentNudgeEnabled = (validated.wysiwyg as any)
 				.verticalLayoutNudgeEnabled;
+			let normalizedNudgeEnabled = normalizeBooleanSetting(
+				currentNudgeEnabled !== undefined
+					? currentNudgeEnabled
+					: legacyNudgeEnabled,
+				DEFAULT_V2_SETTINGS.wysiwyg.verticalLayoutNudgeEnabled ??
+					false
+			);
+			// 1.3.1 では既定 ON だったが、巨大文書で入力時のちらつきが確認された。
+			// 1.3.2 への設定 migration では保存済み true も一度 OFF に倒し、
+			// 1.3.2 以降にユーザーが明示的に ON にした値だけを保持する。
+			if (oldVersion < CURRENT_SETTINGS_VERSION) {
+				normalizedNudgeEnabled = false;
+			}
 			validated.wysiwyg.verticalLayoutNudgeEnabled =
-				normalizeBooleanSetting(
-					currentNudgeEnabled !== undefined
-						? currentNudgeEnabled
-						: legacyNudgeEnabled,
-					DEFAULT_V2_SETTINGS.wysiwyg.verticalLayoutNudgeEnabled ??
-						false
-				);
+				normalizedNudgeEnabled;
 			// 旧キーは移行済みのため保存値から取り除く
 			delete (validated.wysiwyg as any).sotVerticalLayoutNudgeEnabled;
 			validated.wysiwyg.sotTypewriterOffsetRatio =

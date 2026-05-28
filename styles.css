@@ -2485,10 +2485,10 @@ ruby {
 	box-sizing: border-box;
 	margin: 0;
 	padding: 0;
-	padding-inline-start: 0;
-	padding-inline-end: 0;
-	padding-left: 0;
-	padding-right: 0;
+	padding-inline-start: 0 !important;
+	padding-inline-end: 0 !important;
+	padding-left: 0 !important;
+	padding-right: 0 !important;
 }
 
 .tategaki-reading-toolbar-row {
@@ -2780,10 +2780,10 @@ ruby {
 	box-sizing: border-box;
 	margin: 0;
 	padding: 0;
-	padding-inline-start: 0;
-	padding-inline-end: 0;
-	padding-left: 0;
-	padding-right: 0;
+	padding-inline-start: 0 !important;
+	padding-inline-end: 0 !important;
+	padding-left: 0 !important;
+	padding-right: 0 !important;
 }
 
 .tategaki-sot-toolbar-row {
@@ -2874,10 +2874,10 @@ ruby {
 	box-sizing: border-box;
 	margin: 0;
 	padding: 0;
-	padding-inline-start: 0;
-	padding-inline-end: 0;
-	padding-left: 0;
-	padding-right: 0;
+	padding-inline-start: 0 !important;
+	padding-inline-end: 0 !important;
+	padding-left: 0 !important;
+	padding-right: 0 !important;
 }
 
 .tategaki-tiptap-compat-toolbar-row {

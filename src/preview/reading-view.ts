@@ -71,7 +71,7 @@ export class TategakiReadingView extends ItemView {
 	private recentFilePaths: string[] = [];
 	private recentFilePathsInitialized = false;
 	private pager: PagedReadingMode | null = null;
-	// 縦書き列境界 nudge（既定 ON）。書籍ページ確定後に probe 付与・rAF 後 cleanup。
+	// 縦書き列境界 nudge（実験的 / 既定 OFF）。書籍ページ確定後に probe 付与・rAF 後 cleanup。
 	private readonly verticalLayoutNudge = new VerticalLayoutNudge();
 	private filePath: string | null = null;
 	private returnViewMode: ReadingReturnMode = "sot";

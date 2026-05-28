@@ -173,10 +173,10 @@ const jaDict = {
 		"プレーンテキスト表示中はタイプライター機能が一時的に利用できません。プレーンテキスト表示を解除すると、保存されている設定がそのまま復帰します",
 	"settings.sotTypewriter.unavailable.plainEdit":
 		"段落プレーン編集中はタイプライター機能が一時的に利用できません。プレーン編集を抜けると、保存されている設定がそのまま復帰します",
-	"settings.section.sotExperimental": "表示補正",
+	"settings.section.sotExperimental": "表示補正（実験的）",
 	"settings.sotVerticalLayoutNudge.name": "縦書きの列境界崩れを緩和",
 	"settings.sotVerticalLayoutNudge.desc":
-		"執筆・参照モードと書籍モードの縦書きで、閉じカッコやルビ付近の不自然な列送りを軽減します。保存内容やコピー結果には影響しません。表示が崩れる場合は OFF にしてください",
+		"実験的機能です。執筆・参照モードと書籍モードの縦書きで、閉じカッコやルビ付近の不自然な列送りを軽減します。保存内容やコピー結果には影響しません。大きい文書でちらつく場合は OFF にしてください",
 	"settings.section.syncAndUpdateCompat": "互換モード",
 	"settings.updateInterval.name": "外部同期の更新間隔(ms)",
 	"settings.updateInterval.desc":

@@ -408,7 +408,7 @@ export class SoTWysiwygView extends ItemView {
 
 	private renderPipeline: SoTRenderPipeline | null = null;
 	private readonly chunkController = new SoTChunkController();
-	// 縦書き列境界 nudge（既定 ON）。probe 付与と rAF 後 cleanup を担う共通 controller。
+	// 縦書き列境界 nudge（実験的 / 既定 OFF）。probe 付与と rAF 後 cleanup を担う共通 controller。
 	private readonly verticalLayoutNudge = new VerticalLayoutNudge();
 	private verticalLayoutNudgeRaf: number | null = null;
 	// 編集後/undo 後の layout settle を待ってもう一度だけ probe を打ち直す遅延 retry timer。

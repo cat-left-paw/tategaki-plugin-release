@@ -4,6 +4,7 @@
 
 import { createRequire } from "module";
 import {
+	CURRENT_SETTINGS_VERSION,
 	DEFAULT_V2_SETTINGS,
 	resolveEffectiveBookHeadingPagination,
 	resolveEffectiveBookFrontmatterDisplayMode,
@@ -10451,13 +10452,35 @@ export class TategakiTestSuite {
 				if (!condition) throw new Error(message);
 			};
 
-			// 旧キー true → 新キー true、旧キーは保存値から除去
+			// 1.3.2 への migration では、1.3.1 以前に保存された true も安全側で OFF に倒す。
+			const savedTrueFromPreviousVersion = validateV2Settings({
+				settingsVersion: CURRENT_SETTINGS_VERSION - 1,
+				wysiwyg: { verticalLayoutNudgeEnabled: true },
+			});
+			assert(
+				savedTrueFromPreviousVersion.wysiwyg
+					.verticalLayoutNudgeEnabled === false,
+				"1.3.1 以前の保存済み true が migration で OFF にならない",
+			);
+
+			// 1.3.2 以降で明示的に ON にした値は保持する
+			const currentExplicitTrue = validateV2Settings({
+				settingsVersion: CURRENT_SETTINGS_VERSION,
+				wysiwyg: { verticalLayoutNudgeEnabled: true },
+			});
+			assert(
+				currentExplicitTrue.wysiwyg.verticalLayoutNudgeEnabled === true,
+				"現行 settingsVersion の明示 true が保持されない",
+			);
+
+			// 旧キー true → 1.3.2 migration では false、旧キーは保存値から除去
 			const migrated = validateV2Settings({
+				settingsVersion: CURRENT_SETTINGS_VERSION - 1,
 				wysiwyg: { sotVerticalLayoutNudgeEnabled: true },
 			});
 			assert(
-				migrated.wysiwyg.verticalLayoutNudgeEnabled === true,
-				"旧キー true が新キーへ移行されない",
+				migrated.wysiwyg.verticalLayoutNudgeEnabled === false,
+				"旧キー true が migration で OFF にならない",
 			);
 			assert(
 				migrated.wysiwyg.sotVerticalLayoutNudgeEnabled === undefined,
@@ -10466,6 +10489,7 @@ export class TategakiTestSuite {
 
 			// 新キーが旧キーより優先（新 false / 旧 true → false）
 			const both = validateV2Settings({
+				settingsVersion: CURRENT_SETTINGS_VERSION,
 				wysiwyg: {
 					verticalLayoutNudgeEnabled: false,
 					sotVerticalLayoutNudgeEnabled: true,
@@ -10478,6 +10502,7 @@ export class TategakiTestSuite {
 
 			// 旧キー false → 新キー false
 			const legacyFalse = validateV2Settings({
+				settingsVersion: CURRENT_SETTINGS_VERSION,
 				wysiwyg: { sotVerticalLayoutNudgeEnabled: false },
 			});
 			assert(
@@ -10485,11 +10510,11 @@ export class TategakiTestSuite {
 				"旧キー false が新キーへ移行されない",
 			);
 
-			// どちらも未設定 → 既定 true
+			// どちらも未設定 → 実験的機能のため既定 false
 			const none = validateV2Settings({ wysiwyg: {} });
 			assert(
-				none.wysiwyg.verticalLayoutNudgeEnabled === true,
-				"未設定時の既定が true でない",
+				none.wysiwyg.verticalLayoutNudgeEnabled === false,
+				"未設定時の既定が false でない",
 			);
 
 			const duration = performance.now() - startTime;
@@ -10497,7 +10522,7 @@ export class TategakiTestSuite {
 				name: testName,
 				success: true,
 				message:
-					"旧 sotVerticalLayoutNudgeEnabled を verticalLayoutNudgeEnabled へ移行し、新キー優先・既定 true を満たす",
+					"1.3.2 migration で旧保存値 true を OFF に倒し、現行版の明示 ON と既定 false を満たす",
 				duration,
 			});
 		} catch (error) {
