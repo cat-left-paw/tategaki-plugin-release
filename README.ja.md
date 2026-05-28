@@ -1,36 +1,29 @@
 # Tategaki（縦書き編集プラグイン）
 
-[English](README.md) | [日本語](README.ja.md)
+[English](https://github.com/cat-left-paw/tategaki-plugin-release/blob/main/README.md) | [日本語](https://github.com/cat-left-paw/tategaki-plugin-release/blob/main/README.ja.md)
 
 このリポジトリは、**Obsidian 用 縦書き編集プラグイン**の配布/開発ページです。  
 Obsidian 上で、文章を**縦書きで「見たまま」編集**できるようにします。
 
-本プラグインは、現在 Obsidian のコミュニティプラグインに申請中です。
+本プラグインは、Obsidian のコミュニティプラグインからインストールできます。
 
 ※ **執筆・参照モードは新方式**です。Obsidian の Markdown を直接編集するため、変換・同期はありません。
 ※ TipTapベースの執筆モードは、現在も「互換モード」として利用できますが、将来のアップデートで廃止する可能性があります。
 
-**現時点では BRAT でのインストールを推奨します。GitHub Releases からの手動インストールも可能です。**
+**通常は Obsidian のコミュニティプラグイン画面からインストールしてください。**
 
 ---
 
 ## インストール / ダウンロード
 
-コミュニティプラグイン登録前の段階では、**BRAT でのインストールが推奨**です。  
-手動で入れたい場合は、Releases の配布ファイルも使えます。
+通常は、Obsidian の標準機能からインストールします。
 
-- 推奨: BRAT でインストール
-- 代替手段: Releases から手動インストール
+1. Obsidian の `設定` を開きます。
+2. `コミュニティプラグイン` を開きます。
+3. `閲覧` から `Tategaki` を検索します。
+4. `Tategaki` をインストールして有効化します。
 
-- https://github.com/cat-left-paw/tategaki-plugin-release/releases
-
-### 配布ファイルについて
-
-- `<plugin-id>-<version>.zip`（例: `tategaki-1.2.3.zip`）  
-  プラグイン本体を同梱しています（`main.js` / `manifest.json` / `styles.css`）。
-- `<plugin-id>-<version>_full.zip`（任意）  
-  プラグイン本体 + ドキュメントを同梱します。
-- v1.2.0 以降は、OS 別インストーラースクリプトの同梱を廃止しています（同梱は v1.1.1 まで）。
+手動インストールや旧版からの移行が必要な場合は、[INSTALL.md](https://github.com/cat-left-paw/tategaki-plugin-release/blob/main/INSTALL.md) を参照してください。
 
 ---
 
@@ -38,7 +31,7 @@ Obsidian 上で、文章を**縦書きで「見たまま」編集**できるよ�
 
 インストール手順の詳細は、以下を参照してください。
 
-- [INSTALL.md](./INSTALL.md)
+- [INSTALL.md](https://github.com/cat-left-paw/tategaki-plugin-release/blob/main/INSTALL.md)
 - `<=1.2.1` から更新する場合は、この README と `INSTALL.md` の「ID変更」注意を必ず確認してください。
 
 ## 移行メモ（ID変更）
@@ -61,7 +54,10 @@ Obsidian 上で、文章を**縦書きで「見たまま」編集**できるよ�
 
 - **対応環境**: デスクトップのみ（Windows / macOS / Linux）。モバイルは非対応です。
 - **テレメトリ**: テレメトリ・分析データの送信は一切ありません。
-- **ネットワーク通信**: 外部への通信は、設定画面の「更新の確認」ボタン押下時のみです。自動通信はありません。
+- **ネットワーク通信**: GitHub への通信は、ユーザーが設定画面の「更新の確認」ボタンを押したとき、またはリリース/サポートリンクを開いたときだけ行います。自動通信はありません。
+- **Vault 内ファイル一覧**: ファイル切り替え、執筆・参照モードのペア表示、新規ノート作成のために Markdown ファイル一覧を参照します。
+- **Vault 読み書き**: 編集/閲覧対象ファイルの読み込み、執筆・参照モードでの保存、新規ノート作成、互換モード同期、バックアップ作成のために Vault の読み書きを行います。
+- **クリップボード**: エディタ内またはコンテキストメニューでユーザーが copy / cut / paste を実行したときに、クリップボードの読み書きを行います。
 - **ローカル保存**: 互換モードでは、同期バックアップを `<Vault設定フォルダ>/tategaki-sync-backups/`（通常は `.obsidian/tategaki-sync-backups/`）に書き込みます。執筆・参照モードはバックアップファイルを作成しません。
 
 ---
@@ -210,10 +206,8 @@ HTML タグを「文章として」含めたい場合は、次のように **コ
 
 ## 更新について
 
-コミュニティプラグイン未登録のため、Obsidian 標準の自動更新は使えません。  
-プラグインの設定画面にある「更新の確認」から、新しいバージョンがあるかを確認できます。
-
-更新がある場合は、Releases から新しい ZIP をダウンロードして更新してください。
+コミュニティプラグインからインストールした場合は、Obsidian の通常のコミュニティプラグイン更新機能で更新できます。
+プラグインの設定画面にある「更新の確認」ボタンは、公開リリースページを確認するための補助機能です。
 
 ---
 
@@ -222,13 +216,13 @@ HTML タグを「文章として」含めたい場合は、次のように **コ
 License: Apache-2.0
 
 - 本リポジトリには **ソースコードとドキュメント** が含まれます
-- 配布用 ZIP は Releases に公開しています
+- GitHub Releases には、コミュニティプラグイン配布用の `main.js` / `manifest.json` / `styles.css` を公開しています
 
 ## ドキュメント構成
 
 - `README.md`（概要・英語）
 - `README.ja.md`（概要・日本語）
-- `INSTALL.md`（手動インストール手順、OS 別）
+- `INSTALL.md`（インストール/更新/アンインストール、手動インストール補足）
 - `QUICKSTART.md`（最短で使い始める）
 - `MANUAL.md`（機能詳細）
 - `CHANGELOG.md`（更新履歴）

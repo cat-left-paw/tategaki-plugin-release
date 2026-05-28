@@ -3710,6 +3710,25 @@ ruby {
 	overflow-wrap: anywhere;
 }
 
+/* 実験的: 縦書き列境界 nudge（既定 OFF / wysiwyg.verticalLayoutNudgeEnabled）。
+   SoT は閉じ約物終端 run、書籍モードは縦書きページの page-content 内で閉じ約物終端の要素へ、
+   render / ページ確定後ごく短時間だけ data-tategaki-vnudge を付与する。
+   透明な ::after を生成→除去することでブラウザの縦書き inline layout tree を再構築させる。
+   ::after は CSS 生成コンテンツなので DOM text / コピーには含まれず、保存データにも影響しない。
+   pointer-events / user-select を無効化して caret・選択・クリックに干渉させない。
+   横書き (horizontal-tb) では probe を生成しない（書籍モードは vertical-rl ページのみ対象）。 */
+.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
+	.tategaki-sot-run[data-tategaki-vnudge]::after,
+.tategaki-page[data-writing-mode="vertical-rl"]
+	.page-content
+	[data-tategaki-vnudge]::after {
+	content: "\30FB";
+	color: transparent;
+	pointer-events: none;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
 .tategaki-sot-toolbar-button {
 	font-size: 12px;
 	padding: 2px 8px;

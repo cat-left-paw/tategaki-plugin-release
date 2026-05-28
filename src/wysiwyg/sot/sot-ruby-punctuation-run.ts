@@ -45,7 +45,7 @@ export type RubyPunctuationGroupedItem<TSegment extends RubyPunctuationSegmentLi
 			kind: "ruby-punctuation-run";
 			rubySegment: TSegment;
 			punctuationSegment: TSegment;
-	  };
+		};
 
 /**
  * `segments` を走査し、ルビ + 対象約物 1 文字を `ruby-punctuation-run` にまとめる。

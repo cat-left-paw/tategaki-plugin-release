@@ -57,6 +57,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 
 		this.addTiptapSettings(this.plugin.settings);
 		this.addSoTTypewriterSettings(this.plugin.settings);
+		this.addSoTExperimentalSettings(this.plugin.settings);
 		const legacyEnabled = this.plugin.settings.enableLegacyTiptap ?? true;
 		this.addUpdateAndSupportSection(legacyEnabled);
 		this.addThemeSettings(this.plugin.settings);
@@ -771,6 +772,30 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 			}),
 			cls: "setting-item-description",
 		});
+	}
+
+	private addSoTExperimentalSettings(settings: TategakiV2Settings): void {
+		const { containerEl } = this;
+		this.addSectionHeading(
+			containerEl,
+			t("settings.section.sotExperimental"),
+		);
+
+		new Setting(containerEl)
+			.setName(t("settings.sotVerticalLayoutNudge.name"))
+			.setDesc(t("settings.sotVerticalLayoutNudge.desc"))
+			.addToggle((toggle) => {
+				toggle
+					.setValue(!!settings.wysiwyg.verticalLayoutNudgeEnabled)
+					.onChange(async (value) => {
+						await this.plugin.updateSettings({
+							wysiwyg: {
+								...this.plugin.settings.wysiwyg,
+								verticalLayoutNudgeEnabled: value,
+							},
+						});
+					});
+			});
 	}
 
 	private addUpdateAndSupportSection(legacyEnabled: boolean): void {

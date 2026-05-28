@@ -222,6 +222,10 @@ import {
 	shouldUseSoTTypewriterPendingCaretForFollow,
 } from "./sot/sot-typewriter-follow-request";
 import {
+	VerticalLayoutNudge,
+	collectSoTNudgeTargets,
+} from "./shared/vertical-layout-nudge";
+import {
 	resolveSoTCaretScrollPolicy,
 	resolveSoTRenderScrollRestorePolicy,
 } from "./sot/sot-caret-scroll-policy";
@@ -237,6 +241,7 @@ import {
 	type SoTEndKeyPendingVisualCaret,
 } from "./sot/sot-end-key-pending-visual-caret";
 import { isVisualMoveSuccessful } from "./sot/sot-visual-move-guard";
+import { resolveSoTVisibleLandingOffset } from "./sot/sot-visible-landing";
 import { shouldSkipRunBoundaryJump } from "./sot/sot-run-jump-policy";
 import { classifyPointerTarget } from "./sot/sot-pointer-strategy";
 import {
@@ -403,6 +408,16 @@ export class SoTWysiwygView extends ItemView {
 
 	private renderPipeline: SoTRenderPipeline | null = null;
 	private readonly chunkController = new SoTChunkController();
+	// 縦書き列境界 nudge（既定 ON）。probe 付与と rAF 後 cleanup を担う共通 controller。
+	private readonly verticalLayoutNudge = new VerticalLayoutNudge();
+	private verticalLayoutNudgeRaf: number | null = null;
+	// 編集後/undo 後の layout settle を待ってもう一度だけ probe を打ち直す遅延 retry timer。
+	// 1 つだけ保持し、再要求が来たら必ず既存タイマーを上書きする（多重に積まない）。
+	private verticalLayoutNudgeRetryTimer: number | null = null;
+	// probe 除去後（2 rAF 後）に caret / selection overlay を再測定するための予約 rAF。
+	// helper の onAfterCleanup から発火し、さらに 1 rAF 後に scheduleCaretUpdate(true) を呼ぶ。
+	// 多重予約しないよう raf id を 1 つだけ保持する。
+	private verticalLayoutNudgeCaretRefreshRaf: number | null = null;
 	private wheelThrottleTimer: number | null = null;
 	private scrollDebounceTimer: number | null = null;
 	private scrollDebounceRaf: number | null = null;
@@ -3906,13 +3921,11 @@ export class SoTWysiwygView extends ItemView {
 					const ordered = lineText.match(
 						/^([ \t]*)(\d{1,9})([.)])[ \t]+/,
 					);
-					if (
-						ordered &&
-						ordered[0] &&
-						ordered[1] &&
-						ordered[2] &&
-						ordered[3]
-					) {
+					// ordered[1] はインデント (トップレベルでは "") なので必須にしない。
+					// 必須は数字 (ordered[2]) と区切り (ordered[3])。bullet 分岐と対称。
+					// (これを必須にすると top-level "1. " が装飾されず生テキストとして
+					//  残り、marker が hidden 化されないため前後ナビが壊れていた。)
+					if (ordered && ordered[0] && ordered[2] && ordered[3]) {
 						const markerLen = ordered[0].length;
 						hidden.push({ from: absFrom, to: absFrom + markerLen });
 						classes.push("tategaki-md-list");
@@ -5401,6 +5414,7 @@ export class SoTWysiwygView extends ItemView {
 			resetPendingRenderState: () => this.resetPendingRenderState(),
 			finalizeRender: (scrollTop, scrollLeft, scrollAnchor) =>
 				this.finalizeRender(scrollTop, scrollLeft, scrollAnchor),
+			onVirtualLinesRendered: () => this.queueVerticalLayoutNudge(),
 			isLineHidden: (index) =>
 				this.lineHeadingHiddenBy[index] !== null &&
 				this.lineHeadingHiddenBy[index] !== undefined &&
@@ -5932,6 +5946,8 @@ export class SoTWysiwygView extends ItemView {
 		this.pointerWindowBinding.dispose();
 		this.renderPipeline?.dispose();
 		this.renderPipeline = null;
+		this.cancelQueuedVerticalLayoutNudge();
+		this.verticalLayoutNudge.cancel();
 		this.resetTouchScrollState();
 		this.cancelOutlineJump();
 		if (this.selectionOverlayRaf !== null) {
@@ -9744,14 +9760,22 @@ export class SoTWysiwygView extends ItemView {
 		this.pendingLineIndex = null;
 		this.pendingLocalOffset = null;
 
+		let rerenderedCount = 0;
 		for (let i = safeStart; i <= safeEnd; i += 1) {
 			const lineRange = this.lineRanges[i];
 			const lineEl = this.getLineElement(i);
 			if (!lineRange || !lineEl) continue;
 			lineEl.replaceChildren();
 			this.renderLine(lineEl, lineRange, i);
+			rerenderedCount += 1;
 		}
 		this.scheduleCaretUpdate(true);
+		// 部分再描画で 1 行以上差し替えたとき、縦書き列境界 nudge を再スケジュールする。
+		// 編集/undo 直後の DOM 差分適用後に probe を打ち直さないと、初回描画後に
+		// ルビ行の間延びや空列が再発するため、ここで即時 rAF + 遅延 retry を両方仕掛ける。
+		if (rerenderedCount > 0) {
+			this.queueVerticalLayoutNudge();
+		}
 	}
 
 	private computeSourceModeLineRange(): {
@@ -10371,6 +10395,121 @@ export class SoTWysiwygView extends ItemView {
 		if (this.loadingOverlayPending) {
 			this.hideLoadingOverlay();
 		}
+		this.maybeScheduleVerticalLayoutNudge();
+		// full render 後も chunked 経路や初期表示の layout settle 直後に
+		// probe 対象が変わることがあるため、軽量な遅延 retry を 1 本だけ仕掛ける。
+		// 設定 OFF / 横書き / root 不在のときは retry callback 内で即座に cancel される。
+		this.scheduleVerticalLayoutNudgeRetry();
+	}
+
+	/**
+	 * 編集/undo 直後の縦書き layout settle を待つための遅延 retry 間隔（ms）。
+	 * 80〜160ms 前後で `requestAnimationFrame` 後の inline layout 再構成が落ち着く想定。
+	 */
+	private static readonly VERTICAL_LAYOUT_NUDGE_RETRY_DELAY_MS = 120;
+
+	private queueVerticalLayoutNudge(): void {
+		// 即時 rAF probe は積み残さない（pending あればそのまま使う）。
+		if (this.verticalLayoutNudgeRaf === null) {
+			const target = this.derivedRootEl ?? this.containerEl;
+			this.verticalLayoutNudgeRaf = requestViewAnimationFrame(
+				target,
+				() => {
+					this.verticalLayoutNudgeRaf = null;
+					this.maybeScheduleVerticalLayoutNudge();
+				},
+			);
+		}
+		// 編集/undo 後の layout settle 用に、1 回だけ遅延 retry をかける。
+		// 連続呼び出しでは既存 timer を破棄して 1 本に正規化する。
+		this.scheduleVerticalLayoutNudgeRetry();
+	}
+
+	private scheduleVerticalLayoutNudgeRetry(): void {
+		this.cancelVerticalLayoutNudgeRetry();
+		this.verticalLayoutNudgeRetryTimer = window.setTimeout(() => {
+			this.verticalLayoutNudgeRetryTimer = null;
+			this.maybeScheduleVerticalLayoutNudge();
+		}, SoTWysiwygView.VERTICAL_LAYOUT_NUDGE_RETRY_DELAY_MS);
+	}
+
+	private cancelVerticalLayoutNudgeRetry(): void {
+		if (this.verticalLayoutNudgeRetryTimer === null) return;
+		window.clearTimeout(this.verticalLayoutNudgeRetryTimer);
+		this.verticalLayoutNudgeRetryTimer = null;
+	}
+
+	private cancelQueuedVerticalLayoutNudge(): void {
+		if (this.verticalLayoutNudgeRaf !== null) {
+			const target = this.derivedRootEl ?? this.containerEl;
+			cancelViewAnimationFrame(target, this.verticalLayoutNudgeRaf);
+			this.verticalLayoutNudgeRaf = null;
+		}
+		this.cancelVerticalLayoutNudgeRetry();
+		this.cancelVerticalLayoutNudgeCaretRefresh();
+	}
+
+	/**
+	 * probe 除去後に caret / selection overlay を 1 rAF 後に再測定する。
+	 * helper の `onAfterCleanup`（2 rAF 後）からさらに 1 rAF 待ってから走らせるため、
+	 * 合計約 3 rAF で probe 除去 → layout 安定 → caret 再測定の順序になる。
+	 * 多重予約はしない。pending raf がある間に再呼び出しされた場合は無視する。
+	 */
+	private scheduleVerticalLayoutNudgeCaretRefresh(): void {
+		if (this.verticalLayoutNudgeCaretRefreshRaf !== null) return;
+		const target = this.derivedRootEl ?? this.containerEl;
+		this.verticalLayoutNudgeCaretRefreshRaf = requestViewAnimationFrame(
+			target,
+			() => {
+				this.verticalLayoutNudgeCaretRefreshRaf = null;
+				// 発火時に設定が OFF / 横書き / root 不在になっていれば何もしない。
+				if (
+					!this.derivedRootEl ||
+					this.writingMode === "horizontal-tb" ||
+					!this.plugin.settings.wysiwyg
+						.verticalLayoutNudgeEnabled
+				) {
+					return;
+				}
+				this.scheduleCaretUpdate(true);
+			},
+		);
+	}
+
+	private cancelVerticalLayoutNudgeCaretRefresh(): void {
+		if (this.verticalLayoutNudgeCaretRefreshRaf === null) return;
+		const target = this.derivedRootEl ?? this.containerEl;
+		cancelViewAnimationFrame(
+			target,
+			this.verticalLayoutNudgeCaretRefreshRaf,
+		);
+		this.verticalLayoutNudgeCaretRefreshRaf = null;
+	}
+
+	/**
+	 * 実験的: SoT 縦書きの列境界 nudge。設定 ON かつ縦書きのときだけ、
+	 * render 後に閉じ約物終端 run へ一時 probe を付与し、数フレーム後に外す。
+	 * 設定 OFF / 横書き / root 不在では付与せず、残っていれば除去し、
+	 * 遅延 retry timer と pending caret refresh も合わせて止める。
+	 * probe 除去完了後（2 rAF 後）に caret / selection overlay の再測定を予約する。
+	 * 保存データ / DOM text / copy には影響しない（probe は CSS ::after のみ）。
+	 */
+	private maybeScheduleVerticalLayoutNudge(): void {
+		if (
+			!this.derivedRootEl ||
+			this.writingMode === "horizontal-tb" ||
+			!this.plugin.settings.wysiwyg.verticalLayoutNudgeEnabled
+		) {
+			this.cancelVerticalLayoutNudgeRetry();
+			this.cancelVerticalLayoutNudgeCaretRefresh();
+			this.verticalLayoutNudge.cancel();
+			return;
+		}
+		this.verticalLayoutNudge.schedule(
+			this.derivedRootEl,
+			collectSoTNudgeTargets,
+			() => this.scheduleVerticalLayoutNudgeCaretRefresh(),
+		);
 	}
 
 	/**
@@ -12385,15 +12524,21 @@ export class SoTWysiwygView extends ItemView {
 			next = this.adjustCrossParagraphOffset(head, next);
 		}
 		const preferForward = next >= head;
-		if (!visualMoveSucceeded) {
-			// 論理ナビは hidden marker gap に着地する可能性がある。最近傍 visible へ補正する。
-			const normalized = this.normalizeOffsetToVisible(next, preferForward);
-			if (normalized === head && next !== head) {
-				next = this.findNextVisibleOffset(head, preferForward);
-			} else {
-				next = normalized;
-			}
-		}
+		// 論理ナビは従来どおり方向付きで visible 補正する。視覚ナビ成功時は結果を
+		// そのまま採用するが、code fence のように「行全体 hidden でキャレットを置けない
+		// 行」へ着地したときだけ方向付きで visible へ抜ける（後方→前方でも code block
+		// 内へ入れる）。リスト等の可視行は対象外にして従来挙動を維持する。
+		next = resolveSoTVisibleLandingOffset({
+			rawNext: next,
+			head,
+			visualMoveSucceeded,
+			rawNextIsCaretless: this.isOffsetOnCaretlessHiddenLine(next),
+			preferForward,
+			normalize: (offset, forward) =>
+				this.normalizeOffsetToVisible(offset, forward),
+			findNextVisible: (offset, forward) =>
+				this.findNextVisibleOffset(offset, forward),
+		});
 		const anchor = event.shiftKey ? selection.anchor : next;
 		const selectionUnchanged =
 			anchor === selection.anchor && next === selection.head;
@@ -12788,6 +12933,36 @@ export class SoTWysiwygView extends ItemView {
 			}
 		}
 		return safeCurrent;
+	}
+
+	/**
+	 * offset が「行全体 hidden でキャレットを置けない行」(code fence /
+	 * frontmatter fence のように全域 hidden) 上にあるかを判定する。
+	 *
+	 * normalizeOffsetToVisible が空セグメント行で findNearestCaretVisibleOffset
+	 * (= 移動方向に依存して隣 visible 行へ抜ける) を使う条件と一致させる。
+	 * marker-only list / blockquote / hr 行は range.to にキャレットを置けるため
+	 * caretless ではない。
+	 */
+	private isOffsetOnCaretlessHiddenLine(offset: number): boolean {
+		if (!this.sotEditor) return false;
+		const lineIndex = this.findLineIndex(offset);
+		if (lineIndex === null) return false;
+		if (this.isLineInSourceMode(lineIndex)) return false;
+		const range = this.lineRanges[lineIndex];
+		if (!range || range.from === range.to) return false;
+		if (this.buildSegmentsForLine(range.from, range.to).length > 0) {
+			return false;
+		}
+		const lineText = this.sotEditor.getDoc().slice(range.from, range.to);
+		if (
+			isSoTMarkerOnlyListLine(lineText) ||
+			isSoTBlockquoteOnlyLine(lineText) ||
+			isSoTHorizontalRuleLine(lineText)
+		) {
+			return false;
+		}
+		return true;
 	}
 
 	private updatePendingText(text: string, force = false): void {
@@ -13223,6 +13398,14 @@ export class SoTWysiwygView extends ItemView {
 		this.pendingSpacerEl = null;
 		this.pendingLocalOffset = null;
 		this.pendingLineIndex = null;
+		// Overlay IME 入力中の pending 行が restorePendingLine で作り直された後、
+		// pendingText が空（= IME 入力終了 / ESC キャンセル）のときに限り、
+		// 縦書き列境界 nudge を再スケジュールする。IME 入力中（pendingText > 0）に
+		// 行が切り替わるパスでも本メソッドは呼ばれるため、その場合は probe を打たない。
+		// 多重防止は queueVerticalLayoutNudge 内部で処理される。
+		if (this.pendingText.length === 0) {
+			this.queueVerticalLayoutNudge();
+		}
 	}
 
 	private capturePendingSelection(): void {
@@ -13340,12 +13523,14 @@ export class SoTWysiwygView extends ItemView {
 		}
 		const start = this.pendingSelectionLineStart;
 		const end = this.pendingSelectionLineEnd;
+		let rerenderedCount = 0;
 		for (let i = start; i <= end; i += 1) {
 			const lineRange = this.lineRanges[i];
 			const lineEl = this.getLineElement(i);
 			if (!lineRange || !lineEl) continue;
 			lineEl.replaceChildren();
 			this.renderLine(lineEl, lineRange);
+			rerenderedCount += 1;
 		}
 		this.pendingSelectionFrom = null;
 		this.pendingSelectionTo = null;
@@ -13354,6 +13539,14 @@ export class SoTWysiwygView extends ItemView {
 		this.pendingSpacerEl = null;
 		this.pendingLineIndex = null;
 		this.pendingLocalOffset = null;
+		// Overlay IME の ESC キャンセル / 通常確定で pending text が解除された場合、
+		// pending 行は replaceChildren + renderLine で作り直しただけで rerenderLineRange を
+		// 経由していないため、縦書き列境界 nudge が再スケジュールされず崩れが残る。
+		// pendingText が空のとき（= IME 入力中ではない）のみ明示的に nudge を予約する。
+		// 多重防止は queueVerticalLayoutNudge 内部で処理される。
+		if (rerenderedCount > 0 && this.pendingText.length === 0) {
+			this.queueVerticalLayoutNudge();
+		}
 	}
 
 	private renderLine(

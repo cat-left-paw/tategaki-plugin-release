@@ -17,6 +17,10 @@ import {
 	type TategakiV2Settings,
 } from "../types/settings";
 import { PagedReadingMode } from "../wysiwyg/reading-mode/paged-reading-mode";
+import {
+	VerticalLayoutNudge,
+	collectBookNudgeTargets,
+} from "../wysiwyg/shared/vertical-layout-nudge";
 import { SettingsPanelModal } from "../wysiwyg/contenteditable/settings-panel";
 import { t } from "../shared/i18n";
 import { FileSwitchModal } from "../shared/ui/file-switch-modal";
@@ -67,6 +71,8 @@ export class TategakiReadingView extends ItemView {
 	private recentFilePaths: string[] = [];
 	private recentFilePathsInitialized = false;
 	private pager: PagedReadingMode | null = null;
+	// 縦書き列境界 nudge（既定 ON）。書籍ページ確定後に probe 付与・rAF 後 cleanup。
+	private readonly verticalLayoutNudge = new VerticalLayoutNudge();
 	private filePath: string | null = null;
 	private returnViewMode: ReadingReturnMode = "sot";
 	private pendingState: ReadingViewState | null = null;
@@ -887,6 +893,7 @@ export class TategakiReadingView extends ItemView {
 				},
 				onRendered: ({ pages }) => {
 					this.updateOutlineItems(pages);
+					this.maybeScheduleBookVerticalLayoutNudge();
 				},
 			});
 		} catch (error) {
@@ -896,6 +903,7 @@ export class TategakiReadingView extends ItemView {
 	}
 
 	private destroyPager(): void {
+		this.verticalLayoutNudge.cancel();
 		if (!this.pager) {
 			return;
 		}
@@ -909,6 +917,30 @@ export class TategakiReadingView extends ItemView {
 			if (this.outlinePanelEl) {
 				this.renderOutline(this.outlinePanelEl);
 		}
+	}
+
+	/**
+	 * 実験的: 書籍モード縦書きの列境界 nudge。設定 ON かつ縦書き (vertical-rl) のときだけ、
+	 * ページ確定後（onRendered）に閉じ約物終端の要素へ一時 probe を付与し、数フレーム後に外す。
+	 * 設定 OFF / 横書きでは付与せず、残っていれば除去する。pagination 測定は onRendered より
+	 * 前に完了しているため、probe が測定へ混ざらない。
+	 * 保存データ / DOM text / copy には影響しない（probe は CSS ::after のみ）。
+	 */
+	private maybeScheduleBookVerticalLayoutNudge(): void {
+		const isVertical =
+			this.getEffectiveCommonSettings().writingMode === "vertical-rl";
+		if (
+			!this.hostEl ||
+			!isVertical ||
+			!this.plugin.settings.wysiwyg.verticalLayoutNudgeEnabled
+		) {
+			this.verticalLayoutNudge.cancel();
+			return;
+		}
+		this.verticalLayoutNudge.schedule(
+			this.hostEl,
+			collectBookNudgeTargets,
+		);
 	}
 
 	private buildSnapshotHtmlParts(

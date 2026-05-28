@@ -77,6 +77,14 @@ import {
 		groupRubyPunctuationRuns,
 		RUBY_ADSORB_PUNCTUATION_CHARS,
 	} from "./wysiwyg/sot/sot-ruby-punctuation-run";
+	import {
+		isClosingPunctuationNudgeTarget,
+		collectSoTNudgeTargets,
+		collectBookNudgeTargets,
+		VerticalLayoutNudge,
+		VERTICAL_LAYOUT_NUDGE_DATA_ATTR,
+		type VerticalLayoutNudgeScheduler,
+	} from "./wysiwyg/shared/vertical-layout-nudge";
 	import { AozoraTcyNode } from "./wysiwyg/tiptap-compat/extensions/aozora-tcy";
 	import { resolveTipTapRubySelection } from "./wysiwyg/tiptap-compat/ruby-selection";
 import {
@@ -222,6 +230,7 @@ import {
 	resolveSoTVisualBoundarySnapOffset,
 	sortSoTVisualLineRects,
 } from "./wysiwyg/sot/sot-visual-navigation";
+import { resolveSoTVisibleLandingOffset } from "./wysiwyg/sot/sot-visible-landing";
 import {
 	isSoTTypewriterCaretWithinBand,
 	resolveSoTTypewriterCaretMainAxisPosition,
@@ -337,6 +346,8 @@ export class TategakiTestSuite {
 				await this.testSoTListIndentKeepsCaretAfterMarker();
 					await this.testSoTRubyEditPreservesDelimiter();
 				await this.testSoTRubyPunctuationRunHelper();
+				await this.testVerticalLayoutNudgeHelper();
+				await this.testVerticalLayoutNudgeMigration();
 				await this.testSoTDisplayChunksModel();
 				await this.testSoTCollapsedGapRanges();
 				await this.testSoTCollapsedGapDom();
@@ -369,6 +380,7 @@ export class TategakiTestSuite {
 				await this.testSoTPlainEditModifiedHomeEndIsIgnored();
 				await this.testSoTVerticalPreviousLineNavigationHelper();
 				await this.testSoTVisualBoundaryNavigationHelper();
+				await this.testSoTVisibleLandingForCodeBlock();
 				await this.testSoTRunOffsetBoundaryResolution();
 				await this.testSoTPointerWindowBindingRebindsWindow();
 				await this.testSoTNativeSelectionAssistPointerdownPolicy();
@@ -4612,6 +4624,126 @@ export class TategakiTestSuite {
 				name: testName,
 				success: false,
 				message: `vertical boundary navigation helper テスト失敗: ${error.message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testSoTVisibleLandingForCodeBlock(): Promise<void> {
+		const testName =
+			"SoT派生ビュー: visible landing helper は code block 前後をまたぐ前進/後退で code block 内 offset を返す";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			// 文書モデル (offset):
+			//   ... 前段落末 = 10
+			//   open fence (hidden) = 20
+			//   code body (visible) = 30..50
+			//   close fence (hidden) = 60
+			//   後段落先頭 = 100
+			// normalize は「hidden fence へ着地したら移動方向の隣 visible へ送り、
+			// それ以外の visible offset はそのまま返す」挙動を模す。
+			const normalize = (offset: number, forward: boolean): number => {
+				if (offset === 20) return forward ? 30 : 10; // open fence
+				if (offset === 60) return forward ? 100 : 50; // close fence
+				return offset; // visible offset はそのまま
+			};
+			const findNextVisible = (offset: number, forward: boolean): number =>
+				forward ? offset + 1 : offset - 1;
+
+			// 後方→前方 (preferForward=false): 後段落先頭(100)から close fence(60)へ
+			// 視覚移動成功 → caretless 行なので code body 末(50)へ抜ける。
+			assert(
+				resolveSoTVisibleLandingOffset({
+					rawNext: 60,
+					head: 100,
+					visualMoveSucceeded: true,
+					rawNextIsCaretless: true,
+					preferForward: false,
+					normalize,
+					findNextVisible,
+				}) === 50,
+				"後方→前方移動で code block 内 (body 末) へ入れていません",
+			);
+
+			// 前方→後方 (preferForward=true): 前段落末(10)から open fence(20)へ
+			// 視覚移動成功 → caretless 行なので code body 先頭(30)へ抜ける。
+			assert(
+				resolveSoTVisibleLandingOffset({
+					rawNext: 20,
+					head: 10,
+					visualMoveSucceeded: true,
+					rawNextIsCaretless: true,
+					preferForward: true,
+					normalize,
+					findNextVisible,
+				}) === 30,
+				"前方→後方移動で code block 内 (body 先頭) へ入れていません",
+			);
+
+			// visible 着地 (code body 内) は視覚移動の結果をそのまま保持する。
+			assert(
+				resolveSoTVisibleLandingOffset({
+					rawNext: 45,
+					head: 40,
+					visualMoveSucceeded: true,
+					rawNextIsCaretless: false,
+					preferForward: true,
+					normalize,
+					findNextVisible,
+				}) === 45,
+				"visible 着地が double normalize で壊れています",
+			);
+
+			// 可視行 (リスト等) へ着地した視覚移動は、たとえ marker 位置 (20=hidden) でも
+			// rawNextIsCaretless=false なら方向付き normalize をかけず rawNext を保持する。
+			// (setSelectionNormalized 側の従来正規化に委ねる回帰防止ケース)
+			assert(
+				resolveSoTVisibleLandingOffset({
+					rawNext: 20,
+					head: 100,
+					visualMoveSucceeded: true,
+					rawNextIsCaretless: false,
+					preferForward: false,
+					normalize,
+					findNextVisible,
+				}) === 20,
+				"可視行への視覚移動で方向付き normalize が誤って発火しています",
+			);
+
+			// 論理ナビ fallback (visualMoveSucceeded=false): normalize が head へ
+			// 潰れたら findNextVisible(head) で送り直す既存仕様を維持する。
+			assert(
+				resolveSoTVisibleLandingOffset({
+					rawNext: 60,
+					head: 100,
+					visualMoveSucceeded: false,
+					rawNextIsCaretless: true,
+					preferForward: true,
+					normalize,
+					findNextVisible,
+				}) === 101,
+				"論理ナビ fallback の findNextVisible(head) 経路が壊れています",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"code fence (hidden 行) を双方向の移動方向に沿って素通しし、code body へ着地します",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `visible landing helper テスト失敗: ${error.message}`,
 				duration,
 			});
 		}
@@ -10115,6 +10247,265 @@ export class TategakiTestSuite {
 				name: testName,
 				success: false,
 				message: `SoT疑似ルビ punctuation-run helper テスト失敗: ${(error as Error).message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testVerticalLayoutNudgeHelper(): Promise<void> {
+		const testName =
+			"縦書き列境界 nudge helper は SoT/書籍の閉じ約物終端のみ probe し必ず除去する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			// 1. 末尾文字判定（pure）
+			assert(
+				isClosingPunctuationNudgeTarget("「会話」") &&
+					isClosingPunctuationNudgeTarget("（注）") &&
+					isClosingPunctuationNudgeTarget("『』") &&
+					isClosingPunctuationNudgeTarget("本文】") &&
+					isClosingPunctuationNudgeTarget("引用》"),
+				"閉じ約物終端を対象判定しない",
+			);
+			assert(
+				!isClosingPunctuationNudgeTarget("本文。") &&
+					!isClosingPunctuationNudgeTarget("、") &&
+					!isClosingPunctuationNudgeTarget("あ）い"),
+				"非対象（句読点 / 末尾でない閉じ約物）を誤って対象判定する",
+			);
+			assert(
+				!isClosingPunctuationNudgeTarget("") &&
+					!isClosingPunctuationNudgeTarget(null) &&
+					!isClosingPunctuationNudgeTarget(undefined),
+				"空文字 / null / undefined を対象判定する",
+			);
+
+			const window = new Window();
+			const document =
+				window.document as unknown as globalThis.Document;
+
+			// 2. SoT collect（ルビ wrapper 内の run も表示 textContent で判定する）
+			const sotRoot =
+				document.createElement("div") as unknown as HTMLElement;
+			sotRoot.className = "tategaki-sot-derived-root";
+			sotRoot.innerHTML =
+				'<span class="tategaki-sot-run" data-from="0" data-to="2">本文</span>' +
+				'<span class="tategaki-sot-run" data-from="2" data-to="5">「会話」</span>' +
+				'<span class="tategaki-ruby-run">' +
+				'<span class="tategaki-sot-run tategaki-aozora-ruby" data-from="5" data-to="6">漢</span>' +
+				'<span class="tategaki-sot-run" data-from="6" data-to="7">）</span>' +
+				"</span>";
+			const sotTargets = collectSoTNudgeTargets(sotRoot);
+			assert(
+				sotTargets.length === 2,
+				`SoT 閉じ約物終端 run の収集数が不正: ${sotTargets.length}`,
+			);
+			assert(
+				sotTargets.every((el) =>
+					el.classList.contains("tategaki-sot-run"),
+				),
+				"SoT 収集対象が .tategaki-sot-run でない",
+			);
+
+			// 3. book collect（縦書きページの page-content のみ。横書きページは除外）
+			const bookRoot =
+				document.createElement("div") as unknown as HTMLElement;
+			bookRoot.innerHTML =
+				'<div class="tategaki-page" data-writing-mode="vertical-rl">' +
+				'<div class="page-content">' +
+				"<p>地の文です。</p>" +
+				"<p>「会話文」</p>" +
+				"<p>説明（補足）</p>" +
+				"<p>途中で）区切る文</p>" +
+				"</div></div>" +
+				'<div class="tategaki-page" data-writing-mode="horizontal-tb">' +
+				'<div class="page-content">' +
+				"<p>横書き「会話」</p>" +
+				"</div></div>";
+			const bookTargets = collectBookNudgeTargets(bookRoot);
+			assert(
+				bookTargets.length === 2,
+				`book 閉じ約物終端要素の収集数が不正: ${bookTargets.length}`,
+			);
+			assert(
+				bookTargets.every(
+					(el) =>
+						el.closest('[data-writing-mode="vertical-rl"]') !==
+						null,
+				),
+				"横書きページの要素が book 収集に混入している",
+			);
+
+			// 4. controller: DI scheduler で probe 付与 → 2 rAF 後に除去（SoT root）
+			const pending = new Map<number, () => void>();
+			let nextHandle = 1;
+			const scheduler: VerticalLayoutNudgeScheduler = {
+				request: (callback) => {
+					const handle = nextHandle++;
+					pending.set(handle, callback);
+					return handle;
+				},
+				cancel: (handle) => {
+					pending.delete(handle);
+				},
+			};
+			const flushOne = () => {
+				const next = pending.entries().next();
+				if (next.done) return;
+				const [handle, callback] = next.value;
+				pending.delete(handle);
+				callback();
+			};
+			const probedCount = (root: HTMLElement) =>
+				Array.from(
+					root.querySelectorAll<HTMLElement>("*"),
+				).filter((el) =>
+					el.hasAttribute(VERTICAL_LAYOUT_NUDGE_DATA_ATTR),
+				).length;
+
+			const nudge = new VerticalLayoutNudge(scheduler);
+			nudge.schedule(sotRoot, collectSoTNudgeTargets);
+			assert(
+				probedCount(sotRoot) === 2,
+				`schedule 直後の probe 数が不正: ${probedCount(sotRoot)}`,
+			);
+			flushOne();
+			assert(
+				probedCount(sotRoot) === 2,
+				"1 rAF 後に probe が早期除去されている",
+			);
+			flushOne();
+			assert(
+				probedCount(sotRoot) === 0,
+				"2 rAF 後に probe が除去されない",
+			);
+
+			// 5. cancel で即時除去（destroy / OFF 切替相当）
+			nudge.schedule(sotRoot, collectSoTNudgeTargets);
+			assert(
+				probedCount(sotRoot) === 2,
+				"再 schedule で probe が付与されない",
+			);
+			nudge.cancel();
+			assert(
+				probedCount(sotRoot) === 0 && pending.size === 0,
+				"cancel 後に probe / pending rAF が残る",
+			);
+
+			// 6. 連続 schedule で probe が積み残らない
+			nudge.schedule(sotRoot, collectSoTNudgeTargets);
+			nudge.schedule(sotRoot, collectSoTNudgeTargets);
+			assert(
+				probedCount(sotRoot) === 2,
+				"連続 schedule で probe が二重付与・積み残りする",
+			);
+			nudge.cancel();
+			assert(
+				probedCount(sotRoot) === 0,
+				"最終 cleanup で probe が残る",
+			);
+
+			// 7. 同じ controller を book root でも使える（collect 差し替え）
+			nudge.schedule(bookRoot, collectBookNudgeTargets);
+			assert(
+				probedCount(bookRoot) === 2,
+				"book schedule で probe が付与されない",
+			);
+			flushOne();
+			flushOne();
+			assert(
+				probedCount(bookRoot) === 0,
+				"book で 2 rAF 後に probe が除去されない",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"SoT run / 書籍縦書き要素にのみ probe を付与し、横書きを除外し、2 rAF / cancel / 連続 schedule で必ず除去する",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `縦書き列境界 nudge helper テスト失敗: ${(error as Error).message}`,
+				duration,
+			});
+		}
+	}
+
+	private async testVerticalLayoutNudgeMigration(): Promise<void> {
+		const testName =
+			"縦書き列境界 nudge 設定は旧 sot キーから新キーへ移行する";
+		const startTime = performance.now();
+
+		try {
+			const assert = (condition: boolean, message: string) => {
+				if (!condition) throw new Error(message);
+			};
+
+			// 旧キー true → 新キー true、旧キーは保存値から除去
+			const migrated = validateV2Settings({
+				wysiwyg: { sotVerticalLayoutNudgeEnabled: true },
+			});
+			assert(
+				migrated.wysiwyg.verticalLayoutNudgeEnabled === true,
+				"旧キー true が新キーへ移行されない",
+			);
+			assert(
+				migrated.wysiwyg.sotVerticalLayoutNudgeEnabled === undefined,
+				"移行後に旧キーが保存値から除去されない",
+			);
+
+			// 新キーが旧キーより優先（新 false / 旧 true → false）
+			const both = validateV2Settings({
+				wysiwyg: {
+					verticalLayoutNudgeEnabled: false,
+					sotVerticalLayoutNudgeEnabled: true,
+				},
+			});
+			assert(
+				both.wysiwyg.verticalLayoutNudgeEnabled === false,
+				"新キーが旧キーより優先されない",
+			);
+
+			// 旧キー false → 新キー false
+			const legacyFalse = validateV2Settings({
+				wysiwyg: { sotVerticalLayoutNudgeEnabled: false },
+			});
+			assert(
+				legacyFalse.wysiwyg.verticalLayoutNudgeEnabled === false,
+				"旧キー false が新キーへ移行されない",
+			);
+
+			// どちらも未設定 → 既定 true
+			const none = validateV2Settings({ wysiwyg: {} });
+			assert(
+				none.wysiwyg.verticalLayoutNudgeEnabled === true,
+				"未設定時の既定が true でない",
+			);
+
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: true,
+				message:
+					"旧 sotVerticalLayoutNudgeEnabled を verticalLayoutNudgeEnabled へ移行し、新キー優先・既定 true を満たす",
+				duration,
+			});
+		} catch (error) {
+			const duration = performance.now() - startTime;
+			this.results.push({
+				name: testName,
+				success: false,
+				message: `縦書き列境界 nudge migration テスト失敗: ${(error as Error).message}`,
 				duration,
 			});
 		}

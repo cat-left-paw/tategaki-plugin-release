@@ -2923,6 +2923,48 @@ export class SettingsPanelModal extends Modal {
 					);
 				},
 			);
+
+			this.createCollapsibleSection(
+				container,
+				"flask-conical",
+				t("settings.section.sotExperimental"),
+				false,
+				(content) => {
+					this.createSettingItem(
+						content,
+						t("settings.sotVerticalLayoutNudge.name"),
+						t("settings.sotVerticalLayoutNudge.desc"),
+						(itemEl) => {
+							const button = itemEl.createEl("button", {
+								cls: "tategaki-toggle-button",
+							});
+
+							const getCurrent = () =>
+								this.tempSettings.wysiwyg
+									.verticalLayoutNudgeEnabled === true;
+
+							const refresh = (enabled: boolean) => {
+								this.updateToggleButton(
+									button,
+									enabled,
+									t("settings.value.enabled"),
+									t("settings.value.disabled"),
+								);
+							};
+
+							refresh(getCurrent());
+
+							button.addEventListener("click", () => {
+								const next = !getCurrent();
+								this.tempSettings.wysiwyg
+									.verticalLayoutNudgeEnabled = next;
+								refresh(next);
+								this.applySettings();
+							});
+						},
+					);
+				},
+			);
 		}
 
 		// ─── キャレット設定 ───

@@ -1,12 +1,12 @@
 # Tategaki (vertical writing editor for Obsidian)
 
-[English](README.md) | [日本語](README.ja.md)
+[English](https://github.com/cat-left-paw/tategaki-plugin-release/blob/main/README.md) | [日本語](https://github.com/cat-left-paw/tategaki-plugin-release/blob/main/README.ja.md)
 
 Tategaki is a desktop-first Obsidian plugin that lets you edit and view Markdown in a vertical (tategaki) layout.
 Desktop only. Mobile is not supported.
 
 Status:
-- Submitted to Obsidian Community Plugins (currently under review).
+- Available from Obsidian Community Plugins.
 
 ## What it can do
 
@@ -56,15 +56,16 @@ Status:
   - Fonts, spacing, heading layout, IME offsets, and related display options
   - Typewriter settings are temporarily disabled while source mode / plain text view / paragraph plain edit is active, then restored when returning to normal Writing & Reference mode
 
-## Installation (current)
+## Installation
 
-Until it is available in Community Plugins, the recommended installation method is BRAT.
-Manual installation from GitHub Releases is still available as an alternative.
+The recommended installation method is Obsidian's built-in Community Plugins browser.
 
-- Recommended: install via BRAT
-- Alternative: https://github.com/cat-left-paw/tategaki-plugin-release/releases
+1. Open Obsidian Settings.
+2. Go to `Community plugins`.
+3. Select `Browse` and search for `Tategaki`.
+4. Install and enable `Tategaki`.
 
-See `INSTALL.md` for detailed steps: `INSTALL.md`
+See `INSTALL.md` for detailed install, update, manual install, and uninstall notes.
 If you are upgrading from `<=1.2.1`, check the ID migration notes in both `README` and `INSTALL.md`.
 
 ## Migration Note (ID change)
@@ -85,7 +86,10 @@ If you are updating from older versions, Obsidian may treat this as a different 
 
 - **Platform**: Desktop only (Windows / macOS / Linux). Mobile is not supported.
 - **Telemetry**: No telemetry or analytics of any kind.
-- **Network access**: The only outbound request is the manual update check (Settings → "Check for updates" button). No automatic network calls occur.
+- **Network access**: The plugin only contacts GitHub when the user explicitly presses the manual update check button or opens the release/support link. No automatic network calls occur.
+- **Vault file listing**: The plugin enumerates Markdown files to support file switching, paired Writing & Reference views, and new-note workflows.
+- **Vault read/write**: The plugin reads and writes vault files only for editor/reader operation, new-note creation, compatibility-mode sync, and backup creation.
+- **Clipboard access**: Clipboard read/write is used for explicit copy, cut, and paste operations inside the editor or context menu.
 - **Local storage**: Compatibility mode writes sync backups to `<vault config folder>/tategaki-sync-backups/` (typically `.obsidian/tategaki-sync-backups/`). Writing & Reference mode does not create backup files.
 
 ## Documentation

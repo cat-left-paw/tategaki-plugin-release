@@ -62,6 +62,7 @@ export type SoTRenderPipelineContext = {
 		scrollLeft: number,
 		scrollAnchor: SoTScrollAnchor | null,
 	) => void;
+	onVirtualLinesRendered?: () => void;
 	/** PR5.5: heading-hidden行を仮想化対象から除外するための判定 */
 	isLineHidden?: (index: number) => boolean;
 	/** PR5.5b: 折りたたみ見出しがあるか（近似経路の抑制に使用） */
@@ -664,6 +665,9 @@ export class SoTRenderPipeline {
 			if (rendered >= maxLines) break;
 			if (performance.now() - startTime >= budgetMs) break;
 		}
+		if (rendered > 0) {
+			this.context.onVirtualLinesRendered?.();
+		}
 
 		if (rendered >= maxLines || performance.now() - startTime >= budgetMs) {
 			return true;
@@ -706,6 +710,7 @@ export class SoTRenderPipeline {
 		const start = performance.now();
 		const budgetMs = 10;
 		const lineRanges = this.context.getLineRanges();
+		let rendered = 0;
 		while (
 			this.virtualQueue.length > 0 &&
 			performance.now() - start < budgetMs
@@ -725,6 +730,10 @@ export class SoTRenderPipeline {
 			element.removeAttribute("data-virtual");
 			element.classList.remove("tategaki-sot-line-virtual");
 			this.context.renderLine(element, range, job.index);
+			rendered += 1;
+		}
+		if (rendered > 0) {
+			this.context.onVirtualLinesRendered?.();
 		}
 		if (this.virtualQueue.length > 0) {
 			this.scheduleVirtualQueue();
@@ -857,6 +866,9 @@ export class SoTRenderPipeline {
 			rendered += 1;
 			if (rendered >= maxLines) break;
 			if (performance.now() - startTime >= budgetMs) break;
+		}
+		if (rendered > 0) {
+			this.context.onVirtualLinesRendered?.();
 		}
 
 		if (allowDuringSelection && this.isSelectionActive() && rendered > 0) {

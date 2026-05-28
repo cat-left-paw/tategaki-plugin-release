@@ -239,6 +239,11 @@ export interface WysiwygSettings {
 	sotTypewriterCurrentLineHighlightColor?: string; // SoT Typewriter 現在行ハイライト色
 	sotTypewriterCurrentLineHighlightOpacity?: number; // SoT Typewriter 現在行ハイライト透明度
 	sotTypewriterNonFocusOpacity?: number; // SoT Typewriter 非フォーカス opacity
+	// 縦書きの列境界レイアウト nudge（既定 ON / 表示 DOM 限定 / 保存データには非干渉）。
+	// SoT（執筆・参照モード）と書籍モードの縦書きに適用する。
+	verticalLayoutNudgeEnabled?: boolean;
+	// 旧キー（〜v1.3.x、SoT 限定時代）。validateV2Settings で verticalLayoutNudgeEnabled へ移行し削除する。
+	sotVerticalLayoutNudgeEnabled?: boolean;
 }
 
 /**
@@ -422,6 +427,7 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		sotTypewriterCurrentLineHighlightColor: "#1e90ff",
 		sotTypewriterCurrentLineHighlightOpacity: 0.28,
 		sotTypewriterNonFocusOpacity: 0.42,
+		verticalLayoutNudgeEnabled: true,
 	},
 
 	// テーマシステム
@@ -845,6 +851,21 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 				validated.wysiwyg.sotTypewriterMode =
 					DEFAULT_V2_SETTINGS.wysiwyg.sotTypewriterMode;
 			}
+			// 縦書き列境界 nudge。新キー優先、旧キー sotVerticalLayoutNudgeEnabled があれば移行する。
+			const legacyNudgeEnabled = (validated.wysiwyg as any)
+				.sotVerticalLayoutNudgeEnabled;
+			const currentNudgeEnabled = (validated.wysiwyg as any)
+				.verticalLayoutNudgeEnabled;
+			validated.wysiwyg.verticalLayoutNudgeEnabled =
+				normalizeBooleanSetting(
+					currentNudgeEnabled !== undefined
+						? currentNudgeEnabled
+						: legacyNudgeEnabled,
+					DEFAULT_V2_SETTINGS.wysiwyg.verticalLayoutNudgeEnabled ??
+						false
+				);
+			// 旧キーは移行済みのため保存値から取り除く
+			delete (validated.wysiwyg as any).sotVerticalLayoutNudgeEnabled;
 			validated.wysiwyg.sotTypewriterOffsetRatio =
 				normalizeSoTTypewriterOffsetRatio(
 					(validated.wysiwyg as any).sotTypewriterOffsetRatio
