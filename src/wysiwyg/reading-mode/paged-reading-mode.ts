@@ -9,6 +9,7 @@ import { splitIntoBookSegments } from "./book-page-segments";
 import type { BookPageSegment } from "./book-page-segments";
 import { htmlHasVisibleContent } from "./visible-content";
 import { debugLog, debugError } from "../../shared/logger";
+import { setSanitizedHtml } from "../../shared/html-fragment";
 
 export interface PagedReadingModeOptions {
 	container: HTMLElement;
@@ -913,7 +914,7 @@ export class PagedReadingMode {
 		const t1 = setTimeout(() => {
 			if (!this.pagesContainerEl) return;
 			// スクロール時のチラつきを防ぐため、一時的に非表示にする
-			this.pagesContainerEl.style.visibility = "hidden";
+			this.pagesContainerEl.setCssStyles({ visibility: "hidden" });
 
 			this.pagesContainerEl.classList.remove(
 				`page-transition-${effect}-out`
@@ -923,7 +924,7 @@ export class PagedReadingMode {
 			// 次のアニメーション開始直前に再表示
 			requestAnimationFrame(() => {
 				if (!this.pagesContainerEl) return;
-				this.pagesContainerEl.style.visibility = "";
+				this.pagesContainerEl.setCssStyles({ visibility: "" });
 				this.pagesContainerEl.classList.add(
 					`page-transition-${effect}-in`
 				);
@@ -1421,7 +1422,7 @@ export class PagedReadingMode {
 			".page-content"
 		) as HTMLElement | null;
 		if (coverWrapper && this.frontmatterCoverHtml) {
-			coverWrapper.innerHTML = this.frontmatterCoverHtml;
+			setSanitizedHtml(coverWrapper, this.frontmatterCoverHtml);
 		}
 		return coverPage;
 	}
@@ -1440,7 +1441,7 @@ export class PagedReadingMode {
 		if (titleContent) {
 			const headingEl = doc.createElement(segment.headingTag);
 			headingEl.className = "tategaki-title-page-heading";
-			headingEl.innerHTML = segment.headingInnerHtml;
+			setSanitizedHtml(headingEl, segment.headingInnerHtml);
 			titleContent.appendChild(headingEl);
 			titleContent.classList.add("tategaki-title-page-content");
 		}
@@ -1656,7 +1657,7 @@ export class PagedReadingMode {
 					".page-content"
 				) as HTMLElement | null;
 				if (wrapper) {
-					wrapper.innerHTML = this.contentHtml;
+					setSanitizedHtml(wrapper, this.contentHtml);
 				}
 				fallbackPages.push(fallbackPage);
 			}

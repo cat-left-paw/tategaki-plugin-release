@@ -2769,6 +2769,34 @@ ruby {
 	text-orientation: mixed;
 }
 
+/*
+ * Replaces the former inline `text-align: end !important` and
+ * `text-align-last: end !important` on the frontmatter author / translator
+ * lines (SoT and TipTap compat views). Inline style cannot carry priority via
+ * setCssStyles, so the class carries it. The compound selector repeats the
+ * class to reach specificity (0,4,0), above every other `!important`
+ * text-align / text-align-last rule in this file (highest: (0,3,0)), which keeps
+ * the old "inline !important wins" cascade result.
+ */
+.tategaki-frontmatter-inline-end-forced.tategaki-frontmatter-inline-end-forced.tategaki-frontmatter-inline-end-forced.tategaki-frontmatter-inline-end-forced {
+	text-align: end !important;
+	text-align-last: end !important;
+}
+
+/*
+ * Replaces the former inline `border: none !important` and
+ * `outline: none !important` on the page border wrapper (SoT and TipTap compat
+ * views). No other `!important` border / outline rule in this file matches
+ * these wrappers. As with the frontmatter rule above, the class is repeated to
+ * reach specificity (0,4,0), so that it keeps winning like the inline
+ * declaration did, also against an outside `!important` rule of moderate strength.
+ */
+.tategaki-sot-border-wrapper.tategaki-border-wrapper-flat.tategaki-border-wrapper-flat.tategaki-border-wrapper-flat,
+.tategaki-tiptap-border-wrapper.tategaki-border-wrapper-flat.tategaki-border-wrapper-flat.tategaki-border-wrapper-flat {
+	border: none !important;
+	outline: none !important;
+}
+
 .tategaki-sot-view-container {
 	position: relative;
 	display: flex;

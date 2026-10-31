@@ -481,7 +481,7 @@ export class SoTPlainEditController {
 
 	clearShiftedElements(): void {
 		for (const el of this.shiftedElements) {
-			el.style.transform = "";
+			el.setCssStyles({ transform: "" });
 		}
 		this.shiftedElements = [];
 	}
@@ -704,7 +704,7 @@ export class SoTPlainEditController {
 		this.clearTargets();
 		this.host.plainEditRange = null;
 		if (this.host.plainEditOverlayEl) {
-			this.host.plainEditOverlayEl.style.display = "none";
+			this.host.plainEditOverlayEl.setCssStyles({ display: "none" });
 		}
 		this.host.setSelectionNormalized(nextPos, nextPos);
 		this.startFromSelection();
@@ -956,7 +956,7 @@ export class SoTPlainEditController {
 		const text = doc.slice(next.from, next.to);
 		this.host.plainEditComposing = false;
 		this.host.plainEditOverlayEl.value = text;
-		this.host.plainEditOverlayEl.style.display = "";
+		this.host.plainEditOverlayEl.setCssStyles({ display: "" });
 		const isLeafActive = this.host.isLeafActive?.() ?? true;
 		if (isLeafActive) {
 			this.host.plainEditOverlayEl.focus({ preventScroll: true });
@@ -989,7 +989,7 @@ export class SoTPlainEditController {
 		this.host.plainEditRange = null;
 		if (this.host.plainEditOverlayEl) {
 			this.host.plainEditOverlayEl.value = "";
-			this.host.plainEditOverlayEl.style.display = "none";
+			this.host.plainEditOverlayEl.setCssStyles({ display: "none" });
 		}
 		this.resetOverlayInputState();
 	}
@@ -1053,7 +1053,7 @@ export class SoTPlainEditController {
 
 			this.clearTargets();
 			this.host.plainEditRange = null;
-			this.host.plainEditOverlayEl.style.display = "none";
+			this.host.plainEditOverlayEl.setCssStyles({ display: "none" });
 			this.resetOverlayInputState();
 			this.retainedEdit = false;
 			return true;

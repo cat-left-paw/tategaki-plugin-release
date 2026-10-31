@@ -36,7 +36,7 @@ export function applySoTScrollPastEndToContentEl(
 export function clearSoTScrollPastEndFromContentEl(
 	contentEl: HTMLElement,
 ): void {
-	contentEl.style.paddingBlockEnd = "";
+	contentEl.setCssStyles({ paddingBlockEnd: "" });
 }
 
 /**

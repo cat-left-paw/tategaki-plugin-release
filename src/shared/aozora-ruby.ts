@@ -3,6 +3,8 @@
  * japanese-novel-ruby と同等の正規表現を用いて互換性を確保する
  */
 
+import { canParseHtmlInert, parseHtmlToInertContainer } from "./html-fragment";
+
 const AOZORA_START_MARK = "《";
 const AOZORA_END_MARK = "》";
 const RUBY_TAG_REGEX = /<ruby\b[^>]*>[\s\S]*?<\/ruby>/gi;
@@ -112,9 +114,8 @@ export function applyAozoraRubyToElement(root: HTMLElement): boolean {
 export function convertAozoraRubySyntaxToHtml(html: string): string {
 	if (!html) return html;
 
-	if (hasDocument) {
-		const container = document.createElement("div");
-		container.innerHTML = html;
+	if (hasDocument && canParseHtmlInert()) {
+		const container = parseHtmlToInertContainer(html);
 		applyAozoraRubyToElement(container);
 		return container.innerHTML;
 	}
@@ -145,9 +146,8 @@ export function convertRubyElementsToAozora(
 
 	const addDelimiter = options.addDelimiter ?? true;
 
-	if (hasDocument) {
-		const container = document.createElement("div");
-		container.innerHTML = html;
+	if (hasDocument && canParseHtmlInert()) {
+		const container = parseHtmlToInertContainer(html);
 		const rubies = Array.from(container.querySelectorAll("ruby"));
 		for (const rubyEl of rubies) {
 			const replacement = rubyElementToAozora(rubyEl, addDelimiter);

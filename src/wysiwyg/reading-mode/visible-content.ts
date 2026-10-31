@@ -1,3 +1,5 @@
+import { parseHtmlToInertContainer } from "../../shared/html-fragment";
+
 const MEANINGFUL_NON_TEXT_SELECTOR =
 	"img, hr, iframe, video, audio, canvas, svg, embed, object";
 const INVISIBLE_TEXT_CHARS = new Set([
@@ -61,8 +63,7 @@ export function htmlHasVisibleContent(
 	html: string,
 	doc: Document
 ): boolean {
-	const test = doc.createElement("div");
-	test.innerHTML = html;
+	const test = parseHtmlToInertContainer(html, doc);
 	return nodeHasVisibleContent(test);
 }
 

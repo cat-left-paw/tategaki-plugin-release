@@ -6,6 +6,10 @@ import {
 	createAozoraRubyRegExp,
 } from "../../../shared/aozora-ruby";
 import {
+	canParseHtmlInert,
+	parseHtmlToInertContainer,
+} from "../../../shared/html-fragment";
+import {
 	convertAozoraTcySyntaxToHtml,
 	isValidAozoraTcyBody,
 } from "../../../shared/aozora-tcy";
@@ -436,16 +440,15 @@ function rewriteHtmlImagesForTipTap(
 		resolveImageSrc?: (src: string, contextFilePath: string | null) => string | null;
 	}
 ): string {
-	if (typeof document === "undefined") {
+	if (typeof document === "undefined" || !canParseHtmlInert()) {
 		return html;
 	}
 	if (!options.resolveImageSrc) {
 		return html;
 	}
 
-	const doc = document.implementation.createHTMLDocument("");
-	doc.body.innerHTML = html;
-	const images = Array.from(doc.body.querySelectorAll("img"));
+	const container = parseHtmlToInertContainer(html);
+	const images = Array.from(container.querySelectorAll("img"));
 
 	for (const img of images) {
 		const existingSource = img.getAttribute("data-tategaki-source");
@@ -465,7 +468,7 @@ function rewriteHtmlImagesForTipTap(
 		}
 	}
 
-	return doc.body.innerHTML;
+	return container.innerHTML;
 }
 
 function convertObsidianImageEmbedsToHtml(

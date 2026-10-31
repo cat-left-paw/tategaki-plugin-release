@@ -1442,12 +1442,12 @@ export class TipTapCompatView extends ItemView {
 			this.auxiliaryInputPanel.containerEl.offsetHeight
 		);
 		this.editorHostEl.style.paddingBottom = `${this.editorPaddingBottomPx + height}px`;
-		this.editorHostEl.style.paddingLeft = "";
+		this.editorHostEl.setCssStyles({ paddingLeft: "" });
 	}
 
 	private removeAuxiliaryPanelPadding(): void {
 		if (!this.editorHostEl) return;
-		this.editorHostEl.style.paddingLeft = "";
+		this.editorHostEl.setCssStyles({ paddingLeft: "" });
 		this.editorHostEl.style.paddingBottom = `${this.editorPaddingBottomPx}px`;
 	}
 
@@ -1564,8 +1564,10 @@ export class TipTapCompatView extends ItemView {
 		if (!this.auxiliaryCaretEl) {
 			this.auxiliaryCaretEl = document.createElement("div");
 			this.auxiliaryCaretEl.className = "tategaki-auxiliary-caret";
-			this.auxiliaryCaretEl.style.pointerEvents = "none";
-			this.auxiliaryCaretEl.style.overflow = "hidden";
+			this.auxiliaryCaretEl.setCssStyles({
+				pointerEvents: "none",
+				overflow: "hidden",
+			});
 			this.editorHostEl.appendChild(this.auxiliaryCaretEl);
 		}
 
@@ -1884,11 +1886,13 @@ export class TipTapCompatView extends ItemView {
 		const probeRange = range.cloneRange();
 		const marker = document.createElement("span");
 		marker.className = "tategaki-auxiliary-caret-probe";
-		marker.style.display = "inline-block";
-		marker.style.width = "0";
-		marker.style.height = "1em";
-		marker.style.pointerEvents = "none";
-		marker.style.opacity = "0";
+		marker.setCssStyles({
+			display: "inline-block",
+			width: "0",
+			height: "1em",
+			pointerEvents: "none",
+			opacity: "0",
+		});
 
 		try {
 			probeRange.insertNode(marker);
@@ -3120,7 +3124,7 @@ export class TipTapCompatView extends ItemView {
 		proseMirrorClone.removeAttribute("contenteditable");
 		proseMirrorClone.setAttribute("contenteditable", "false");
 		proseMirrorClone.removeAttribute("tabindex");
-		proseMirrorClone.style.visibility = "";
+		proseMirrorClone.setCssStyles({ visibility: "" });
 		proseMirrorClone.style.color = effectiveCommon.textColor;
 		snapshotRoot.appendChild(proseMirrorClone);
 
@@ -3132,8 +3136,10 @@ export class TipTapCompatView extends ItemView {
 			visibility: proseMirror.style.visibility,
 			pointerEvents: proseMirror.style.pointerEvents,
 		};
-		proseMirror.style.visibility = "hidden";
-		proseMirror.style.pointerEvents = "none";
+		proseMirror.setCssStyles({
+			visibility: "hidden",
+			pointerEvents: "none",
+		});
 
 		// タイトルを取得（フロントマターのtitle、なければファイル名）
 		const frontmatterTitle = this.currentFile
@@ -3251,16 +3257,20 @@ export class TipTapCompatView extends ItemView {
 			contentWrapperBackground: this.contentWrapperEl.style.background,
 		};
 
-		this.pageContainerEl.style.padding = "0";
-		this.pageContainerEl.style.alignItems = "stretch";
-		this.pageContainerEl.style.justifyContent = "stretch";
-		this.pageContainerEl.style.background = "transparent";
+		this.pageContainerEl.setCssStyles({
+			padding: "0",
+			alignItems: "stretch",
+			justifyContent: "stretch",
+			background: "transparent",
+		});
 
-		this.borderWrapperEl.style.boxShadow = "none";
-		this.borderWrapperEl.style.transform = "none";
-		this.borderWrapperEl.style.border = "none";
-		this.borderWrapperEl.style.outline = "none";
-		this.borderWrapperEl.style.background = "transparent";
+		this.borderWrapperEl.setCssStyles({
+			boxShadow: "none",
+			transform: "none",
+			border: "none",
+			outline: "none",
+			background: "transparent",
+		});
 
 		this.contentWrapperEl.style.background = backgroundColor;
 	}
@@ -3586,7 +3596,7 @@ export class TipTapCompatView extends ItemView {
 
 		// 一時的なエディタを作成してパース
 		const tempDiv = document.createElement("div");
-		tempDiv.style.display = "none";
+		tempDiv.setCssStyles({ display: "none" });
 		document.body.appendChild(tempDiv);
 
 		let tempEditor: Editor | null = null;
@@ -4030,7 +4040,9 @@ export class TipTapCompatView extends ItemView {
 		const rubyHorizontalGapValue = `${rubyHorizontalGap}em`;
 
 		if (this.borderWrapperEl) {
-			this.borderWrapperEl.style.transformOrigin = "center center";
+			this.borderWrapperEl.setCssStyles({
+				transformOrigin: "center center",
+			});
 			this.borderWrapperEl.style.transform = `scale(${
 				fillMode ? 1 : scaled
 			})`;
@@ -4042,16 +4054,9 @@ export class TipTapCompatView extends ItemView {
 				effectiveCommon.backgroundColor,
 				"important"
 			);
-			this.borderWrapperEl.style.setProperty(
-				"border",
-				"none",
-				"important"
-			);
-			this.borderWrapperEl.style.setProperty(
-				"outline",
-				"none",
-				"important"
-			);
+			// border / outline: none must stay `!important`; the class carries
+			// them (see styles.css), as inline style cannot be set with priority.
+			this.borderWrapperEl.classList.add("tategaki-border-wrapper-flat");
 		}
 
 		if (this.pageContainerEl) {
@@ -4064,7 +4069,7 @@ export class TipTapCompatView extends ItemView {
 			this.pageContainerEl.style.padding = fillMode
 				? "0"
 				: "40px 32px 22px 32px";
-			this.pageContainerEl.style.background = "transparent";
+			this.pageContainerEl.setCssStyles({ background: "transparent" });
 		}
 
 		const container = this.containerEl.children[1] as
@@ -4127,7 +4132,7 @@ export class TipTapCompatView extends ItemView {
 		const isHorizontal = writingMode === "horizontal-tb";
 		this.editorHostEl.style.overflowX = isHorizontal ? "hidden" : "scroll";
 		this.editorHostEl.style.overflowY = isHorizontal ? "scroll" : "hidden";
-		this.editorHostEl.style.scrollbarGutter = "stable";
+		this.editorHostEl.setCssStyles({ scrollbarGutter: "stable" });
 	}
 
 	private async updateFrontmatterDisplay(): Promise<void> {
@@ -4316,14 +4321,17 @@ export class TipTapCompatView extends ItemView {
 	}
 
 	private applyFrontmatterInlineEndAlignment(element: HTMLElement): void {
-		element.style.display = "block";
-		element.style.setProperty("text-align", "end", "important");
-		element.style.setProperty("text-align-last", "end", "important");
-		element.style.marginInlineStart = "auto";
-		element.style.marginInlineEnd = "0";
-		element.style.marginLeft = "auto";
-		element.style.marginRight = "0";
-		element.style.justifySelf = "end";
+		// text-align / text-align-last must keep winning over the `!important`
+		// heading rules; the class carries them as `!important` (see styles.css).
+		element.classList.add("tategaki-frontmatter-inline-end-forced");
+		element.setCssStyles({
+			display: "block",
+			marginInlineStart: "auto",
+			marginInlineEnd: "0",
+			marginLeft: "auto",
+			marginRight: "0",
+			justifySelf: "end",
+		});
 	}
 
 	private applyFrontmatterWritingMode(
@@ -4331,7 +4339,7 @@ export class TipTapCompatView extends ItemView {
 		writingMode: string
 	): void {
 		element.style.writingMode = writingMode;
-		element.style.textOrientation = "mixed";
+		element.setCssStyles({ textOrientation: "mixed" });
 	}
 
 	private setupWheelScroll(): void {

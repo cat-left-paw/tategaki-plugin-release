@@ -1536,9 +1536,8 @@ export class SoTWysiwygView extends ItemView {
 
 		// 行末揃え（justify）
 		targetEl.classList.add("text-justify-enabled");
-		targetEl.style.textAlign = "justify";
-		targetEl.style.textAlignLast = "auto";
-		targetEl.style.setProperty("text-justify", "inter-ideograph");
+		targetEl.setCssStyles({ textAlign: "justify", textAlignLast: "auto" });
+		targetEl.setCssProps({ "text-justify": "inter-ideograph" });
 
 		const headingFont =
 			effectiveCommon.headingFontFamily || effectiveCommon.fontFamily;
@@ -1655,7 +1654,9 @@ export class SoTWysiwygView extends ItemView {
 		const scaled = fillMode ? 1 : Math.max(0.7, Math.min(1, rawScale));
 
 		if (this.borderWrapperEl) {
-			this.borderWrapperEl.style.transformOrigin = "center center";
+			this.borderWrapperEl.setCssStyles({
+				transformOrigin: "center center",
+			});
 			this.borderWrapperEl.style.transform = `scale(${
 				fillMode ? 1 : scaled
 			})`;
@@ -1667,16 +1668,9 @@ export class SoTWysiwygView extends ItemView {
 				effectiveCommon.backgroundColor,
 				"important",
 			);
-			this.borderWrapperEl.style.setProperty(
-				"border",
-				"none",
-				"important",
-			);
-			this.borderWrapperEl.style.setProperty(
-				"outline",
-				"none",
-				"important",
-			);
+			// border / outline: none must stay `!important`; the class carries
+			// them (see styles.css), as inline style cannot be set with priority.
+			this.borderWrapperEl.classList.add("tategaki-border-wrapper-flat");
 		}
 
 		if (this.pageContainerEl) {
@@ -1689,7 +1683,7 @@ export class SoTWysiwygView extends ItemView {
 			this.pageContainerEl.style.padding = fillMode
 				? "0"
 				: "40px 32px 22px 32px";
-			this.pageContainerEl.style.background = "transparent";
+			this.pageContainerEl.setCssStyles({ background: "transparent" });
 		}
 
 		if (this.viewRootEl) {
@@ -1804,14 +1798,17 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private applyFrontmatterInlineEndAlignment(element: HTMLElement): void {
-		element.style.display = "block";
-		element.style.setProperty("text-align", "end", "important");
-		element.style.setProperty("text-align-last", "end", "important");
-		element.style.marginInlineStart = "auto";
-		element.style.marginInlineEnd = "0";
-		element.style.marginLeft = "auto";
-		element.style.marginRight = "0";
-		element.style.justifySelf = "end";
+		// text-align / text-align-last must keep winning over the `!important`
+		// heading rules; the class carries them as `!important` (see styles.css).
+		element.classList.add("tategaki-frontmatter-inline-end-forced");
+		element.setCssStyles({
+			display: "block",
+			marginInlineStart: "auto",
+			marginInlineEnd: "0",
+			marginLeft: "auto",
+			marginRight: "0",
+			justifySelf: "end",
+		});
 	}
 
 	private applyFrontmatterWritingMode(
@@ -1819,7 +1816,7 @@ export class SoTWysiwygView extends ItemView {
 		writingMode: string,
 	): void {
 		element.style.writingMode = writingMode;
-		element.style.textOrientation = "mixed";
+		element.setCssStyles({ textOrientation: "mixed" });
 	}
 
 	private computeLineRangesFromLines(lines: string[]): LineRange[] {
@@ -8541,7 +8538,7 @@ export class SoTWysiwygView extends ItemView {
 		this.updatePendingText("", true);
 		this.selectionLayerEl?.replaceChildren();
 		if (this.caretEl) {
-			this.caretEl.style.display = "none";
+			this.caretEl.setCssStyles({ display: "none" });
 		}
 		this.ensurePlainEditOverlay();
 		this.registerPlainEditOutsidePointerHandler();
@@ -8556,11 +8553,11 @@ export class SoTWysiwygView extends ItemView {
 		this.commitPlainEdit(true, true, true);
 		this.unregisterPlainEditOutsidePointerHandler();
 		if (this.plainEditOverlayEl) {
-			this.plainEditOverlayEl.style.display = "none";
+			this.plainEditOverlayEl.setCssStyles({ display: "none" });
 		}
 		this.overlayTextarea?.setActive(true);
 		if (this.caretEl) {
-			this.caretEl.style.display = "";
+			this.caretEl.setCssStyles({ display: "" });
 		}
 		this.updateSourceToggleUi();
 		this.scheduleCaretUpdate(true);
@@ -8761,7 +8758,7 @@ export class SoTWysiwygView extends ItemView {
 			this.updatePendingText("", true);
 			this.selectionLayerEl?.replaceChildren();
 			if (this.caretEl) {
-				this.caretEl.style.display = "none";
+				this.caretEl.setCssStyles({ display: "none" });
 			}
 			this.syncSelectionToCe();
 			if (this.derivedContentEl) {
@@ -10040,7 +10037,7 @@ export class SoTWysiwygView extends ItemView {
 		const isMobile = Platform.isMobile || Platform.isMobileApp;
 		const isVertical = this.writingMode.startsWith("vertical");
 		if (isMobile && isVertical) {
-			this.derivedRootEl.style.touchAction = "none";
+			this.derivedRootEl.setCssStyles({ touchAction: "none" });
 		} else {
 			this.derivedRootEl.style.removeProperty("touch-action");
 		}
@@ -11379,7 +11376,7 @@ export class SoTWysiwygView extends ItemView {
 		const pairedMarkdownLeafActive = this.isPairedMarkdownLeafActive();
 		if (this.sourceModeEnabled) {
 			this.clearCurrentLineVisualOverlay();
-			this.caretEl.style.display = "none";
+			this.caretEl.setCssStyles({ display: "none" });
 			return;
 		}
 		const caretWidth = this.plugin.settings.wysiwyg.caretWidthPx ?? 3;
@@ -11405,7 +11402,7 @@ export class SoTWysiwygView extends ItemView {
 				: "transparent";
 			if (useNativeInCe) {
 				this.clearCurrentLineVisualOverlay();
-				this.caretEl.style.display = "none";
+				this.caretEl.setCssStyles({ display: "none" });
 				const shouldScroll = resolveSoTCaretScrollPolicy({
 					settingsPanelOpen: this.settingsPanelOpen,
 					pendingCaretScroll: this.pendingCaretScroll,
@@ -11429,19 +11426,19 @@ export class SoTWysiwygView extends ItemView {
 		const lineIndex = this.findLineIndex(offset);
 		if (lineIndex === null) {
 			this.clearCurrentLineVisualOverlay();
-			this.caretEl.style.display = "none";
+			this.caretEl.setCssStyles({ display: "none" });
 			return;
 		}
 		const lineRange = this.lineRanges[lineIndex];
 		if (!lineRange) {
 			this.clearCurrentLineVisualOverlay();
-			this.caretEl.style.display = "none";
+			this.caretEl.setCssStyles({ display: "none" });
 			return;
 		}
 		const lineEl = this.getLineElement(lineIndex);
 		if (!lineEl) {
 			this.clearCurrentLineVisualOverlay();
-			this.caretEl.style.display = "none";
+			this.caretEl.setCssStyles({ display: "none" });
 			return;
 		}
 		this.ensureLineRendered(lineEl);
@@ -11497,7 +11494,7 @@ export class SoTWysiwygView extends ItemView {
 		}
 		if (!caretRect) {
 			this.clearCurrentLineVisualOverlay();
-			this.caretEl.style.display = "none";
+			this.caretEl.setCssStyles({ display: "none" });
 			return;
 		}
 
@@ -13023,7 +13020,7 @@ export class SoTWysiwygView extends ItemView {
 			this.pendingSelectionLineStart = null;
 			this.pendingSelectionLineEnd = null;
 			if (this.pendingEl) {
-				this.pendingEl.style.display = "none";
+				this.pendingEl.setCssStyles({ display: "none" });
 			}
 			return;
 		}
@@ -13040,10 +13037,10 @@ export class SoTWysiwygView extends ItemView {
 		const content = text.length > 0 ? text : "";
 		this.pendingEl.textContent = content;
 		if (!this.showPendingOverlay) {
-			this.pendingEl.style.display = "none";
+			this.pendingEl.setCssStyles({ display: "none" });
 		} else if (this.overlayTextarea?.isImeVisible()) {
 			// IME変換中はpendingElを非表示（textareaで表示される）
-			this.pendingEl.style.display = "none";
+			this.pendingEl.setCssStyles({ display: "none" });
 		} else {
 			this.pendingEl.style.display = content.length > 0 ? "" : "none";
 		}

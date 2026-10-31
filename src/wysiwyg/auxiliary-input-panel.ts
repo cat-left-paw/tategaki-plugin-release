@@ -174,8 +174,7 @@ export class AuxiliaryInputPanel {
 		this.containerEl.addClass(isVertical ? "is-vertical" : "is-horizontal");
 
 		// リセット
-		this.containerEl.style.width = "";
-		this.containerEl.style.height = "";
+		this.containerEl.setCssStyles({ width: "", height: "" });
 
 		// ハンドルの表示切替
 		this.resizeHandleVertical.toggleClass("visible", isVertical);
@@ -183,11 +182,11 @@ export class AuxiliaryInputPanel {
 	}
 
 	show() {
-		this.containerEl.style.display = "flex";
+		this.containerEl.setCssStyles({ display: "flex" });
 	}
 
 	hide() {
-		this.containerEl.style.display = "none";
+		this.containerEl.setCssStyles({ display: "none" });
 	}
 
 	destroy() {

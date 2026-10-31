@@ -12,6 +12,7 @@ import {
 	PROHIBITED_LINE_START_CHARS,
 	PROHIBITED_LINE_END_CHARS,
 } from "./measured-pagination-types";
+import { setSanitizedHtml } from "../../shared/html-fragment";
 import {
 	cloneNodeWithVisibleContent,
 	hasVisibleText,
@@ -47,7 +48,7 @@ export class MeasuredPagination {
 
 		// コンテンツをパース
 		const tempDiv = doc.createElement("div");
-		tempDiv.innerHTML = this.options.contentHtml;
+		setSanitizedHtml(tempDiv, this.options.contentHtml);
 
 		// テキストノードを収集
 		const textNodes = this.collectTextNodes(tempDiv, doc);
@@ -346,8 +347,7 @@ export class MeasuredPagination {
 			return null;
 		}
 
-		wrapper.style.whiteSpace = "normal";
-		wrapper.style.visibility = "hidden";
+		wrapper.setCssStyles({ whiteSpace: "normal", visibility: "hidden" });
 
 		const remaining = state.totalLength - state.startIndex;
 		// 強制改ページ位置による上限（相対文字数）
@@ -566,7 +566,7 @@ export class MeasuredPagination {
 		this.pruneTrailingEmptyPageBreakHeadings(wrapper);
 
 		// visibilityを元に戻す
-		wrapper.style.visibility = "";
+		wrapper.setCssStyles({ visibility: "" });
 
 		const pageEndIndex = state.startIndex + finalTake;
 		const isContinuation = this.isPageContinuation(state, pageEndIndex);
@@ -643,7 +643,7 @@ export class MeasuredPagination {
 		const doc = block.ownerDocument;
 		const range = doc.createRange();
 		const previousAlign = block.style.textAlignLast;
-		block.style.textAlignLast = "start";
+		block.setCssStyles({ textAlignLast: "start" });
 		block.offsetWidth; // force layout
 		range.selectNodeContents(block);
 		const rects = Array.from(range.getClientRects()).filter(

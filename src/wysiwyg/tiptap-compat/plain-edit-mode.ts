@@ -18,6 +18,7 @@ import {
 	serializeInlineToMarkdown,
 } from "./markdown-adapter";
 import { createAozoraRubyRegExp } from "../../shared/aozora-ruby";
+import { parseHtmlToInertContainer } from "../../shared/html-fragment";
 import {
 	buildAozoraTcyText,
 	isValidAozoraTcyBody,
@@ -108,8 +109,10 @@ export class PlainEditMode {
 			if (document.activeElement === this.overlayEl) {
 				this.overlayEl.blur();
 			}
-			this.overlayEl.style.display = "none";
-			this.overlayEl.style.pointerEvents = "none";
+			this.overlayEl.setCssStyles({
+				display: "none",
+				pointerEvents: "none",
+			});
 		}
 	}
 
@@ -118,8 +121,7 @@ export class PlainEditMode {
 	 */
 	resumeOverlay(): void {
 		if (this.overlayEl && this.isActive && this.overlayActivePos != null) {
-			this.overlayEl.style.display = "";
-			this.overlayEl.style.pointerEvents = "";
+			this.overlayEl.setCssStyles({ display: "", pointerEvents: "" });
 		}
 	}
 
@@ -404,7 +406,7 @@ export class PlainEditMode {
 
 		const computed = getComputedStyle(host);
 		if (computed.position === "static") {
-			host.style.position = "relative";
+			host.setCssStyles({ position: "relative" });
 		}
 
 		if (!this.overlayEl.parentElement) {
@@ -456,7 +458,7 @@ export class PlainEditMode {
 
 		if (this.overlayEl) {
 			this.overlayEl.value = markdown;
-			this.overlayEl.style.display = "";
+			this.overlayEl.setCssStyles({ display: "" });
 			const canFocusOverlay = this.options.canFocusOverlay?.() ?? true;
 			if (!this.suppressFocusOnNextStart && canFocusOverlay) {
 				this.overlayEl.focus({ preventScroll: true });
@@ -883,12 +885,11 @@ export class PlainEditMode {
 
 		const parser = PMDOMParser.fromSchema(state.schema);
 
-		const beforeWrapper = document.createElement("div");
 		const beforeParsed = isHeading
 			? this.parseHeadingMarkdown(beforeText, currentLevel)
 			: { level: currentLevel, content: beforeText };
-		beforeWrapper.innerHTML = this.renderInlineMarkdownToHtml(
-			beforeParsed.content
+		const beforeWrapper = parseHtmlToInertContainer(
+			this.renderInlineMarkdownToHtml(beforeParsed.content)
 		);
 		const beforeSlice = parser.parseSlice(beforeWrapper, {
 			preserveWhitespace: true,
@@ -900,11 +901,12 @@ export class PlainEditMode {
 				)
 			: paragraphType.createChecked(null, beforeSlice.content);
 
-		const afterWrapper = document.createElement("div");
 		const afterContent = isHeading
 			? this.stripHeadingPrefix(afterText)
 			: afterText;
-		afterWrapper.innerHTML = this.renderInlineMarkdownToHtml(afterContent);
+		const afterWrapper = parseHtmlToInertContainer(
+			this.renderInlineMarkdownToHtml(afterContent)
+		);
 		const afterSlice = parser.parseSlice(afterWrapper, {
 			preserveWhitespace: true,
 		});
@@ -970,8 +972,9 @@ export class PlainEditMode {
 		const mergedMarkdown = `${prevMarkdown}${currentMarkdown}`;
 
 		const parser = PMDOMParser.fromSchema(state.schema);
-		const wrapper = document.createElement("div");
-		wrapper.innerHTML = this.renderInlineMarkdownToHtml(mergedMarkdown);
+		const wrapper = parseHtmlToInertContainer(
+			this.renderInlineMarkdownToHtml(mergedMarkdown)
+		);
 		const slice = parser.parseSlice(wrapper, { preserveWhitespace: true });
 		const mergedNode = prevNode.type.createChecked(prevNode.attrs, slice.content);
 
@@ -1159,8 +1162,7 @@ export class PlainEditMode {
 			const node = state.doc.nodeAt(pos);
 			if (!node) return;
 
-			const wrapper = document.createElement("div");
-			wrapper.innerHTML = html;
+			const wrapper = parseHtmlToInertContainer(html);
 			const parser = PMDOMParser.fromSchema(state.schema);
 			const slice = parser.parseSlice(wrapper, { preserveWhitespace: true });
 			const from = pos + 1;
@@ -1186,7 +1188,7 @@ export class PlainEditMode {
 
 	private hideOverlay(): void {
 		if (this.overlayEl) {
-			this.overlayEl.style.display = "none";
+			this.overlayEl.setCssStyles({ display: "none" });
 		}
 		this.overlayBaseRect = null;
 	}

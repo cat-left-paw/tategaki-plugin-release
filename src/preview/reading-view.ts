@@ -10,6 +10,7 @@ import {
 	normalizePath,
 } from "obsidian";
 import type TategakiV2Plugin from "../core/plugin";
+import { setSanitizedHtml } from "../shared/html-fragment";
 import {
 	resolveEffectiveBookFrontmatterDisplayMode,
 	resolveEffectiveBookHeadingPagination,
@@ -981,7 +982,7 @@ export class TategakiReadingView extends ItemView {
 		const proseMirror = doc.createElement("div");
 		proseMirror.className = "tiptap ProseMirror";
 		proseMirror.setAttribute("contenteditable", "false");
-		proseMirror.innerHTML = normalizedMarkdown;
+		setSanitizedHtml(proseMirror, normalizedMarkdown);
 
 			// 見出しのページ扱い（新設定を優先）
 			const { mode: effectiveMode, level: effectiveLevel } =

@@ -9,6 +9,7 @@
  * 後処理なしで最終ページ列を組み立てられる。
  */
 
+import { parseHtmlToInertContainer } from "../../shared/html-fragment";
 import { htmlHasVisibleContent } from "./visible-content";
 
 export interface BodySegment {
@@ -42,8 +43,7 @@ export function splitIntoBookSegments(
 	contentHtml: string,
 	doc: Document
 ): BookPageSegment[] {
-	const temp = doc.createElement("div");
-	temp.innerHTML = contentHtml;
+	const temp = parseHtmlToInertContainer(contentHtml, doc);
 
 	// 章扉対象の見出しを検出
 	const titleHeadings = temp.querySelectorAll<HTMLElement>(

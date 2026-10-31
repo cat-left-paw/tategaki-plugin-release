@@ -122,7 +122,7 @@ export function updateCaretPosition(host: SoTSelectionHost): void {
 		return;
 	}
 	if (host.sourceModeEnabled) {
-		host.caretEl.style.display = "none";
+		host.caretEl.setCssStyles({ display: "none" });
 		return;
 	}
 	const caretWidth = host.plugin.settings.wysiwyg.caretWidthPx ?? 3;
@@ -146,7 +146,7 @@ export function updateCaretPosition(host: SoTSelectionHost): void {
 			? caretColor
 			: "transparent";
 		if (useNativeInCe) {
-			host.caretEl.style.display = "none";
+			host.caretEl.setCssStyles({ display: "none" });
 			if (host.pendingCaretScroll) {
 				host.pendingCaretScroll = false;
 				host.scrollCaretIntoView();
@@ -163,17 +163,17 @@ export function updateCaretPosition(host: SoTSelectionHost): void {
 			: selection.head;
 	const lineIndex = host.findLineIndex(offset);
 	if (lineIndex === null) {
-		host.caretEl.style.display = "none";
+		host.caretEl.setCssStyles({ display: "none" });
 		return;
 	}
 	const lineRange = host.lineRanges[lineIndex];
 	if (!lineRange) {
-		host.caretEl.style.display = "none";
+		host.caretEl.setCssStyles({ display: "none" });
 		return;
 	}
 	const lineEl = host.getLineElement(lineIndex);
 	if (!lineEl) {
-		host.caretEl.style.display = "none";
+		host.caretEl.setCssStyles({ display: "none" });
 		return;
 	}
 	host.ensureLineRendered(lineEl);
@@ -198,7 +198,7 @@ export function updateCaretPosition(host: SoTSelectionHost): void {
 		writingMode,
 	);
 	if (!caretRect) {
-		host.caretEl.style.display = "none";
+		host.caretEl.setCssStyles({ display: "none" });
 		return;
 	}
 

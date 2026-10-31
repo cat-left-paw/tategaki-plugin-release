@@ -334,7 +334,7 @@ export class OverlayImeTextarea {
 
 	setAnchorPosition(left: number, top: number): void {
 		this.textarea.style.left = `${left}px`;
-		this.textarea.style.right = "";
+		this.textarea.setCssStyles({ right: "" });
 		this.textarea.style.top = `${top}px`;
 	}
 
@@ -346,7 +346,7 @@ export class OverlayImeTextarea {
 		// rightは親要素の左端からの距離なので、親の幅から引く必要がある
 		// ただしposition:absoluteでrightを使う場合は親の右端からの距離
 		// ここではleftの代わりにrightを使い、幅が増えても右端が固定されるようにする
-		this.textarea.style.left = "";
+		this.textarea.setCssStyles({ left: "" });
 		this.textarea.style.right = `${this.parentEl.clientWidth - right}px`;
 		this.textarea.style.top = `${top}px`;
 	}

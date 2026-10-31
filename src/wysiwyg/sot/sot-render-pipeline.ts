@@ -906,8 +906,7 @@ export class SoTRenderPipeline {
 	}
 
 	private clearChunkedExtentHold(contentEl: HTMLElement): void {
-		contentEl.style.minWidth = "";
-		contentEl.style.minHeight = "";
+		contentEl.setCssStyles({ minWidth: "", minHeight: "" });
 	}
 
 	private applyChunkedExtentHold(

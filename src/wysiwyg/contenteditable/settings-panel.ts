@@ -19,7 +19,7 @@ import {
 	TategakiV2Settings,
 	WritingMode,
 } from "../../types/settings";
-import { App, Modal, Setting, setIcon } from "obsidian";
+import { App, Modal, Platform, Setting, setIcon } from "obsidian";
 import TategakiV2Plugin from "../../core/plugin";
 import { debugWarn, debugError } from "../../shared/logger";
 import { showConfirmModal } from "../../shared/ui/confirm-modal";
@@ -583,16 +583,12 @@ function resolveColorForSwatch(
 }
 
 function detectPlatform(): KnownPlatform {
-	if (typeof navigator === "undefined") {
-		return "unknown";
-	}
-	const userAgent = navigator.userAgent.toLowerCase();
-	if (userAgent.includes("android")) return "android";
-	if (userAgent.includes("iphone") || userAgent.includes("ipad"))
-		return "ios";
-	if (userAgent.includes("mac")) return "mac";
-	if (userAgent.includes("win")) return "windows";
-	if (userAgent.includes("linux")) return "linux";
+	// Check iOS before macOS: Platform.isMacOS is also true on iPhone / iPad.
+	if (Platform.isAndroidApp) return "android";
+	if (Platform.isIosApp) return "ios";
+	if (Platform.isMacOS) return "mac";
+	if (Platform.isWin) return "windows";
+	if (Platform.isLinux) return "linux";
 	return "unknown";
 }
 
@@ -804,7 +800,7 @@ interface SystemFontOptions {
 }
 
 // 注: この関数は現在使用されていませんが、将来的なカスタマイズのために残しています
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- currently unused; kept for future customization
 async function getSystemFonts(
 	options: SystemFontOptions = {},
 ): Promise<string[]> {
@@ -2419,7 +2415,7 @@ export class SettingsPanelModal extends Modal {
 								cls: "tategaki-settings-item-disabled-reason",
 								text: "Typewriter スクロール中は選択方法が一時的にクリック優先になります。Typewriter スクロールをオフにすると、保存されている設定に戻ります。",
 							});
-							twDisabledReason.style.display = "none";
+							twDisabledReason.setCssStyles({ display: "none" });
 
 							refreshSelectionModeState = () => {
 								const tw =
@@ -2461,7 +2457,7 @@ export class SettingsPanelModal extends Modal {
 							cls: "tategaki-settings-section-disabled-banner tategaki-settings-item-disabled-reason",
 							text: sp(typewriterDisabledReason),
 						});
-						banner.style.display = "";
+						banner.setCssStyles({ display: "" });
 					}
 					this.createSettingItem(
 						content,

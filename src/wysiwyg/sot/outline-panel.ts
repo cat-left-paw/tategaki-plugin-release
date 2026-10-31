@@ -23,7 +23,7 @@ export class SoTOutlinePanel {
 	constructor(parent: HTMLElement, callbacks: OutlineCallbacks) {
 		this.callbacks = callbacks;
 		this.rootEl = parent.createDiv("tategaki-sot-outline-panel");
-		this.rootEl.style.display = "none";
+		this.rootEl.setCssStyles({ display: "none" });
 		this.rootEl.setAttribute("role", "dialog");
 		this.rootEl.setAttribute("aria-label", t("outline.title"));
 		this.rootEl.addEventListener("pointerdown", (event) => {
@@ -53,14 +53,14 @@ export class SoTOutlinePanel {
 
 	open(): void {
 		this.isOpen = true;
-		this.rootEl.style.display = "";
+		this.rootEl.setCssStyles({ display: "" });
 		this.refresh();
 	}
 
 	close(): void {
 		if (!this.isOpen) return;
 		this.isOpen = false;
-		this.rootEl.style.display = "none";
+		this.rootEl.setCssStyles({ display: "none" });
 		this.listEl.replaceChildren();
 		this.callbacks.onClose?.();
 	}

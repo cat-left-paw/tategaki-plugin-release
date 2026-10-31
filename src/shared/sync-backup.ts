@@ -352,7 +352,7 @@ function fnv1a32Hex(input: string): string {
 	/**
 	 * 旧フォーマット用タイムスタンプ（後方互換性のため保持）
 	 */
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for backward compatibility with the old timestamp format
 	function formatTimestamp(date: Date): string {
 		const yyyy = date.getFullYear();
 		const mm = String(date.getMonth() + 1).padStart(2, "0");
@@ -464,7 +464,7 @@ function allocateUniquePath(app: App, desiredPath: string): string {
 	 * 旧: シンプルなバックアップ削除（keepLatest件を保持）
 	 * @deprecated 使用日ベースの pruneOldBackupsUsageDayBased を使用してください
 	 */
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- deprecated helper kept for backward compatibility
 	async function pruneOldBackups(
 		app: App,
 		backupFolderPath: string,

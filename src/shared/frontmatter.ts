@@ -22,7 +22,7 @@ const FRONTMATTER_REGEX = /^---\s*\n([\s\S]*?)\n---\s*\n/;
  */
 function getObsidianParseYaml(): ((yaml: string) => unknown) | null {
 	try {
-		// eslint-disable-next-line @typescript-eslint/no-var-requires
+		// eslint-disable-next-line @typescript-eslint/no-var-requires -- obsidian is loaded lazily because the module does not exist in the ts-node test environment
 		const obs = require("obsidian") as Record<string, unknown>;
 		const fn = obs.parseYaml;
 		return typeof fn === "function"

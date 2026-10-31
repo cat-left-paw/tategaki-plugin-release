@@ -1,12 +1,11 @@
 {
 	"name": "tategaki-plugin",
-	"version": "1.3.3",
+	"version": "1.3.4",
 	"description": "This is a tategaki plugin for Obsidian (https://github.com/cat-left-paw/tategaki-plugin-release)",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
-		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"test": "npx ts-node src/tests.ts"
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
 	},
 	"keywords": [],
 	"author": "",
