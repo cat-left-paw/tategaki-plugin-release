@@ -35,7 +35,7 @@ export type SoTPointerContext = {
 	focusInputSurface: (shouldFocus: boolean) => void;
 	syncSelectionToCe: () => void;
 	toggleHeadingFold: (lineIndex: number) => void;
-	toggleTaskForLineElement: (lineEl: HTMLElement) => void;
+	toggleTaskForLineElement: (lineEl: HTMLElement) => boolean | void;
 	openHref: (href: string) => void;
 	getPointerState: () => SoTPointerState;
 	setPointerState: (state: Partial<SoTPointerState>) => void;
@@ -162,8 +162,7 @@ export class SoTPointerHandler {
 				".tategaki-sot-line",
 			) as HTMLElement | null;
 			if (lineEl) {
-				this.context.toggleTaskForLineElement(lineEl);
-				this.context.focusInputSurface(true);
+				if (this.context.toggleTaskForLineElement(lineEl) !== false) this.context.focusInputSurface(true);
 			}
 			return;
 		}

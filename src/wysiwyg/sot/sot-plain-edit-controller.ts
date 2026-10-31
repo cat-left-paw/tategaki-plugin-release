@@ -1,4 +1,7 @@
+import { ChangeSet } from "@codemirror/state";
+import type { MarkdownView, TFile } from "obsidian";
 import type { LineRange } from "./line-ranges";
+import { checkSoTWrite } from "./sot-write-guard";
 import type { SoTEditor } from "./sot-editor";
 import { resolveSoTFocusBlockForLineIndex } from "./sot-focus-block-resolver";
 import { resolveSoTPlainEditHomeEndSelection } from "./sot-plain-edit-navigation";
@@ -20,6 +23,8 @@ type PlainEditOverlayRect = {
 };
 
 type PlainEditHost = {
+	currentFile?: TFile | null;
+	pairedMarkdownView?: MarkdownView | null;
 	derivedRootEl: HTMLElement | null;
 	plainEditOverlayEl: HTMLTextAreaElement | null;
 	plainEditRange: PlainEditRange | null;
@@ -61,6 +66,7 @@ type PlainEditHost = {
 
 const isImeCompositionKey = (event: KeyboardEvent): boolean =>
 	event.isComposing ||
+	event.keyCode === 229 ||
 	event.key === "Process" ||
 	event.key === "Unidentified";
 
@@ -75,6 +81,53 @@ export class SoTPlainEditController {
 	private readonly fixedOverlaySize = false;
 	private overlayFixedExpandRaf: number | null = null;
 	private shiftedElements: HTMLElement[] = [];
+	private retainedEdit = false;
+	private blockedComposition: { value: string; start: number; end: number; range: PlainEditRange | null } | null = null;
+
+	private restoreBlockedComposition(): void {
+		const blocked = this.blockedComposition, overlay = this.host.plainEditOverlayEl;
+		if (!blocked || !overlay || blocked.range !== this.host.plainEditRange) return;
+		overlay.value = blocked.value;
+		overlay.setSelectionRange(blocked.start, blocked.end);
+	}
+
+	/** A rejected composition can lose compositionend after restoring the textarea. */
+	private endBlockedComposition(restore = true): void {
+		if (!this.blockedComposition) return;
+		if (restore) this.restoreBlockedComposition();
+		this.blockedComposition = null;
+		this.host.plainEditComposing = false;
+	}
+
+	hasUnsavedText(): boolean {
+		return !!this.host.plainEditRange && !!this.host.plainEditOverlayEl &&
+			this.host.plainEditOverlayEl.value !== this.host.plainEditRange.originalText;
+	}
+
+	private checkWrite(closing = false): boolean {
+		const retained = !closing && this.hasUnsavedText();
+		if (checkSoTWrite(this.host.sotEditor, retained)) return true;
+		this.retainedEdit = retained;
+		return false;
+	}
+
+	/** Validate the opened range, including when a replacement also joins a neighbour. */
+	private checkTarget(closing = false): boolean {
+		const range = this.host.plainEditRange;
+		const doc = this.host.sotEditor?.getDoc();
+		const sameFile = !!this.host.currentFile &&
+			this.host.pairedMarkdownView?.file?.path === this.host.currentFile.path;
+		const sameText = !!range && doc !== undefined && range.from >= 0 &&
+			range.to <= doc.length && doc.slice(range.from, range.to) === range.originalText;
+		// Plain fields span whole lines; an empty range compares equal at any position.
+		const sameLines = !!range && doc !== undefined &&
+			(range.from === 0 || doc[range.from - 1] === "\n") &&
+			(range.to === doc.length || doc[range.to] === "\n");
+		if (sameFile && sameText && sameLines) return true;
+		this.retainedEdit = !closing && this.hasUnsavedText();
+		this.host.sotEditor?.notifyTargetChanged?.(this.retainedEdit, closing);
+		return false;
+	}
 
 	constructor(host: PlainEditHost) {
 		this.host = host;
@@ -102,15 +155,43 @@ export class SoTPlainEditController {
 				}
 				event.stopPropagation();
 			});
-			overlay.addEventListener("compositionstart", () => {
+			overlay.addEventListener("beforeinput", (event) => {
+				const composingInput = event.isComposing || event.inputType === "insertCompositionText" || event.inputType === "deleteCompositionText";
+				if (this.blockedComposition && !composingInput) {
+					// This may be the commit of the rejected IME, with no compositionend.
+					event.preventDefault();
+					event.stopPropagation();
+					this.endBlockedComposition();
+					return;
+				}
+				if (this.blockedComposition || (!this.host.plainEditComposing && !this.checkWrite())) {
+					event.preventDefault();
+					event.stopPropagation();
+				}
+			});
+			overlay.addEventListener("compositionstart", (event) => {
+				if (this.blockedComposition && this.blockedComposition.range !== this.host.plainEditRange) this.endBlockedComposition(false);
+				if (!this.checkWrite()) {
+					if (!this.blockedComposition) this.blockedComposition = { value: overlay.value, start: overlay.selectionStart, end: overlay.selectionEnd, range: this.host.plainEditRange };
+					event.preventDefault();
+					event.stopPropagation();
+					return;
+				}
+				this.endBlockedComposition(false);
 				this.host.plainEditComposing = true;
 				this.markOverlayInputActive();
 			});
 			overlay.addEventListener("compositionend", () => {
 				this.host.plainEditComposing = false;
+				if (this.blockedComposition) {
+					this.endBlockedComposition();
+					return;
+				}
 				this.markOverlayInputActive();
 			});
+			overlay.addEventListener("blur", () => this.endBlockedComposition());
 			overlay.addEventListener("keydown", (event) => {
+				if (this.blockedComposition && !isImeCompositionKey(event)) this.endBlockedComposition();
 				if (event.key === "Escape") {
 					event.preventDefault();
 					event.stopPropagation();
@@ -179,6 +260,8 @@ export class SoTPlainEditController {
 				event.stopPropagation();
 			});
 			overlay.addEventListener("input", () => {
+				if (this.blockedComposition) { this.restoreBlockedComposition(); return; }
+				if (!this.hasUnsavedText()) this.retainedEdit = false;
 				this.adjustOverlaySize();
 				this.markOverlayInputActive();
 			});
@@ -188,6 +271,9 @@ export class SoTPlainEditController {
 	}
 
 	destroyOverlay(): void {
+		this.endBlockedComposition(false);
+		this.blockedComposition = null;
+		this.retainedEdit = false;
 		this.clearShiftedElements();
 		if (this.host.plainEditOverlayEl) {
 			this.host.plainEditOverlayEl.remove();
@@ -479,7 +565,7 @@ export class SoTPlainEditController {
 		if (!targetRange) return false;
 		const offset =
 			direction === "prev" ? targetRange.to - targetRange.from : 0;
-		this.commit(true, false);
+		if (!this.commit(true, false)) return true;
 		const targetPos = targetRange.from + Math.max(0, offset);
 		this.host.setSelectionNormalized(targetPos, targetPos);
 		this.startFromSelection();
@@ -601,14 +687,20 @@ export class SoTPlainEditController {
 		nextPos: number
 	): void {
 		if (!this.host.sotEditor) return;
+		if (!this.checkWrite() || !this.checkTarget()) return;
 		this.host.updatePendingText("", true);
 		this.host.immediateRender = true;
 		this.host.plainEditCommitting = true;
 		try {
-			this.host.sotEditor.replaceRange(from, to, text);
+			if (this.host.sotEditor.replaceRange(from, to, text) === false) {
+				this.retainedEdit = this.hasUnsavedText();
+				this.host.sotEditor.notifyWriteBlocked?.(this.retainedEdit);
+				return;
+			}
 		} finally {
 			this.host.plainEditCommitting = false;
 		}
+		this.retainedEdit = false;
 		this.clearTargets();
 		this.host.plainEditRange = null;
 		if (this.host.plainEditOverlayEl) {
@@ -620,14 +712,10 @@ export class SoTPlainEditController {
 
 	clearTargets(): void {
 		this.clearShiftedElements();
-		if (!this.host.plainEditRange) return;
-		for (
-			let i = this.host.plainEditRange.startLine;
-			i <= this.host.plainEditRange.endLine;
-			i += 1
-		) {
-			const lineEl = this.host.getLineElement(i);
-			if (!lineEl) continue;
+		const targets = this.host.derivedRootEl?.querySelectorAll<HTMLElement>(
+			".tategaki-plain-overlay-target, [data-plain-mode]"
+		) ?? [];
+		for (const lineEl of Array.from(targets)) {
 			lineEl.classList.remove("tategaki-plain-overlay-target");
 			lineEl.removeAttribute("data-plain-mode");
 		}
@@ -823,7 +911,7 @@ export class SoTPlainEditController {
 		if (!this.host.sourceModeEnabled) return;
 		if (this.host.plainEditCommitting) return;
 		if (!this.host.derivedRootEl || !this.host.plainEditOverlayEl) return;
-		const next = this.getRangeFromSelection();
+		let next = this.getRangeFromSelection();
 		if (!next) return;
 		if (
 			this.host.plainEditRange &&
@@ -842,12 +930,31 @@ export class SoTPlainEditController {
 			return;
 		}
 
+		this.endBlockedComposition();
 		if (this.host.plainEditRange) {
-			this.commit(true, false);
+			const range = this.host.plainEditRange;
+			const selection = this.host.sotEditor?.getSelection();
+			const oldLength = this.host.sotEditor?.getDoc().length ?? 0;
+			const value = this.host.plainEditOverlayEl.value;
+			const changed = this.hasUnsavedText();
+			if ((this.retainedEdit && changed) || !this.commit(true, false)) return;
+			// replaceRange selects the inserted text's end. Keep the requested destination.
+			if (changed && selection) {
+				const changes = ChangeSet.of({ from: range.from, to: range.to, insert: value }, oldLength);
+				this.host.plainEditCommitting = true;
+				try {
+					this.host.setSelectionNormalized(changes.mapPos(selection.anchor, 1), changes.mapPos(selection.head, 1));
+				} finally {
+					this.host.plainEditCommitting = false;
+				}
+			}
+			next = this.getRangeFromSelection();
+			if (!next) return;
 		}
 
 		const doc = this.host.sotEditor?.getDoc() ?? "";
 		const text = doc.slice(next.from, next.to);
+		this.host.plainEditComposing = false;
 		this.host.plainEditOverlayEl.value = text;
 		this.host.plainEditOverlayEl.style.display = "";
 		const isLeafActive = this.host.isLeafActive?.() ?? true;
@@ -874,15 +981,29 @@ export class SoTPlainEditController {
 		this.adjustOverlaySize();
 	}
 
-	commit(save: boolean, updateSelection: boolean): void {
-		if (this.host.plainEditCommitting) return;
+	/** Rejection can arrive synchronously inside commit(), so do not re-enter it. */
+	discardRejectedEdit(): void {
+		this.endBlockedComposition(false);
+		this.retainedEdit = false;
+		this.clearTargets();
+		this.host.plainEditRange = null;
+		if (this.host.plainEditOverlayEl) {
+			this.host.plainEditOverlayEl.value = "";
+			this.host.plainEditOverlayEl.style.display = "none";
+		}
+		this.resetOverlayInputState();
+	}
+
+	commit(save: boolean, updateSelection: boolean, closing = false): boolean {
+		if (this.host.plainEditCommitting) return false;
 		if (
 			!this.host.plainEditRange ||
 			!this.host.plainEditOverlayEl ||
 			!this.host.sotEditor
 		) {
-			return;
+			return true;
 		}
+		if (closing) this.endBlockedComposition();
 		this.host.plainEditCommitting = true;
 		try {
 			const range = this.host.plainEditRange;
@@ -905,7 +1026,16 @@ export class SoTPlainEditController {
 			const shouldUpdateSelection = updateSelection && selectionInside;
 
 			if (save && value !== range.originalText) {
-				this.host.sotEditor.replaceRange(range.from, range.to, value);
+				if (!this.checkWrite(closing) || !this.checkTarget(closing)) {
+					if (closing) this.discardRejectedEdit();
+					return false;
+				}
+				if (this.host.sotEditor.replaceRange(range.from, range.to, value) === false) {
+					this.retainedEdit = !closing && this.hasUnsavedText();
+					this.host.sotEditor.notifyWriteBlocked?.(this.retainedEdit);
+					if (closing) this.discardRejectedEdit();
+					return false;
+				}
 			}
 
 			if (shouldUpdateSelection) {
@@ -925,6 +1055,8 @@ export class SoTPlainEditController {
 			this.host.plainEditRange = null;
 			this.host.plainEditOverlayEl.style.display = "none";
 			this.resetOverlayInputState();
+			this.retainedEdit = false;
+			return true;
 		} finally {
 			this.host.plainEditCommitting = false;
 		}
@@ -939,7 +1071,11 @@ export class SoTPlainEditController {
 			if (!target) return;
 			if (this.host.plainEditOverlayEl.contains(target)) return;
 			if (!this.host.derivedRootEl?.contains(target)) return;
-			this.commit(true, false);
+			// Do not run a task or other pointer command after a refused field commit.
+			if (!this.commit(true, false)) {
+				event.preventDefault();
+				event.stopPropagation();
+			}
 		};
 		document.addEventListener(
 			"pointerdown",

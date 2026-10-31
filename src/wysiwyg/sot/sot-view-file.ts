@@ -1,6 +1,6 @@
 import { Notice } from "obsidian";
-import type { MarkdownView, TFile } from "obsidian";
 import { t } from "../../shared/i18n";
+import type { TFile } from "obsidian";
 import type TategakiV2Plugin from "../../core/plugin";
 import type { SoTWorkspaceController } from "./sot-workspace-controller";
 
@@ -18,7 +18,6 @@ export type SoTFileHost = {
 		};
 	};
 	pairedMarkdownLeaf: import("obsidian").WorkspaceLeaf | null;
-	ensureMarkdownViewForFile: (file: TFile) => Promise<MarkdownView | null>;
 };
 
 export async function openFile(host: SoTFileHost, file: TFile): Promise<void> {
@@ -81,32 +80,6 @@ export async function toggleReadingMode(host: SoTFileHost): Promise<void> {
 
 export async function switchToFile(host: SoTFileHost, file: TFile): Promise<void> {
 	await host.workspaceController.switchToFile(file);
-}
-
-export async function activateMarkdownLeafForCommand(
-	host: SoTFileHost
-): Promise<MarkdownView | null> {
-	if (!host.currentFile) {
-		new Notice(t("notice.targetFileNotFoundAlt"), 2500);
-		return null;
-	}
-	const markdownView = await host.ensureMarkdownViewForFile(host.currentFile);
-	if (!markdownView || !host.pairedMarkdownLeaf) {
-		new Notice(t("notice.markdownViewMissingExecute"), 2500);
-		return null;
-	}
-	host.app.workspace.setActiveLeaf(host.pairedMarkdownLeaf, {
-		focus: true,
-	});
-	markdownView.editor?.focus();
-	return markdownView;
-}
-
-export async function ensureMarkdownViewForFile(
-	host: SoTFileHost,
-	file: TFile
-): Promise<MarkdownView | null> {
-	return await host.workspaceController.ensureMarkdownViewForFile(file);
 }
 
 export function findMarkdownLeafForFile(

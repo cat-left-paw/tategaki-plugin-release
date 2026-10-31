@@ -426,6 +426,12 @@ const jaDict = {
 		"Markdown ビューが見つからないため実行できません。",
 	"notice.markdownPairMissingSwitch":
 		"ペアの Markdown ビューが見つからないため切り替えできません。",
+	"notice.sotReadingViewInputRetained": "書き込みませんでした（Markdownの編集画面が閲覧表示のため）。入力欄の文は残しています。",
+	"notice.sotPlainTargetChangedRetained": "本文が外で変わったため、書き込みませんでした。入力欄の文は残しています。必要ならコピーしてから入力欄を閉じてください。",
+	"notice.sotPlainTargetChanged": "本文が外で変わったため、書き込みませんでした。",
+	"notice.sotPlainTargetChangedClosed": "本文が外で変わったため、入力欄の文を書かずに閉じました。入力は保存されていません。",
+	"notice.sotEditingModeFailed": "Markdownの画面を編集の表示に切り替えられなかったため、開けませんでした。",
+	"notice.sotReadingViewWriteBlocked": "書き込みませんでした（Markdownの編集画面が閲覧表示のため）。入力は保存されていません。",
 	"notice.fileSwitchFailed": "ファイル切り替えに失敗しました。",
 	"notice.markdownPairMismatchClose":
 		"ペアの Markdown ビューが対象ファイルと一致しないため閉じます。",
@@ -929,6 +935,12 @@ const enDict: Record<I18nKey, string> = {
 		"Cannot run because no Markdown view was found.",
 	"notice.markdownPairMissingSwitch":
 		"Cannot switch because the paired Markdown view was not found.",
+	"notice.sotReadingViewInputRetained": "Not written: the paired Markdown pane is in reading view. The text remains in the input field.",
+	"notice.sotPlainTargetChangedRetained": "Not written because the source changed outside this field. The text remains in the input field. If needed, copy it before closing the field.",
+	"notice.sotPlainTargetChanged": "Not written because the source changed outside this field.",
+	"notice.sotPlainTargetChangedClosed": "The source changed outside this field. The field was closed without writing its text. This input has not been saved.",
+	"notice.sotEditingModeFailed": "Could not open: the paired Markdown pane could not switch to editing view.",
+	"notice.sotReadingViewWriteBlocked": "Not written: the paired Markdown pane is in reading view. Your input has not been saved.",
 	"notice.fileSwitchFailed": "Failed to switch file.",
 	"notice.markdownPairMismatchClose":
 		"Closing because the paired Markdown view does not match the target file.",

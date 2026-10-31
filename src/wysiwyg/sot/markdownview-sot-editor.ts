@@ -8,7 +8,8 @@ import {
 } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { redo, undo } from "@codemirror/commands";
-import type { MarkdownView } from "obsidian";
+import { Notice, type MarkdownView } from "obsidian";
+import { t } from "../../shared/i18n";
 import type { SoTChange, SoTEditor, SoTSelection, SoTUpdate } from "./sot-editor";
 
 type Listener = (update: SoTUpdate) => void;
@@ -33,7 +34,9 @@ export class MarkdownViewSoTEditor implements SoTEditor {
 	private pendingSelectionRollbackGuard: PendingSelectionRollbackGuard | null =
 		null;
 
-	constructor(markdownView: MarkdownView) {
+	private readingNotice: Notice | null = null;
+
+	constructor(private readonly markdownView: MarkdownView) {
 		const editorView = (markdownView as MarkdownViewWithCodeMirror).editor?.cm;
 		if (!editorView) {
 			this.view = null;
@@ -49,7 +52,7 @@ export class MarkdownViewSoTEditor implements SoTEditor {
 	}
 
 	setDoc(text: string): void {
-		if (!this.view) return;
+		if (!this.view || !this.allowWrite()) return;
 		const docLength = this.view.state.doc.length;
 		const safePos = Math.max(0, text.length);
 		this.view.dispatch({
@@ -92,8 +95,8 @@ export class MarkdownViewSoTEditor implements SoTEditor {
 		return this.view;
 	}
 
-	replaceRange(from: number, to: number, insert: string): void {
-		if (!this.view) return;
+	replaceRange(from: number, to: number, insert: string): boolean {
+		if (!this.view || !this.allowWrite()) return false;
 		const docLength = this.view.state.doc.length;
 		const safeFrom = Math.max(0, Math.min(from, docLength));
 		const safeTo = Math.max(safeFrom, Math.min(to, docLength));
@@ -107,15 +110,16 @@ export class MarkdownViewSoTEditor implements SoTEditor {
 				Transaction.userEvent.of("tategaki.sot.replaceRange"),
 			],
 		});
+		return true;
 	}
 
 	undo(): void {
-		if (!this.view) return;
+		if (!this.view || !this.allowWrite()) return;
 		undo(this.view);
 	}
 
 	redo(): void {
-		if (!this.view) return;
+		if (!this.view || !this.allowWrite()) return;
 		redo(this.view);
 	}
 
@@ -134,6 +138,37 @@ export class MarkdownViewSoTEditor implements SoTEditor {
 			});
 		}
 		this.view = null;
+	}
+
+	canWrite(): boolean {
+		return !!this.view && this.markdownView.getMode() === "source";
+	}
+
+	notifyWriteBlocked(retained = false): void {
+		this.showWriteNotice(t(retained ? "notice.sotReadingViewInputRetained" : "notice.sotReadingViewWriteBlocked"));
+	}
+
+	notifyTargetChanged(retained = false, closing = false): void {
+		this.showWriteNotice(t(closing ? "notice.sotPlainTargetChangedClosed" :
+			retained ? "notice.sotPlainTargetChangedRetained" : "notice.sotPlainTargetChanged"));
+	}
+
+	private showWriteNotice(message: string): void {
+		// Coalesce while the Notice is visible, without a timer or retrying input.
+		if (!this.readingNotice?.noticeEl.isConnected) {
+			this.readingNotice = new Notice(message);
+		} else {
+			this.readingNotice.setMessage(message);
+		}
+	}
+
+	private allowWrite(): boolean {
+		if (this.canWrite()) return true;
+		this.notifyWriteBlocked();
+		for (const listener of this.listeners) {
+			listener({ docChanged: false, selectionChanged: false, writeRejected: true });
+		}
+		return false;
 	}
 
 	private attachUpdateListener(): void {

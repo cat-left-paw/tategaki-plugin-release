@@ -12,6 +12,7 @@ import type { KeymapEventHandler, Scope } from "obsidian";
 import { t } from "../../shared/i18n";
 import { FileSwitchModal } from "../../shared/ui/file-switch-modal";
 import { NewNoteModal } from "../../shared/ui/new-note-modal";
+import { requireMarkdownEditingMode, MarkdownEditingModeError } from "./markdown-editing-mode";
 import { MarkdownViewSoTEditor } from "./markdownview-sot-editor";
 import { debugError } from "../../shared/logger";
 
@@ -70,6 +71,7 @@ type SoTWorkspaceHost = {
 	attachSoTEditor: (editor: MarkdownViewSoTEditor) => void;
 	scheduleRender: (force?: boolean) => void;
 	focusInputSurface: (preventScroll?: boolean) => void;
+	disablePlainEditMode: () => void;
 };
 
 export class SoTWorkspaceController {
@@ -80,9 +82,23 @@ export class SoTWorkspaceController {
 		this.host = host;
 	}
 
+	private isOpeningViewCurrent(): boolean {
+		return this.host.leaf.view === (this.host as unknown);
+	}
+
 	async openFile(file: TFile): Promise<void> {
 		this.host.showLoadingOverlay();
-		const markdownView = await this.ensureMarkdownViewForFile(file);
+		let markdownView: MarkdownView | null;
+		try {
+			markdownView = await this.ensureMarkdownViewForFile(file);
+			if (!this.isOpeningViewCurrent()) return;
+		} catch (error) {
+			if (!this.isOpeningViewCurrent()) return;
+			if (!(error instanceof MarkdownEditingModeError)) throw error;
+			new Notice(t("notice.sotEditingModeFailed"), 2500);
+			this.host.closeSelf();
+			return;
+		}
 		if (!markdownView) {
 			new Notice(t("notice.markdownViewMissingClose"), 2500);
 			this.host.closeSelf();
@@ -371,6 +387,8 @@ export class SoTWorkspaceController {
 		}
 		this.host.suppressPairCheck = true;
 		try {
+			// Flush or reject the old file's plain field before the shared CM loads another file.
+			this.host.disablePlainEditMode();
 			await pairedLeaf.openFile(file, {
 				active: false,
 				state: { mode: "source" },
@@ -388,13 +406,17 @@ export class SoTWorkspaceController {
 		}
 	}
 
+	/** Pair construction only; passive workspace checks never enter editing. */
 	async ensureMarkdownViewForFile(
-		file: TFile
+		file: TFile,
 	): Promise<MarkdownView | null> {
 		if (
 			this.host.pairedMarkdownView &&
 			this.host.pairedMarkdownView.file?.path === file.path
 		) {
+			if (!this.host.pairedMarkdownLeaf) return null;
+			await requireMarkdownEditingMode(this.host.pairedMarkdownLeaf, this.host.pairedMarkdownView);
+			if (!this.isOpeningViewCurrent()) return null;
 			if (this.host.pairedMarkdownLeaf) {
 				this.applyPairedMarkdownBadge(
 					this.host.pairedMarkdownLeaf,
@@ -407,6 +429,8 @@ export class SoTWorkspaceController {
 		if (existingLeaf) {
 			const view = existingLeaf.view;
 			if (view instanceof MarkdownView) {
+				await requireMarkdownEditingMode(existingLeaf, view);
+				if (!this.isOpeningViewCurrent()) return null;
 				const markdownView = view as MarkdownViewWithCodeMirror;
 				if (!markdownView.editor?.cm) {
 					return null;
@@ -422,7 +446,10 @@ export class SoTWorkspaceController {
 			active: false,
 			state: { mode: "source" },
 		});
+		if (!this.isOpeningViewCurrent()) return null;
 		if (leaf.view instanceof MarkdownView) {
+			await requireMarkdownEditingMode(leaf, leaf.view);
+			if (!this.isOpeningViewCurrent()) return null;
 			const markdownView = leaf.view as MarkdownViewWithCodeMirror;
 			if (!markdownView.editor?.cm) {
 				return null;

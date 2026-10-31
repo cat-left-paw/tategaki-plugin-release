@@ -1,3 +1,4 @@
+import { checkSoTWrite } from "./sot/sot-write-guard";
 import {
 	ItemView,
 	Scope,
@@ -1990,8 +1991,9 @@ export class SoTWysiwygView extends ItemView {
 		return box;
 	}
 
-	private toggleTaskForLineElement(lineEl: HTMLElement): void {
-		if (!this.sotEditor) return;
+	private toggleTaskForLineElement(lineEl: HTMLElement): boolean {
+		if (!this.checkUserWrite()) return false;
+		if (!this.sotEditor) return false;
 		const lineFrom = Number.parseInt(lineEl.dataset.from ?? "0", 10);
 		const lineTo = Number.parseInt(lineEl.dataset.to ?? "0", 10);
 		const doc = this.sotEditor.getDoc();
@@ -1999,9 +2001,9 @@ export class SoTWysiwygView extends ItemView {
 		const safeTo = Math.max(safeFrom, Math.min(lineTo, doc.length));
 		const lineText = doc.slice(safeFrom, safeTo);
 		const match = lineText.match(/^[ \t]*([-+*])[ \t]+\[([ xX])\]/);
-		if (!match) return;
+		if (!match) return false;
 		const bracketPos = lineText.indexOf("[", match.index ?? 0);
-		if (bracketPos < 0 || bracketPos + 2 >= lineText.length) return;
+		if (bracketPos < 0 || bracketPos + 2 >= lineText.length) return false;
 		const statePos = bracketPos + 1;
 		const current = lineText[statePos] ?? " ";
 		const next = current.toLowerCase() === "x" ? " " : "x";
@@ -2012,6 +2014,7 @@ export class SoTWysiwygView extends ItemView {
 		this.immediateRender = true;
 		this.sotEditor.replaceRange(absPos, absPos + 1, next);
 		this.sotEditor.setSelection(prevSelection);
+		return true;
 	}
 
 	private toggleHeadingFold(lineIndex: number): void {
@@ -5979,7 +5982,7 @@ export class SoTWysiwygView extends ItemView {
 			window.clearTimeout(this.finishRenderMathTimer);
 			this.finishRenderMathTimer = null;
 		}
-		this.commitPlainEdit(true, false);
+		this.commitPlainEdit(true, false, true);
 		this.unregisterPlainEditOutsidePointerHandler();
 		this.destroyPlainEditOverlay();
 		if (this.plainEditRange) {
@@ -6140,9 +6143,40 @@ export class SoTWysiwygView extends ItemView {
 		return () => this.runCommand(action, options);
 	}
 
+	private checkUserWrite(): boolean {
+		return checkSoTWrite(this.sotEditor, this.sourceModeEnabled && this.plainEditController.hasUnsavedText());
+	}
+
+	/** CM commands must consume the field before changing its source range. */
+	private prepareDirectWriteCommand(): boolean {
+		if (this.sourceModeEnabled && this.plainEditController.hasUnsavedText()) {
+			// Keep the committed selection inside the field, then restore the input surface.
+			if (!this.plainEditController.commit(true, false)) return false;
+			this.plainEditController.startFromSelection();
+		}
+		return this.checkUserWrite();
+	}
+
+	private runHistoryCommand(direction: "undo" | "redo"): void {
+		if (!this.prepareDirectWriteCommand()) return;
+		this.sotEditor?.[direction]();
+	}
+
+	private focusRefusedWriteCommand(): void {
+		this.focusInputSurface(true);
+	}
+
 	private createCommandAdapter(): CommandUiAdapter {
 		const wrap = (action: () => void | Promise<void>) =>
 			this.wrapCommand(action);
+		const write = (action: () => void | Promise<void>) => () => {
+			if (this.checkUserWrite()) this.runCommand(action);
+			else this.focusRefusedWriteCommand();
+		};
+		const directWrite = (action: () => void | Promise<void>) => () => {
+			if (this.prepareDirectWriteCommand()) this.runCommand(action);
+			else this.focusRefusedWriteCommand();
+		};
 		return {
 			app: this.app,
 			isReadOnly: () => !this.sotEditor,
@@ -6150,48 +6184,48 @@ export class SoTWysiwygView extends ItemView {
 			isInlineSelectionAllowed: () => this.isInlineSelectionAllowed(),
 			getWritingMode: () => this.writingMode,
 			toggleWritingMode: wrap(() => this.toggleWritingMode()),
-			toggleBold: wrap(() => this.toggleInlineStyle("bold")),
+			toggleBold: write(() => this.toggleInlineStyle("bold")),
 			isBoldActive: () => this.isInlineStyleActive("tategaki-md-strong"),
-			toggleItalic: wrap(() => this.toggleInlineStyle("italic")),
+			toggleItalic: write(() => this.toggleInlineStyle("italic")),
 			isItalicActive: () => this.isInlineStyleActive("tategaki-md-em"),
-			toggleStrikethrough: wrap(() => this.toggleInlineStyle("strike")),
+			toggleStrikethrough: write(() => this.toggleInlineStyle("strike")),
 			isStrikethroughActive: () =>
 				this.isInlineStyleActive("tategaki-md-strike"),
-			toggleHighlight: wrap(() => this.toggleInlineStyle("highlight")),
+			toggleHighlight: write(() => this.toggleInlineStyle("highlight")),
 			isHighlightActive: () =>
 				this.isInlineStyleActive("tategaki-md-highlight"),
-			toggleInlineCode: wrap(() => this.toggleInlineStyle("code")),
+			toggleInlineCode: write(() => this.toggleInlineStyle("code")),
 			isInlineCodeActive: () =>
 				this.isInlineStyleActive("tategaki-md-code"),
 			setHeading: (level: number) => {
-				this.runCommand(() => this.setHeading(level));
+				directWrite(() => this.setHeading(level))();
 			},
-			clearHeading: wrap(() => this.clearHeading()),
+			clearHeading: directWrite(() => this.clearHeading()),
 			getHeadingLevel: () => this.getHeadingLevel(),
-			toggleBulletList: wrap(() => this.toggleList("bullet")),
+			toggleBulletList: directWrite(() => this.toggleList("bullet")),
 			isBulletListActive: () => this.isBulletListActive(),
-			toggleTaskList: wrap(() => this.toggleList("task")),
+			toggleTaskList: directWrite(() => this.toggleList("task")),
 			isTaskListActive: () => this.isTaskListActive(),
-			toggleOrderedList: wrap(() => this.toggleList("ordered")),
+			toggleOrderedList: directWrite(() => this.toggleList("ordered")),
 			isOrderedListActive: () => this.isOrderedListActive(),
-			toggleBlockquote: wrap(() => this.toggleBlockquote()),
+			toggleBlockquote: directWrite(() => this.toggleBlockquote()),
 			isBlockquoteActive: () => this.isBlockquoteActive(),
-			toggleCodeBlock: wrap(() => this.toggleCodeBlock()),
+			toggleCodeBlock: directWrite(() => this.toggleCodeBlock()),
 			isCodeBlockActive: () => this.isCodeBlockActive(),
-			insertLink: wrap(() => this.insertLink()),
-			insertRuby: wrap(() => this.insertRuby()),
-			toggleTcy: wrap(() => this.toggleTcy()),
+			insertLink: write(() => this.insertLink()),
+			insertRuby: write(() => this.insertRuby()),
+			toggleTcy: write(() => this.toggleTcy()),
 			isTcyActive: () => this.isTcyActive(),
-			insertTcy: wrap(() => this.insertTcy()),
-			insertHorizontalRule: wrap(() => this.insertHorizontalRule()),
+			insertTcy: write(() => this.insertTcy()),
+			insertHorizontalRule: directWrite(() => this.insertHorizontalRule()),
 			openSettings: this.wrapCommand(() => this.openSettingsPanel(), {
 				skipFinalizeFocus: true,
 			}),
 			openOutline: () => {
 				this.openOutline();
 			},
-			clearTcy: wrap(() => this.clearTcy()),
-			clearFormatting: wrap(() => this.clearFormatting()),
+			clearTcy: write(() => this.clearTcy()),
+			clearFormatting: write(() => this.clearFormatting()),
 			toggleRuby: wrap(() => this.toggleRubyVisibility()),
 			isRubyEnabled: () =>
 				!this.plainTextViewEnabled &&
@@ -6199,17 +6233,17 @@ export class SoTWysiwygView extends ItemView {
 			openFileSwitcher: wrap(() => this.openFileSwitcher()),
 			toggleReadingMode: wrap(() => this.toggleReadingMode()),
 			isReadingMode: () => false,
-			undo: wrap(() => this.sotEditor?.undo()),
-			redo: wrap(() => this.sotEditor?.redo()),
+			undo: directWrite(() => this.runHistoryCommand("undo")),
+			redo: directWrite(() => this.runHistoryCommand("redo")),
 			canUndo: () => !!this.sotEditor,
 			canRedo: () => !!this.sotEditor,
 			toggleSourceMode: wrap(() => this.toggleSourceMode()),
 			isSourceMode: () => this.sourceModeEnabled,
 			toggleCeImeMode: wrap(() => this.toggleCeImeMode()),
 			isCeImeMode: () => this.ceImeMode,
-			cut: wrap(() => this.cutSelection()),
+			cut: write(() => this.cutSelection()),
 			copy: wrap(() => this.copySelection()),
-			paste: wrap(() => this.pasteFromClipboard()),
+			paste: write(() => this.pasteFromClipboard()),
 			selectAll: this.wrapCommand(() => this.selectAllText(), {
 				skipFinalizeFocus: true,
 			}),
@@ -6430,6 +6464,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private async cutSelection(): Promise<void> {
+		if (!this.checkUserWrite()) return;
 		if (this.isNativeSelectionEnabled()) {
 			if (this.ceImeMode) {
 				this.focusInputSurface(true);
@@ -6437,7 +6472,7 @@ export class SoTWysiwygView extends ItemView {
 			const text = this.getNativeSelectionText() || this.getSelectionText();
 			if (!text) return;
 			const copied = await this.writeTextToClipboard(text);
-			if (!copied) return;
+			if (!copied || !this.checkUserWrite()) return;
 			if (this.ceImeMode) {
 				const selection = this.syncSelectionFromCe();
 				if (!selection) return;
@@ -6453,7 +6488,7 @@ export class SoTWysiwygView extends ItemView {
 			const text = this.getSelectionText();
 			if (!text) return;
 			const copied = await this.writeTextToClipboard(text);
-			if (!copied) return;
+			if (!copied || !this.checkUserWrite()) return;
 			replacePlainEditSelection(this.plainEditOverlayEl, "", {
 				onResize: () => this.adjustPlainEditOverlaySize(),
 			});
@@ -6462,13 +6497,15 @@ export class SoTWysiwygView extends ItemView {
 		const text = this.getSelectionText();
 		if (!text) return;
 		const copied = await this.writeTextToClipboard(text);
-		if (!copied) return;
+		if (!copied || !this.checkUserWrite()) return;
 		this.replaceSelection("");
 	}
 
 	private async pasteFromClipboard(): Promise<void> {
+		if (!this.checkUserWrite()) return;
 		if (this.sourceModeEnabled && this.plainEditOverlayEl) {
 			const text = await this.readTextFromClipboard();
+			if (!this.checkUserWrite()) return;
 			if (!text) {
 				this.plainEditOverlayEl.focus({ preventScroll: true });
 				return;
@@ -6481,6 +6518,7 @@ export class SoTWysiwygView extends ItemView {
 		}
 		if (!this.sotEditor) return;
 		const text = await this.readTextFromClipboard();
+		if (!this.checkUserWrite()) return;
 		if (!text) {
 			return;
 		}
@@ -6523,6 +6561,7 @@ export class SoTWysiwygView extends ItemView {
 	private toggleInlineStyle(
 		kind: "bold" | "italic" | "strike" | "highlight" | "code",
 	): void {
+		if (!this.checkUserWrite()) return;
 		if (this.ceImeMode && !this.sourceModeEnabled) {
 			const selection = this.syncSelectionFromCe();
 			if (!selection) return;
@@ -6614,6 +6653,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private clearFormatting(): void {
+		if (!this.checkUserWrite()) return;
 		if (this.ceImeMode && !this.sourceModeEnabled) {
 			const selection = this.syncSelectionFromCe();
 			if (!selection) return;
@@ -7148,6 +7188,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private setHeading(level: number): void {
+		if (!this.prepareDirectWriteCommand()) return;
 		if (!this.sotEditor) return;
 		const normalizedLevel = Math.max(0, Math.min(level, 6));
 		const selection = this.sotEditor.getSelection();
@@ -7231,6 +7272,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private toggleList(kind: "bullet" | "ordered" | "task"): void {
+		if (!this.prepareDirectWriteCommand()) return;
 		if (!this.sotEditor) return;
 		const selection = this.sotEditor.getSelection();
 		const from = Math.min(selection.anchor, selection.head);
@@ -7320,6 +7362,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private toggleBlockquote(): void {
+		if (!this.prepareDirectWriteCommand()) return;
 		if (!this.sotEditor) return;
 		const selection = this.sotEditor.getSelection();
 		const from = Math.min(selection.anchor, selection.head);
@@ -7425,6 +7468,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private toggleCodeBlock(): void {
+		if (!this.prepareDirectWriteCommand()) return;
 		if (!this.sotEditor) return;
 		const selection = this.sotEditor.getSelection();
 		const from = Math.min(selection.anchor, selection.head);
@@ -7505,6 +7549,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private insertLink(): void {
+		if (!this.checkUserWrite()) return;
 		if (this.sourceModeEnabled && this.plainEditOverlayEl) {
 			const selection = getPlainEditSelectionRange(
 				this.plainEditOverlayEl,
@@ -7514,6 +7559,7 @@ export class SoTWysiwygView extends ItemView {
 				this.app,
 				selectedText,
 				(result: LinkInputResult) => {
+				if (!this.checkUserWrite()) return;
 					if (result.cancelled || !result.url) {
 						return;
 					}
@@ -7543,6 +7589,7 @@ export class SoTWysiwygView extends ItemView {
 			this.app,
 			selectedText,
 			(result: LinkInputResult) => {
+				if (!this.checkUserWrite()) return;
 				if (result.cancelled || !result.url) {
 					return;
 				}
@@ -7650,10 +7697,12 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private insertTcy(): void {
+		if (!this.checkUserWrite()) return;
 		runInsertTcyCommand(this);
 	}
 
 	private toggleTcy(): void {
+		if (!this.checkUserWrite()) return;
 		runToggleTcyCommand(this);
 	}
 
@@ -7662,10 +7711,12 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private clearTcy(): void {
+		if (!this.checkUserWrite()) return;
 		runClearTcyCommand(this);
 	}
 
 	private insertRuby(): void {
+		if (!this.checkUserWrite()) return;
 		if (this.sourceModeEnabled && this.plainEditOverlayEl) {
 			const selection = getPlainEditSelectionRange(
 				this.plainEditOverlayEl,
@@ -7682,6 +7733,7 @@ export class SoTWysiwygView extends ItemView {
 				this.app,
 				selectedText,
 				(result: RubyInputResult) => {
+				if (!this.checkUserWrite()) return;
 					if (result.cancelled) {
 						return;
 					}
@@ -7757,6 +7809,7 @@ export class SoTWysiwygView extends ItemView {
 			this.app,
 			displayText,
 			(result: RubyInputResult) => {
+				if (!this.checkUserWrite()) return;
 				if (result.cancelled) {
 					return;
 				}
@@ -7804,6 +7857,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private insertHorizontalRule(): void {
+		if (!this.prepareDirectWriteCommand()) return;
 		if (!this.sotEditor) return;
 		const selection = this.sotEditor.getSelection();
 		const from = Math.min(selection.anchor, selection.head);
@@ -7938,24 +7992,7 @@ export class SoTWysiwygView extends ItemView {
 		}
 	}
 
-	private async activateMarkdownLeafForCommand(): Promise<MarkdownView | null> {
-		if (!this.currentFile) {
-			new Notice(t("notice.targetFileNotFoundAlt"), 2500);
-			return null;
-		}
-		const markdownView = await this.ensureMarkdownViewForFile(
-			this.currentFile,
-		);
-		if (!markdownView || !this.pairedMarkdownLeaf) {
-			new Notice(t("notice.markdownViewMissingExecute"), 2500);
-			return null;
-		}
-		this.app.workspace.setActiveLeaf(this.pairedMarkdownLeaf, {
-			focus: true,
-		});
-		markdownView.editor?.focus();
-		return markdownView;
-	}
+
 
 	private openOutline(): void {
 		if (!this.outlinePanel) {
@@ -8516,7 +8553,7 @@ export class SoTWysiwygView extends ItemView {
 		if (!this.sourceModeEnabled) return;
 		this.sourceModeEnabled = false;
 		this.syncNativeSelectionDataset();
-		this.commitPlainEdit(true, true);
+		this.commitPlainEdit(true, true, true);
 		this.unregisterPlainEditOutsidePointerHandler();
 		if (this.plainEditOverlayEl) {
 			this.plainEditOverlayEl.style.display = "none";
@@ -8612,8 +8649,8 @@ export class SoTWysiwygView extends ItemView {
 		this.plainEditController.startFromSelection();
 	}
 
-	private commitPlainEdit(save: boolean, updateSelection: boolean): void {
-		this.plainEditController.commit(save, updateSelection);
+	private commitPlainEdit(save: boolean, updateSelection: boolean, closing = false): void {
+		this.plainEditController.commit(save, updateSelection, closing);
 	}
 
 	private registerPlainEditOutsidePointerHandler(): void {
@@ -9137,7 +9174,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private ensureCeTrailingNewline(): void {
-		if (!this.sotEditor) return;
+		if (!this.sotEditor || this.sotEditor.canWrite?.() === false) return;
 		const doc = this.sotEditor.getDoc();
 		if (doc.endsWith("\n")) return;
 		const baseLength = doc.length;
@@ -9146,12 +9183,12 @@ export class SoTWysiwygView extends ItemView {
 		this.ceImeAutoTrailingNewlineBaseLength = baseLength;
 		this.ceImeAutoTrailingNewlineTail = doc.slice(tailStart);
 		this.runCeMutation(() => {
-			this.sotEditor?.replaceRange(baseLength, baseLength, "\n");
+			if (this.sotEditor?.replaceRange(baseLength, baseLength, "\n") === false) this.ceImeAutoTrailingNewline = false;
 		});
 	}
 
 	private cleanupCeTrailingNewline(): void {
-		if (!this.sotEditor) return;
+		if (!this.sotEditor || this.sotEditor.canWrite?.() === false) return;
 		if (!this.ceImeAutoTrailingNewline) return;
 		this.ceImeAutoTrailingNewline = false;
 		const doc = this.sotEditor.getDoc();
@@ -9162,7 +9199,7 @@ export class SoTWysiwygView extends ItemView {
 		const tailStart = Math.max(0, baseLength - 64);
 		const tail = doc.slice(tailStart, baseLength);
 		if (tail !== this.ceImeAutoTrailingNewlineTail) return;
-		this.sotEditor.replaceRange(doc.length - 1, doc.length, "");
+		if (this.sotEditor.replaceRange(doc.length - 1, doc.length, "") === false) this.ceImeAutoTrailingNewline = true;
 	}
 
 	private getParagraphLineRangeForOffsets(
@@ -9227,9 +9264,11 @@ export class SoTWysiwygView extends ItemView {
 		if (this.shouldRequestTypewriterFollowForInput(text)) {
 			this.pendingCaretScroll = true;
 		}
+		let written: boolean | void = false;
 		this.runCeMutation(() => {
-			this.sotEditor?.replaceRange(start, end, text);
+			written = this.sotEditor?.replaceRange(start, end, text);
 		});
+		if (written === false) return;
 		this.scheduleCeParagraphRerender(start, end, start + text.length);
 	}
 
@@ -9326,7 +9365,9 @@ export class SoTWysiwygView extends ItemView {
 				if (!selection) return;
 				const from = Math.min(selection.anchor, selection.head);
 				const to = Math.max(selection.anchor, selection.head);
-				this.runCeMutation(() => this.replaceSelection("\n"));
+				let written = false;
+				this.runCeMutation(() => { written = this.replaceSelection("\n"); });
+				if (!written) return;
 				this.scheduleCeParagraphRerender(from, to, from + 1);
 				return;
 			}
@@ -9515,6 +9556,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private handleListOutlinerKeydown(event: KeyboardEvent): boolean {
+		if (event.key === "Tab" && !event.metaKey && !event.ctrlKey && !event.altKey && !this.checkUserWrite()) return true;
 		return handleListOutlinerKeydownForCe(
 			this.getListOutlinerCeBridgeHost(),
 			event,
@@ -9522,6 +9564,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	runListOutlinerAction(action: "move-up" | "move-down"): boolean {
+		if (!this.checkUserWrite()) return true;
 		return runListOutlinerActionForCe(
 			this.getListOutlinerCeBridgeHost(),
 			action,
@@ -9694,6 +9737,15 @@ export class SoTWysiwygView extends ItemView {
 		this.sotEditor?.destroy();
 		this.sotEditor = editor;
 		this.detachSoTListener = this.sotEditor.onUpdate((update) => {
+			if (update.writeRejected) {
+				if (this.plainEditCommitting) return;
+				this.pendingHold = false;
+				this.updatePendingText("", true);
+				this.overlayImeReplace?.cancel();
+				this.immediateRender = false;
+				this.scheduleRender();
+				return;
+			}
 			if (update.docChanged) {
 				const now = Date.now();
 				const suppressExternal =
@@ -9875,11 +9927,7 @@ export class SoTWysiwygView extends ItemView {
 		return { start, end };
 	}
 
-	private async ensureMarkdownViewForFile(
-		file: TFile,
-	): Promise<MarkdownView | null> {
-		return await this.workspaceController.ensureMarkdownViewForFile(file);
-	}
+
 
 	private findMarkdownLeafForFile(filePath: string): WorkspaceLeaf | null {
 		return this.workspaceController.findMarkdownLeafForFile(filePath);
@@ -11914,8 +11962,8 @@ export class SoTWysiwygView extends ItemView {
 		void this.app.workspace.openLinkText(trimmed, sourcePath, false);
 	}
 
-	private replaceSelection(text: string): void {
-		if (!this.sotEditor) return;
+	private replaceSelection(text: string): boolean {
+		if (!this.sotEditor) return false;
 		const softRange = this.getSoftSelectionRange();
 		const selection = this.sotEditor.getSelection();
 		let from = Math.min(selection.anchor, selection.head);
@@ -11966,13 +12014,14 @@ export class SoTWysiwygView extends ItemView {
 		) {
 			this.pendingCaretScroll = true;
 		}
-		this.sotEditor.replaceRange(from, to, text);
+		return this.sotEditor.replaceRange(from, to, text) !== false;
 	}
 
 	private handleOverlayEnter(
 		shiftKey: boolean,
 		pendingText: string,
 	): boolean {
+		if (!this.checkUserWrite()) return true;
 		if (!this.sotEditor) return false;
 		if (pendingText.length > 0) {
 			this.replaceSelection(pendingText);
@@ -12042,7 +12091,7 @@ export class SoTWysiwygView extends ItemView {
 		if (!this.sotEditor) return;
 		this.updatePendingText("", true);
 		this.immediateRender = true;
-		this.sotEditor.replaceRange(edit.from, edit.to, edit.insert);
+		if (this.sotEditor.replaceRange(edit.from, edit.to, edit.insert) === false) return;
 		const nextSelection = this.applyOrderedListRenumberChanges(
 			edit.renumberStartLine,
 			edit.renumberEndLine,
@@ -12078,7 +12127,7 @@ export class SoTWysiwygView extends ItemView {
 		if (softRange) {
 			this.updatePendingText("", true);
 			this.immediateRender = true;
-			this.sotEditor.replaceRange(softRange.from, softRange.to, "");
+			if (this.sotEditor.replaceRange(softRange.from, softRange.to, "") === false) return;
 			this.clearSoftSelection();
 			this.selectAllActive = false;
 			return;
@@ -12124,7 +12173,7 @@ export class SoTWysiwygView extends ItemView {
 		if (softRange) {
 			this.updatePendingText("", true);
 			this.immediateRender = true;
-			this.sotEditor.replaceRange(softRange.from, softRange.to, "");
+			if (this.sotEditor.replaceRange(softRange.from, softRange.to, "") === false) return;
 			this.clearSoftSelection();
 			this.selectAllActive = false;
 			return;
@@ -13008,6 +13057,7 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private handleCopyCut(event: ClipboardEvent, isCut: boolean): void {
+		if (isCut && !this.checkUserWrite()) { event.preventDefault(); event.stopPropagation(); return; }
 		if (!this.sotEditor) return;
 		if (this.softSelectionActive) {
 			const range = this.getSoftSelectionRange();
@@ -13061,6 +13111,11 @@ export class SoTWysiwygView extends ItemView {
 	}
 
 	private handlePaste(event: ClipboardEvent): void {
+		if (!this.checkUserWrite()) {
+			event.preventDefault();
+			event.stopPropagation();
+			return;
+		}
 		if (!this.sotEditor) return;
 		if (this.ceImeMode) {
 			event.preventDefault();

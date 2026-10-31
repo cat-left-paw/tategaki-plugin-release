@@ -6,6 +6,8 @@ export type SoTSelection = {
 };
 
 export type SoTUpdate = {
+	/** A refused write must remove optimistic derived DOM, without inventing a CM change. */
+	writeRejected?: boolean;
 	docChanged: boolean;
 	selectionChanged: boolean;
 	changes?: SoTChange[];
@@ -20,13 +22,17 @@ export type SoTChange = {
 };
 
 export interface SoTEditor {
+	/** Silent capability check; no Notice, dispatch or derived DOM update. */
+	canWrite?(): boolean;
+	notifyWriteBlocked?(retained?: boolean): void;
+	notifyTargetChanged?(retained?: boolean, closing?: boolean): void;
 	getDoc(): string;
 	setDoc(text: string): void;
 
 	getSelection(): SoTSelection;
 	setSelection(selection: SoTSelection): void;
 
-	replaceRange(from: number, to: number, insert: string): void;
+	replaceRange(from: number, to: number, insert: string): boolean | void;
 
 	undo(): void;
 	redo(): void;
