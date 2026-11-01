@@ -483,6 +483,14 @@
 	text-align-last: auto;
 }
 
+/* Inter-ideograph justification for the writing and reference (SoT) view.
+ * Was an inline style; moved here for Obsidian's community review
+ * (obsidianmd/no-static-styles-assignment). */
+.tategaki-sot-content-wrapper.text-justify-enabled,
+.tategaki-sot-derived-root.text-justify-enabled {
+	text-justify: inter-ideograph;
+}
+
 .tategaki-wysiwyg-editor .ProseMirror em {
 	font-style: italic !important;
 	background: none !important;

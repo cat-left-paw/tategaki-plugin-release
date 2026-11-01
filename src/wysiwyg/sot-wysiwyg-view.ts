@@ -1537,7 +1537,6 @@ export class SoTWysiwygView extends ItemView {
 		// 行末揃え（justify）
 		targetEl.classList.add("text-justify-enabled");
 		targetEl.setCssStyles({ textAlign: "justify", textAlignLast: "auto" });
-		targetEl.setCssProps({ "text-justify": "inter-ideograph" });
 
 		const headingFont =
 			effectiveCommon.headingFontFamily || effectiveCommon.fontFamily;
