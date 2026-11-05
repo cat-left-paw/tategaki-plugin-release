@@ -12,6 +12,7 @@ import {
 	DEFAULT_V2_SETTINGS,
 	TategakiV2Settings,
 	PRESET_THEME_IDS,
+	isStatusBarOverlapMode,
 } from "../../types/settings";
 import { compareSemver } from "../version";
 import { openExternalUrl } from "../open-external-url";
@@ -192,6 +193,26 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						await this.plugin.updateSettings({
 							showModeDialog: value,
+						});
+					});
+			});
+
+		new Setting(containerEl)
+			.setName(t("settings.statusBarOverlap.name"))
+			.setDesc(t("settings.statusBarOverlap.desc"))
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption(
+						"translucent",
+						t("settings.statusBarOverlap.translucent"),
+					)
+					.addOption("hide", t("settings.statusBarOverlap.hide"))
+					.addOption("off", t("settings.statusBarOverlap.off"))
+					.setValue(settings.statusBarOverlap)
+					.onChange(async (value) => {
+						if (!isStatusBarOverlapMode(value)) return;
+						await this.plugin.updateSettings({
+							statusBarOverlap: value,
 						});
 					});
 			});

@@ -1,4 +1,4 @@
-import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
+import { Notice, Platform, Plugin, WorkspaceLeaf } from "obsidian";
 import * as path from "path";
 import {
 	AppCloseAction,
@@ -24,6 +24,7 @@ import {
 } from "../shared/sync-backup";
 import { debugWarn, debugError, setDebugLogging } from "../shared/logger";
 import { showConfirmModal } from "../shared/ui/confirm-modal";
+import { StatusBarOverlapController } from "../shared/ui/status-bar-overlap";
 import { t } from "../shared/i18n";
 
 type ObsidianSettingApi = {
@@ -102,6 +103,7 @@ function isElectronShellLike(module: unknown): module is ElectronShellLike {
 export default class TategakiV2Plugin extends Plugin {
 	settings: TategakiV2Settings;
 	public modeManager: ModeManager;
+	private statusBarOverlap: StatusBarOverlapController | null = null;
 
 	async onload() {
 		// 既存のビューが残っている場合は強制クリーンアップ
@@ -207,7 +209,43 @@ export default class TategakiV2Plugin extends Plugin {
 			void this.modeManager.openView();
 		});
 
+		// ステータスバーが縦書きビューのスクロールバーを隠す件の対処
+		this.setupStatusBarOverlap();
+
 		// 初期化完了
+	}
+
+	/**
+	 * ステータスバーは main window にだけあり、mobile では表示されないので desktop だけで動かす。
+	 */
+	private setupStatusBarOverlap(): void {
+		if (Platform.isMobile) return;
+		const workspace = this.app.workspace;
+		const controller = new StatusBarOverlapController(
+			workspace.containerEl.ownerDocument,
+			{
+				subscribe: (refresh) => {
+					const refs = [
+						workspace.on("active-leaf-change", refresh),
+						workspace.on("layout-change", refresh),
+						workspace.on("css-change", refresh),
+					];
+					return () => refs.forEach((ref) => workspace.offref(ref));
+				},
+			},
+		);
+		this.statusBarOverlap = controller;
+		this.register(() => {
+			controller.destroy();
+			if (this.statusBarOverlap === controller) {
+				this.statusBarOverlap = null;
+			}
+		});
+		workspace.onLayoutReady(() => {
+			if (this.statusBarOverlap === controller) {
+				controller.setMode(this.settings.statusBarOverlap);
+			}
+		});
 	}
 
 	onunload() {
@@ -557,6 +595,7 @@ export default class TategakiV2Plugin extends Plugin {
 		}
 		await this.saveSettings();
 		setDebugLogging(!!this.settings.common.debugLogging);
+		this.statusBarOverlap?.setMode(this.settings.statusBarOverlap);
 
 		// モードマネージャーに設定変更を通知
 		await this.modeManager.onSettingsChanged(this.settings);

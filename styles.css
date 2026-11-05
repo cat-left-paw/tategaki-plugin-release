@@ -56,6 +56,32 @@
 	line-height: 1.1;
 }
 
+/*
+ * Obsidian のステータスバー（main window の右下）が縦書きビューのスクロールバーに重なるときの扱い
+ * （設定「ステータスバーとの重なり」、src/shared/ui/status-bar-overlap.ts）。
+ * - 半透明: 重なっている間は背景を半透明にし、ノブが透けて見えるようにする。
+ *   スクロールバーの帯の上では pointer を素通しにして、さらに薄くする。
+ * - 隠す: 縦書きビューがアクティブな間は隠す。
+ */
+.status-bar.tategaki-status-bar-translucent {
+	--tategaki-status-bar-translucent-mix: 55%;
+	background-color: color-mix(
+		in srgb,
+		var(--status-bar-background) var(--tategaki-status-bar-translucent-mix),
+		transparent
+	);
+	transition: opacity 120ms ease-out;
+}
+
+.status-bar.tategaki-status-bar-translucent.tategaki-status-bar-pass-through {
+	pointer-events: none;
+	opacity: 0.3;
+}
+
+body.tategaki-status-bar-hidden .status-bar {
+	display: none;
+}
+
 /* スクロールコンテナ */
 .tategaki-scroll-container {
 	width: 100%;

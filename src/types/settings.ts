@@ -52,6 +52,20 @@ export interface HeadingDividerLevels {
 export type ViewOpenPlacement = "right" | "tab" | "window";
 
 /**
+ * Obsidian のステータスバー（main window の右下）が Tategaki のビューに重なるときの扱い
+ * - translucent: 重なっている間は半透明にし、スクロールバーの帯の上では素通しにする
+ * - hide: Tategaki のビューが active の間は隠す
+ * - off: 何もしない（Obsidian のまま）
+ */
+export type StatusBarOverlapMode = "translucent" | "hide" | "off";
+
+export function isStatusBarOverlapMode(
+	value: unknown,
+): value is StatusBarOverlapMode {
+	return value === "translucent" || value === "hide" || value === "off";
+}
+
+/**
  * テーマプリセット
  */
 export interface ThemePreset {
@@ -265,6 +279,8 @@ export interface TategakiV2Settings {
 	lastViewMode: ViewModePreference;
 	lastViewOpenPlacement: ViewOpenPlacement;
 	enableLegacyTiptap: boolean;
+	// Obsidian のステータスバーが Tategaki のビューに重なるときの扱い
+	statusBarOverlap: StatusBarOverlapMode;
 
 	// 共通設定
 	common: CommonSettings;
@@ -332,6 +348,7 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 	lastViewMode: "edit",
 	lastViewOpenPlacement: "right",
 	enableLegacyTiptap: true,
+	statusBarOverlap: "translucent",
 
 	// 共通設定
 		common: {
@@ -610,6 +627,9 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 		}
 		if (typeof settings.enableLegacyTiptap === "boolean") {
 			validated.enableLegacyTiptap = settings.enableLegacyTiptap;
+		}
+		if (isStatusBarOverlapMode(settings.statusBarOverlap)) {
+			validated.statusBarOverlap = settings.statusBarOverlap;
 		}
 
 		// ビューを開く場所のバリデーション

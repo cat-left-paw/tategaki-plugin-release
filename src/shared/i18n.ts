@@ -120,6 +120,12 @@ const jaDict = {
 	"settings.showModeDialog.name": "ビュー起動時にモード選択を表示",
 	"settings.showModeDialog.desc":
 		"縦書きビューを開くときに、表示モードを選ぶダイアログを表示します",
+	"settings.statusBarOverlap.name": "ステータスバーとの重なり",
+	"settings.statusBarOverlap.desc":
+		"Obsidianのステータスバー（右下）が縦書きビューのスクロールバーに重なるときの扱いです。「半透明」は、重なっている間ステータスバーを半透明にし、スクロールバーの上にポインタが来たときだけ下のスクロールバーを操作できるようにします。「隠す」は、縦書きビューがアクティブな間ステータスバーを隠します",
+	"settings.statusBarOverlap.translucent": "半透明にしてスクロールバーを操作できるようにする",
+	"settings.statusBarOverlap.hide": "縦書きビューがアクティブな間は隠す",
+	"settings.statusBarOverlap.off": "何もしない（Obsidianのまま）",
 	"settings.section.sotWysiwyg": "執筆・参照モード",
 	"settings.currentValue": "現在値: {value}",
 	"settings.typewriter.section": "タイプライターモード",
@@ -623,6 +629,13 @@ const enDict: Record<I18nKey, string> = {
 	"settings.showModeDialog.name": "Show mode selection when opening view",
 	"settings.showModeDialog.desc":
 		"Show a dialog to choose a view mode when opening the vertical writing view.",
+	"settings.statusBarOverlap.name": "Status bar overlap",
+	"settings.statusBarOverlap.desc":
+		"How to handle Obsidian's status bar (bottom right) when it covers the scroll bar of the vertical writing view. \"Translucent\" makes the status bar translucent while it covers the view, and lets you use the scroll bar underneath when the pointer is over it. \"Hide\" hides the status bar while the vertical writing view is active.",
+	"settings.statusBarOverlap.translucent":
+		"Translucent, with the scroll bar usable underneath",
+	"settings.statusBarOverlap.hide": "Hide while the vertical writing view is active",
+	"settings.statusBarOverlap.off": "Do nothing (Obsidian default)",
 	"settings.section.sotWysiwyg": "Writing & Reference",
 	"settings.currentValue": "Current: {value}",
 	"settings.typewriter.section": "Typewriter mode",
