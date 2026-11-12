@@ -514,7 +514,39 @@ body.tategaki-status-bar-hidden .status-bar {
  * (obsidianmd/no-static-styles-assignment). */
 .tategaki-sot-content-wrapper.text-justify-enabled,
 .tategaki-sot-derived-root.text-justify-enabled {
+	text-align: justify;
+	text-align-last: auto;
 	text-justify: inter-ideograph;
+}
+
+/* Showing and hiding by class (src/shared/element-visibility.ts), not by an inline `display`: as important as the inline `display: none` was. */
+.tategaki-is-hidden {
+	display: none !important;
+}
+
+/* Replaces the former inline `touch-action: none` on the writing and reference view's root for vertical text on mobile (sot-wysiwyg-view.ts). */
+.tategaki-sot-derived-root.tategaki-sot-touch-none {
+	touch-action: none;
+}
+
+/*
+ * Book mode (measured-pagination.ts, paged-reading-mode.ts): the former inline styles of the measuring page and of the page transition.
+ * Nothing else sets white-space or visibility on these elements; text-align-last is !important because the measured block has its own rules (headings: auto).
+ */
+.page-content.tategaki-measure-normal-space {
+	white-space: normal;
+}
+
+.page-content.tategaki-measure-hidden {
+	visibility: hidden;
+}
+
+.tategaki-measure-last-line-start {
+	text-align-last: start !important;
+}
+
+.tategaki-pages-transition-hidden {
+	visibility: hidden;
 }
 
 .tategaki-wysiwyg-editor .ProseMirror em {
@@ -2666,6 +2698,72 @@ ruby {
 	color: var(--text-on-accent);
 }
 
+/* The new writing mode's view (C-d): the toolbar of three buttons above the display. The frame is a column; the body holds the display, and the display's size is the body's. */
+.tategaki-pm-frame {
+	display: flex;
+	flex-direction: column;
+}
+
+.tategaki-pm-frame > .tategaki-pm-toolbar.contenteditable-toolbar {
+	flex: 0 0 auto;
+	padding: 4px 8px;
+}
+
+.tategaki-pm-frame > .tategaki-pm-body {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: hidden;
+}
+
+/*
+ * Replaces the former inline `position:relative;overflow:hidden;padding:0` on the new writing mode's content element (pm-mode-view.ts). The class is repeated to reach
+ * specificity (0,4,0), above Obsidian's own `.view-content` / `.workspace-leaf-content[data-type] .view-content` rules, so it keeps winning like the inline declaration did.
+ */
+.tategaki-pm-content.tategaki-pm-content.tategaki-pm-content.tategaki-pm-content {
+	position: relative;
+	overflow: hidden;
+	padding: 0;
+}
+
+/*
+ * Replaces the former inline `cssText` on the new writing mode's tab badge itself (pm-workspace.ts). The class is repeated to reach specificity (0,3,0) so it keeps winning over
+ * Obsidian's tab header / view header rules like the inline declarations did (the parts below keep their own rules).
+ */
+.tategaki-pm-paired-badge.tategaki-pm-paired-badge.tategaki-pm-paired-badge,
+.tategaki-pm-tab-badge.tategaki-pm-tab-badge.tategaki-pm-tab-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	margin-right: 6px;
+	padding: 2px 6px;
+	border-radius: 999px;
+	border: 1px solid var(--background-modifier-border);
+	font-size: 12px;
+	line-height: 1.1;
+	color: var(--text-accent);
+	background: var(--background-modifier-hover);
+	vertical-align: middle;
+	flex-shrink: 0;
+}
+
+/*
+ * Replaces the former inline `display:inline-flex;align-items:center;justify-content:center` and `font-size:11px;line-height:1.1` on the parts of the new writing mode's tab badge
+ * (pm-workspace.ts). The badge's own class is in the selector (0,2,0), so the parts win over Obsidian's tab header rules.
+ */
+.tategaki-pm-paired-badge .tategaki-pm-badge-icon,
+.tategaki-pm-tab-badge .tategaki-pm-badge-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.tategaki-pm-paired-badge .tategaki-pm-badge-text,
+.tategaki-pm-tab-badge .tategaki-pm-badge-text {
+	font-size: 11px;
+	line-height: 1.1;
+}
+
 .contenteditable-toolbar .contenteditable-toolbar-button.is-disabled {
 	opacity: 0.35;
 }
@@ -3770,25 +3868,6 @@ ruby {
 	white-space: pre-wrap;
 	word-break: break-word;
 	overflow-wrap: anywhere;
-}
-
-/* 実験的: 縦書き列境界 nudge（既定 OFF / wysiwyg.verticalLayoutNudgeEnabled）。
-   SoT は閉じ約物終端 run、書籍モードは縦書きページの page-content 内で閉じ約物終端の要素へ、
-   render / ページ確定後ごく短時間だけ data-tategaki-vnudge を付与する。
-   透明な ::after を生成→除去することでブラウザの縦書き inline layout tree を再構築させる。
-   ::after は CSS 生成コンテンツなので DOM text / コピーには含まれず、保存データにも影響しない。
-   pointer-events / user-select を無効化して caret・選択・クリックに干渉させない。
-   横書き (horizontal-tb) では probe を生成しない（書籍モードは vertical-rl ページのみ対象）。 */
-.tategaki-sot-derived-root:not([data-writing-mode="horizontal-tb"])
-	.tategaki-sot-run[data-tategaki-vnudge]::after,
-.tategaki-page[data-writing-mode="vertical-rl"]
-	.page-content
-	[data-tategaki-vnudge]::after {
-	content: "\30FB";
-	color: transparent;
-	pointer-events: none;
-	user-select: none;
-	-webkit-user-select: none;
 }
 
 .tategaki-sot-toolbar-button {

@@ -1,5 +1,6 @@
 import type TategakiV2Plugin from "../../core/plugin";
 import type { SoTEditor } from "./sot-editor";
+import { isElementHidden, setElementHidden } from "../../shared/element-visibility";
 import type { TategakiV2Settings, CommonSettings } from "../../types/settings";
 
 export type SoTSelectionHost = {
@@ -122,7 +123,7 @@ export function updateCaretPosition(host: SoTSelectionHost): void {
 		return;
 	}
 	if (host.sourceModeEnabled) {
-		host.caretEl.setCssStyles({ display: "none" });
+		setElementHidden(host.caretEl, true);
 		return;
 	}
 	const caretWidth = host.plugin.settings.wysiwyg.caretWidthPx ?? 3;
@@ -146,7 +147,7 @@ export function updateCaretPosition(host: SoTSelectionHost): void {
 			? caretColor
 			: "transparent";
 		if (useNativeInCe) {
-			host.caretEl.setCssStyles({ display: "none" });
+			setElementHidden(host.caretEl, true);
 			if (host.pendingCaretScroll) {
 				host.pendingCaretScroll = false;
 				host.scrollCaretIntoView();
@@ -163,17 +164,17 @@ export function updateCaretPosition(host: SoTSelectionHost): void {
 			: selection.head;
 	const lineIndex = host.findLineIndex(offset);
 	if (lineIndex === null) {
-		host.caretEl.setCssStyles({ display: "none" });
+		setElementHidden(host.caretEl, true);
 		return;
 	}
 	const lineRange = host.lineRanges[lineIndex];
 	if (!lineRange) {
-		host.caretEl.setCssStyles({ display: "none" });
+		setElementHidden(host.caretEl, true);
 		return;
 	}
 	const lineEl = host.getLineElement(lineIndex);
 	if (!lineEl) {
-		host.caretEl.setCssStyles({ display: "none" });
+		setElementHidden(host.caretEl, true);
 		return;
 	}
 	host.ensureLineRendered(lineEl);
@@ -198,7 +199,7 @@ export function updateCaretPosition(host: SoTSelectionHost): void {
 		writingMode,
 	);
 	if (!caretRect) {
-		host.caretEl.setCssStyles({ display: "none" });
+		setElementHidden(host.caretEl, true);
 		return;
 	}
 
@@ -289,7 +290,7 @@ export function updateCaretPosition(host: SoTSelectionHost): void {
 		((host.overlayTextarea?.isImeVisible() ?? false) ||
 			(host.overlayFocused && host.pendingText.length > 0));
 	host.overlayTextarea?.setCaretVisible(showNativeCaret);
-	host.caretEl.style.display = showNativeCaret ? "none" : "";
+	setElementHidden(host.caretEl, showNativeCaret);
 	host.caretEl.style.left = `${caretLeft}px`;
 	if (isVertical) {
 		host.caretEl.style.top = `${caretTop}px`;
@@ -454,7 +455,7 @@ export function scrollCaretIntoView(host: SoTSelectionHost): void {
 		return;
 	}
 	if (!host.caretEl) return;
-	if (host.caretEl.style.display === "none") return;
+	if (isElementHidden(host.caretEl)) return;
 	const rootRect = host.derivedRootEl.getBoundingClientRect();
 	const caretRect = host.caretEl.getBoundingClientRect();
 	scrollRectIntoView(host, caretRect, rootRect);

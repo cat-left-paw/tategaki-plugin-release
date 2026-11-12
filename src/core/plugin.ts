@@ -1,7 +1,8 @@
-import { Notice, Platform, Plugin, WorkspaceLeaf } from "obsidian";
-import * as path from "path";
+import { resolvePmModeCapabilities, type PmModeCapabilities } from "../wysiwyg/pm-mode/obsidian/capabilities";
+import { TATEGAKI_PM_VIEW_TYPE } from "../wysiwyg/pm-mode/obsidian/entry";
+import { PmModeView } from "../wysiwyg/pm-mode/obsidian/pm-mode-view";
+import { Notice, Platform, Plugin } from "obsidian";
 import {
-	AppCloseAction,
 	CommonSettings,
 	TategakiV2Settings,
 	ThemePreset,
@@ -12,38 +13,22 @@ import { ModeManager } from "./mode-manager";
 import {
 	TIPTAP_COMPAT_VIEW_TYPE,
 	TIPTAP_COMPAT_VIEW_TYPE_LEGACY,
-} from "../wysiwyg/tiptap-compat-view";
+} from "../wysiwyg/legacy-compat-redirect-view";
 import { TATEGAKI_READING_VIEW_TYPE } from "../preview/reading-view";
 import {
 	SoTWysiwygView,
 	TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
 } from "../wysiwyg/sot-wysiwyg-view";
-import {
-	getSyncBackupRootPath,
-	moveSyncBackupsToTrash,
-} from "../shared/sync-backup";
+import { moveSyncBackupsToTrash } from "../shared/sync-backup";
 import { debugWarn, debugError, setDebugLogging } from "../shared/logger";
 import { showConfirmModal } from "../shared/ui/confirm-modal";
 import { StatusBarOverlapController } from "../shared/ui/status-bar-overlap";
 import { t } from "../shared/i18n";
+import { registerPmModeDiagnostics } from "../wysiwyg/pm-mode/diagnostics";
 
 type ObsidianSettingApi = {
 	open?: () => void;
 	openTabById?: (tabId: string) => void;
-};
-
-type SyncStateLike = {
-	dirty?: boolean;
-};
-
-type SyncManagerLike = {
-	getState?: () => SyncStateLike | null | undefined;
-	flush?: () => Promise<void> | void;
-};
-
-type QuitAwareView = {
-	handleAppQuit?: (action: AppCloseAction) => Promise<void> | void;
-	syncManager?: SyncManagerLike;
 };
 
 type ViewRegistryLike = {
@@ -54,47 +39,8 @@ type AppWithViewRegistry = typeof Plugin.prototype.app & {
 	viewRegistry?: ViewRegistryLike;
 };
 
-type DesktopVaultAdapter = {
-	getBasePath?: () => string | null | undefined;
-};
-
-type FileSystemLike = {
-	existsSync: (path: string) => boolean;
-};
-
-type ElectronShellLike = {
-	openPath?: (path: string) => Promise<string>;
-	showItemInFolder?: (path: string) => void;
-};
-
-type AppWithDefaultApp = typeof Plugin.prototype.app & {
-	openWithDefaultApp?: (path: string) => Promise<void>;
-};
-
-function getQuitAwareView(view: unknown): QuitAwareView {
-	return typeof view === "object" && view !== null
-		? (view as QuitAwareView)
-		: {};
-}
-
 function getViewRegistry(app: typeof Plugin.prototype.app): ViewRegistryLike | null {
 	return (app as AppWithViewRegistry).viewRegistry ?? null;
-}
-
-function getDesktopRequire(): ((module: string) => unknown) | undefined {
-	return (window as Window & { require?: (module: string) => unknown }).require;
-}
-
-function isFileSystemLike(module: unknown): module is FileSystemLike {
-	return (
-		typeof module === "object" &&
-		module !== null &&
-		typeof (module as FileSystemLike).existsSync === "function"
-	);
-}
-
-function isElectronShellLike(module: unknown): module is ElectronShellLike {
-	return typeof module === "object" && module !== null;
 }
 
 /**
@@ -103,9 +49,13 @@ function isElectronShellLike(module: unknown): module is ElectronShellLike {
 export default class TategakiV2Plugin extends Plugin {
 	settings: TategakiV2Settings;
 	public modeManager: ModeManager;
+	pmModeCapabilities: PmModeCapabilities = { available: false, unavailableReason: "not-initialized", rangeDisplay: "rect-layer", scrollAnchoring: "degraded" };
 	private statusBarOverlap: StatusBarOverlapController | null = null;
+	/** 読み込んだ設定の「最後に使ったモード」が互換モード（廃止）だったか。通知の 1 度きりの判定に使う */
+	private usedCompatModeBefore = false;
 
 	async onload() {
+		this.pmModeCapabilities = resolvePmModeCapabilities(window);
 		// 既存のビューが残っている場合は強制クリーンアップ
 		try {
 			const existingPreviewLeaves = this.app.workspace.getLeavesOfType(
@@ -114,12 +64,6 @@ export default class TategakiV2Plugin extends Plugin {
 			const existingWysiwygLeaves = this.app.workspace.getLeavesOfType(
 				"tategaki-wysiwyg-view",
 			);
-			const existingTipTapLeaves = [
-				...this.app.workspace.getLeavesOfType(TIPTAP_COMPAT_VIEW_TYPE),
-				...this.app.workspace.getLeavesOfType(
-					TIPTAP_COMPAT_VIEW_TYPE_LEGACY,
-				),
-			];
 			const existingReadingLeaves = this.app.workspace.getLeavesOfType(
 				TATEGAKI_READING_VIEW_TYPE,
 			);
@@ -127,52 +71,27 @@ export default class TategakiV2Plugin extends Plugin {
 				TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
 			);
 
+			const existingPmLeaves = this.app.workspace.getLeavesOfType(TATEGAKI_PM_VIEW_TYPE);
+
 			if (
 				existingPreviewLeaves.length > 0 ||
 				existingWysiwygLeaves.length > 0 ||
-				existingTipTapLeaves.length > 0 ||
 				existingReadingLeaves.length > 0 ||
-				existingSoTLeaves.length > 0
+				existingSoTLeaves.length > 0 ||
+				existingPmLeaves.length > 0
 			) {
-				// 旧インスタンスのビューが残っている場合、破棄前に可能なら同期を試みる
-				const leavesToClose = [
-					...existingPreviewLeaves,
-					...existingWysiwygLeaves,
-					...existingTipTapLeaves,
-					...existingReadingLeaves,
-					...existingSoTLeaves,
-				];
-				for (const leaf of leavesToClose) {
-					const view = getQuitAwareView(leaf.view);
-					try {
-						if (typeof view?.handleAppQuit === "function") {
-							await view.handleAppQuit("save");
-						} else if (view?.syncManager?.getState?.()?.dirty) {
-							await view.syncManager.flush?.();
-						}
-					} catch (flushError) {
-						debugWarn(
-							"Tategaki: failed to flush view before cleanup",
-							flushError,
-						);
-					}
-				}
-
 				existingPreviewLeaves.forEach((leaf) => leaf.detach());
 				existingWysiwygLeaves.forEach((leaf) => leaf.detach());
-				existingTipTapLeaves.forEach((leaf) => leaf.detach());
 				existingReadingLeaves.forEach((leaf) => leaf.detach());
 				existingSoTLeaves.forEach((leaf) => leaf.detach());
+				existingPmLeaves.forEach((leaf) => leaf.detach());
 
 				// レジストリからも削除を試行
 				const viewRegistry = getViewRegistry(this.app);
 				if (viewRegistry?.viewByType) {
+					delete viewRegistry.viewByType[TATEGAKI_PM_VIEW_TYPE];
 					delete viewRegistry.viewByType["tategaki-preview-view"];
 					delete viewRegistry.viewByType["tategaki-wysiwyg-view"];
-					delete viewRegistry.viewByType[TIPTAP_COMPAT_VIEW_TYPE];
-					delete viewRegistry.viewByType[
-						TIPTAP_COMPAT_VIEW_TYPE_LEGACY
-					];
 					delete viewRegistry.viewByType[TATEGAKI_READING_VIEW_TYPE];
 					delete viewRegistry.viewByType[
 						TATEGAKI_SOT_WYSIWYG_VIEW_TYPE
@@ -180,7 +99,7 @@ export default class TategakiV2Plugin extends Plugin {
 				}
 
 				// 少し待つ
-				await new Promise((resolve) => setTimeout(resolve, 200));
+				await new Promise((resolve) => window.setTimeout(resolve, 200));
 			}
 		} catch (error) {
 			debugWarn("Tategaki: Error during pre-load cleanup", error);
@@ -196,13 +115,22 @@ export default class TategakiV2Plugin extends Plugin {
 		this.addSettingTab(new TategakiV2SettingTab(this.app, this));
 
 		// ビューを登録
-		await this.modeManager.registerViews();
+		this.modeManager.registerViews();
 
 		// コマンドを追加
 		this.addCommands();
 
-		// アプリ終了時の処理を登録
-		this.registerQuitHandler();
+		// 開発用: 新執筆モードの計測 M1-5（commandを実行するまで何も動かない）。
+		// 製品の bundle には入れない（esbuild の define で __TATEGAKI_DEV__ = false にすると、この if ごと tree shaking で落ちる）。
+		// define のない build（試験が直接 bundle する場合）では開発用として扱う。
+		if (typeof __TATEGAKI_DEV__ === "undefined" || __TATEGAKI_DEV__) {
+			registerPmModeDiagnostics(this);
+		}
+
+		// 1.3.5 以前で互換モードを使っていた人に、廃止を 1 度だけ知らせる
+		if (this.usedCompatModeBefore) {
+			this.noteCompatModeRetired();
+		}
 
 		// リボンアイコンを追加
 		this.addRibbonIcon("tally-4", t("command.openView"), () => {
@@ -263,7 +191,7 @@ export default class TategakiV2Plugin extends Plugin {
 			const allWysiwygLeaves = this.app.workspace.getLeavesOfType(
 				"tategaki-wysiwyg-view",
 			);
-			const allTipTapCompatLeaves = [
+			const allRetiredCompatLeaves = [
 				...this.app.workspace.getLeavesOfType(TIPTAP_COMPAT_VIEW_TYPE),
 				...this.app.workspace.getLeavesOfType(
 					TIPTAP_COMPAT_VIEW_TYPE_LEGACY,
@@ -276,15 +204,21 @@ export default class TategakiV2Plugin extends Plugin {
 				TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
 			);
 
+			const allPmLeaves = this.app.workspace.getLeavesOfType(TATEGAKI_PM_VIEW_TYPE);
+			// M4a (D-M4-12): unloading cannot be stopped. Each new writing mode view ends its composition while it is shown and tells what it still holds before its leaf is detached
+			// (`modeManager.cleanup()` did it already for the views it knows; a view settles once).
+			for (const leaf of allPmLeaves) if (leaf.view instanceof PmModeView) leaf.view.settleBeforeClose();
+			allPmLeaves.forEach(leaf => leaf.detach());
 			allPreviewLeaves.forEach((leaf) => leaf.detach());
 			allWysiwygLeaves.forEach((leaf) => leaf.detach());
-			allTipTapCompatLeaves.forEach((leaf) => leaf.detach());
+			allRetiredCompatLeaves.forEach((leaf) => leaf.detach());
 			allReadingLeaves.forEach((leaf) => leaf.detach());
 			allSoTLeaves.forEach((leaf) => leaf.detach());
 
 			// ビューレジストリから削除
 			const viewRegistry = getViewRegistry(this.app);
 			if (viewRegistry?.viewByType) {
+				delete viewRegistry.viewByType[TATEGAKI_PM_VIEW_TYPE];
 				delete viewRegistry.viewByType["tategaki-preview-view"];
 				delete viewRegistry.viewByType["tategaki-wysiwyg-view"];
 				delete viewRegistry.viewByType[TIPTAP_COMPAT_VIEW_TYPE];
@@ -301,6 +235,16 @@ export default class TategakiV2Plugin extends Plugin {
 	 * コマンドを追加
 	 */
 	private addCommands(): void {
+		this.addCommand({
+			id: "pm-discard-composition",
+			name: t("pm.command.discardComposition"),
+			checkCallback: (checking) => {
+				const view = this.app.workspace.getActiveViewOfType(PmModeView);
+				if (!view || view.isClosed()) return false;
+				if (!checking) view.requestCompositionRecovery();
+				return true;
+			},
+		});
 		// ビューを開くコマンド（右に分割表示）
 		this.addCommand({
 			id: "open-view",
@@ -375,150 +319,6 @@ export default class TategakiV2Plugin extends Plugin {
 		}
 	}
 
-	async openSyncBackupFolder(): Promise<void> {
-		const adapter = this.app.vault.adapter as DesktopVaultAdapter;
-		const basePath =
-			typeof adapter.getBasePath === "function"
-				? adapter.getBasePath()
-				: null;
-		if (!basePath) {
-			new Notice(t("plugin.notice.backup.desktopOnly"), 3000);
-			return;
-		}
-		const fullPath = path.join(basePath, getSyncBackupRootPath(this.app));
-		const fs = (() => {
-			try {
-				return getDesktopRequire()?.("fs");
-			} catch {
-				return null;
-			}
-		})();
-		if (isFileSystemLike(fs) && !fs.existsSync(fullPath)) {
-			new Notice(t("plugin.notice.backup.notFound"), 3000);
-			return;
-		}
-		const shell = (() => {
-			try {
-				const electronModule = getDesktopRequire()?.("electron");
-				if (
-					typeof electronModule === "object" &&
-					electronModule !== null &&
-					"shell" in electronModule
-				) {
-					return (electronModule as { shell?: unknown }).shell ?? null;
-				}
-				return null;
-			} catch {
-				return null;
-			}
-		})();
-		if (isElectronShellLike(shell) && shell.openPath) {
-			const result = await shell.openPath(fullPath);
-			if (!result) return;
-			if (/(enoent|no such file|not found)/i.test(result)) {
-				new Notice(t("plugin.notice.backup.notFound"), 3000);
-				return;
-			}
-		}
-		if (isElectronShellLike(shell) && shell.showItemInFolder) {
-			shell.showItemInFolder(fullPath);
-			return;
-		}
-		const appWithDefaultApp = this.app as AppWithDefaultApp;
-		if (typeof appWithDefaultApp.openWithDefaultApp === "function") {
-			try {
-				await appWithDefaultApp.openWithDefaultApp(fullPath);
-				return;
-			} catch {
-				// fall through
-			}
-		}
-		new Notice(t("plugin.notice.backup.openFailed"), 3000);
-	}
-
-	private registerQuitHandler(): void {
-		this.registerEvent(
-			this.app.workspace.on("quit", (tasks) => {
-				const action: AppCloseAction =
-					this.settings.wysiwyg.appCloseAction ?? "save";
-				const leaves = this.collectSyncLeaves();
-				if (action === "save" && this.hasDirtyLeaves(leaves)) {
-					tasks.add(async () => {
-						await this.handleAppQuit(action, {
-							awaitSaves: true,
-							leaves,
-						});
-					});
-					return;
-				}
-				void this.handleAppQuit(action, { awaitSaves: false, leaves });
-			}),
-		);
-	}
-
-	private collectSyncLeaves(): WorkspaceLeaf[] {
-		return [
-			...this.app.workspace.getLeavesOfType(TIPTAP_COMPAT_VIEW_TYPE),
-			...this.app.workspace.getLeavesOfType(
-				TIPTAP_COMPAT_VIEW_TYPE_LEGACY,
-			),
-		];
-	}
-
-	private hasDirtyLeaves(leaves: ReturnType<TategakiV2Plugin["collectSyncLeaves"]>): boolean {
-		for (const leaf of leaves) {
-			const view = getQuitAwareView(leaf.view);
-			const state = view?.syncManager?.getState?.();
-			if (state?.dirty) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	private async handleAppQuit(
-		action: AppCloseAction,
-		options: {
-			awaitSaves?: boolean;
-			leaves?: ReturnType<TategakiV2Plugin["collectSyncLeaves"]>;
-		} = {},
-	): Promise<void> {
-		const awaitSaves = options.awaitSaves !== false;
-		const leaves = options.leaves ?? this.collectSyncLeaves();
-
-		for (const leaf of leaves) {
-			const view = getQuitAwareView(leaf.view);
-			if (typeof view?.handleAppQuit === "function") {
-				const task = view.handleAppQuit(action);
-				if (awaitSaves) {
-					await task;
-				} else {
-					void task;
-				}
-				continue;
-			}
-			if (action !== "save") {
-				continue;
-			}
-			if (view?.syncManager) {
-				const state = view.syncManager.getState?.();
-				if (state?.dirty && typeof view.syncManager.flush === "function") {
-					const task = view.syncManager.flush();
-					if (awaitSaves) {
-						await task;
-					} else {
-						void task;
-					}
-				}
-			}
-		}
-
-		// ビューを閉じて次回起動時の自動復元を防ぐ
-		for (const leaf of leaves) {
-			leaf.detach();
-		}
-	}
-
 	/**
 	 * Obsidian のプラグイン設定タブを開く（内部 API 経由）
 	 */
@@ -538,9 +338,23 @@ export default class TategakiV2Plugin extends Plugin {
 	 * 設定を読み込み
 	 */
 	async loadSettings() {
-		const stored = (await this.loadData()) ?? {};
+		const stored: unknown = (await this.loadData()) ?? {};
 		this.settings = validateV2Settings(stored);
 		setDebugLogging(!!this.settings.common.debugLogging);
+		// 1.4.0 で互換モードを廃止した。validateV2Settings は "compat" を "edit"（執筆・参照モード）にするので、元の値をここで覚える。
+		this.usedCompatModeBefore =
+			(stored as { lastViewMode?: unknown }).lastViewMode === "compat";
+	}
+
+	/**
+	 * 互換モードは 1.4.0 で廃止した。使っていた人（最後に使ったモードが互換、または互換の leaf が残っていた）に 1 度だけ知らせ、
+	 * 出したことを設定に記録する。
+	 */
+	noteCompatModeRetired(): void {
+		if (this.settings.compatModeRetiredNoticeShown) return;
+		this.settings.compatModeRetiredNoticeShown = true;
+		new Notice(t("notice.compatMode.retired"), 10000);
+		void this.saveSettings();
 	}
 
 	/**
@@ -561,10 +375,10 @@ export default class TategakiV2Plugin extends Plugin {
 		const previewChanges = nextChanges.preview;
 		const hasExplicitPageModeSetting =
 			previewChanges &&
-			Object.prototype.hasOwnProperty.call(
+			(Object.prototype.hasOwnProperty.call(
 				previewChanges,
 				"pageModeEnabled",
-			);
+			) as boolean);
 
 		if (
 			commonChanged &&
@@ -657,15 +471,15 @@ export default class TategakiV2Plugin extends Plugin {
 		const variableName = varName.slice(4, -1).trim();
 
 		// 一時的な要素を作成してCSS変数の色を適用
-		const tempElement = document.createElement("div");
+		const tempElement = createDiv();
 		tempElement.style.color = `var(${variableName})`;
-		document.body.appendChild(tempElement);
+		activeDocument.body.appendChild(tempElement);
 
 		// 計算済みスタイルからRGB値を取得
 		const computedColor = getComputedStyle(tempElement).color;
 
 		// 要素を削除
-		document.body.removeChild(tempElement);
+		activeDocument.body.removeChild(tempElement);
 
 		// RGB形式を16進数に変換
 		if (computedColor && computedColor.startsWith("rgb")) {
@@ -689,15 +503,15 @@ export default class TategakiV2Plugin extends Plugin {
 		const variableName = varName.slice(4, -1).trim();
 
 		// 一時的な要素を作成してCSS変数のフォントを適用
-		const tempElement = document.createElement("div");
+		const tempElement = createDiv();
 		tempElement.style.fontFamily = `var(${variableName})`;
-		document.body.appendChild(tempElement);
+		activeDocument.body.appendChild(tempElement);
 
 		// 計算済みスタイルからフォント名を取得
 		const computedFont = getComputedStyle(tempElement).fontFamily;
 
 		// 要素を削除
-		document.body.removeChild(tempElement);
+		activeDocument.body.removeChild(tempElement);
 
 		return computedFont || varName;
 	}
@@ -710,14 +524,15 @@ export default class TategakiV2Plugin extends Plugin {
 		color: string;
 		fontFamily: string;
 	} {
-		// Obsidianのエディタコンテナを探す
+		// Obsidianのエディタコンテナを探す（本体のwindowのdocumentで。popoutにエディタがなくても、1.3.5と同じ本体のエディタで測る）
+		const mainDocument = this.app.workspace.containerEl.ownerDocument;
 		const editorContainer =
-			document.querySelector(".markdown-source-view") ||
-			document.querySelector(".markdown-preview-view") ||
-			document.body;
+			mainDocument.querySelector(".markdown-source-view") ||
+			mainDocument.querySelector(".markdown-preview-view") ||
+			mainDocument.body;
 
 		// 一時的なh1要素を作成
-		const tempH1 = document.createElement("h1");
+		const tempH1 = createEl("h1");
 		tempH1.textContent = "Test";
 		tempH1.classList.add("tategaki-hidden-probe");
 

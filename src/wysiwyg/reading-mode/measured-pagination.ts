@@ -347,7 +347,8 @@ export class MeasuredPagination {
 			return null;
 		}
 
-		wrapper.setCssStyles({ whiteSpace: "normal", visibility: "hidden" });
+		// (white-space: normal and visibility: hidden are the classes' rules in styles.css)
+		wrapper.classList.add("tategaki-measure-normal-space", "tategaki-measure-hidden");
 
 		const remaining = state.totalLength - state.startIndex;
 		// 強制改ページ位置による上限（相対文字数）
@@ -566,7 +567,7 @@ export class MeasuredPagination {
 		this.pruneTrailingEmptyPageBreakHeadings(wrapper);
 
 		// visibilityを元に戻す
-		wrapper.setCssStyles({ visibility: "" });
+		wrapper.classList.remove("tategaki-measure-hidden");
 
 		const pageEndIndex = state.startIndex + finalTake;
 		const isContinuation = this.isPageContinuation(state, pageEndIndex);
@@ -642,8 +643,8 @@ export class MeasuredPagination {
 			writingMode === "vertical-rl" || writingMode === "vertical-lr";
 		const doc = block.ownerDocument;
 		const range = doc.createRange();
-		const previousAlign = block.style.textAlignLast;
-		block.setCssStyles({ textAlignLast: "start" });
+		// (text-align-last: start is the class's rule in styles.css; the class is taken off after the measurement)
+		block.classList.add("tategaki-measure-last-line-start");
 		block.offsetWidth; // force layout
 		range.selectNodeContents(block);
 		const rects = Array.from(range.getClientRects()).filter(
@@ -651,7 +652,7 @@ export class MeasuredPagination {
 		);
 		const lastRect = rects.length > 0 ? rects[rects.length - 1] : null;
 		const blockRect = block.getBoundingClientRect();
-		block.style.textAlignLast = previousAlign;
+		block.classList.remove("tategaki-measure-last-line-start");
 		if (!lastRect) {
 			return null;
 		}

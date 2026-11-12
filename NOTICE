@@ -3,3 +3,86 @@ Copyright 2025-2026 cat-left-paw
 
 This product includes software developed by the Tategaki Plugin contributors.
 
+The new writing mode (src/wysiwyg/pm-mode/) includes code adapted from Nyoze
+(the author's own editor), commit 020b5501, licensed to this project under the
+Apache License 2.0 by its author. The adapted files are listed in
+src/wysiwyg/pm-mode/ORIGIN.md and carry an "Origin" header. M3a also adapts
+the keyboard-navigation modules and the PIS-S3 test/diagnostic approach from
+the same fixed commit; its local changes are recorded there. M3b adapts the
+range display of Nyoze commit c63cd4a0 (2026-11-04, "PIS-RANGE-DISPLAY1": the
+selected-text color by platform and the bands for selected line breaks), which
+is later than that fixed commit, on the same terms. M3c adapts the input
+surface's pseudo caret from the same fixed commit (pseudoCaretSource.ts,
+pseudoCaretGeometry.ts, pseudoCaretOverlay.ts and the input-surface branch of
+pseudoCaretController.ts) and the retained-text color of Nyoze commit 38750b33
+(2026-11-05, "PIS-RETAINED-TEXT-COLOR1": retainedDisplay.ts, the red ladders
+chosen by contrast with the backdrop), also later than that fixed commit, on the
+same terms. The armed state of the mark of the last input
+(src/wysiwyg/pm-mode/input/recent-input.ts, releasesAllModifiers in
+input/composition-intent.ts and the matching part of obsidian/input-surface.ts)
+adapts Nyoze commit f25c5d35 (2026-10-29, "PIS-IME-KEYLESS-CONTINUATION1"), also
+later than that fixed commit, on the same terms. The dimmed `[label]:` of a
+definition line (the inline decoration in src/wysiwyg/pm-mode/pm/decorations.ts and
+its rule in obsidian/styles/stylesheet.ts) and the reading that shows such a line
+as it is written (source/line-segments.ts) adapt the ideas and the colour rule of
+Nyoze commit e1da1a98 (2026-11-05, "MD-ESCAPE-EXPLICIT1":
+referenceDefinitionDecorationState.ts, referenceDefinitionLine.ts and the
+styles.css rule), also later than that fixed commit, on the same terms; no code
+of them is copied (see ORIGIN.md). A prototype in
+tests/pm-mode/m13-commonmark-inline.ts adapts Nyoze's emphasis rescue at
+commit 0e4e68b3 on the same terms (also listed there).
+The classification of what a document action finds on the input surface
+(src/wysiwyg/pm-mode/obsidian/document-action.ts, classifyInputSurfaceDocumentAction)
+adapts Nyoze commit 58a98a90 (2026-11-06, inputSurface/documentAction.ts, the same
+file as at the fixed commit) on the same terms (see ORIGIN.md). The room that the
+display reserves for the composing text (src/wysiwyg/pm-mode/pm/composition-widget.ts,
+obsidian/composition-presentation.ts, the follow of the surface's start in
+obsidian/surface-placement.ts and obsidian/input-surface.ts, the short sideways glyph
+shadow in obsidian/short-preedit-shadow.ts and obsidian/preedit-highlight.ts) adapts
+Nyoze commit 58a98a90 (inputSurface/compositionPresentation.ts, surfacePlacement.ts,
+shortPreeditShadow.ts, preeditHighlight.ts, surfacePreferences.ts, editOwner.ts (the
+owner's `insertionCaretAtWrapEnd`, which is the presentation port's `atWrapEnd` in
+obsidian/composition-presentation.ts) and the matching parts of inputSurface.ts; the
+setting is from Nyoze commit c80df99f, "PIS-S10-PREEDIT-DISPLAY1"), on the same terms
+(see ORIGIN.md).
+
+The clipboard handlers of the input surface (src/wysiwyg/pm-mode/obsidian/clipboard.ts,
+the beforecopy / beforecut, copy / cut and paste handlers) and the policy of who may
+copy and cut from it (src/wysiwyg/pm-mode/input/clipboard-policy.ts) adapt Nyoze commit
+58a98a90 (2026-11-06, inputSurface/clipboard.ts and clipboardPolicy.ts) on the same
+terms (see ORIGIN.md).
+
+The option C prototype (tests/pm-mode/m13c-inline.ts and m13c-delimiters.ts)
+also adapts Nyoze's emphasis rescue at commit 0e4e68b3 (Apache-2.0) and
+parts of markdown-it 14.2.0 (delimiter scanning, balance_pairs, emphasis and
+strikethrough), under the following MIT license. The production reader introduced in M1-6a
+(src/wysiwyg/pm-mode/source/inline-reading.ts, inline-delimiters.ts and
+inline-html.ts) includes the same adaptations and also adapts markdown-it
+14.2.0 backticks, escape, html_inline and common/html_re. Nyoze's rescue
+and fallback at 0e4e68b3 are adapted on the Apache-2.0 terms above.
+Local changes and source paths are listed in ORIGIN.md.
+
+The MIT license:
+
+Copyright (c) 2014 Vitaly Puzrin, Alex Kocharin.
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.

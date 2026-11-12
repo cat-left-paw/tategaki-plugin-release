@@ -168,8 +168,6 @@ export class PagedReadingMode {
 		this.writingMode = options.writingMode;
 		this.settings = options.settings;
 		this.previewSettings = options.previewSettings ?? {
-			syncCursor: true,
-			updateInterval: 300,
 			headerContent: "none",
 			headerAlign: "center",
 			footerContent: "pageNumber",
@@ -914,7 +912,7 @@ export class PagedReadingMode {
 		const t1 = setTimeout(() => {
 			if (!this.pagesContainerEl) return;
 			// スクロール時のチラつきを防ぐため、一時的に非表示にする
-			this.pagesContainerEl.setCssStyles({ visibility: "hidden" });
+			this.pagesContainerEl.classList.add("tategaki-pages-transition-hidden");
 
 			this.pagesContainerEl.classList.remove(
 				`page-transition-${effect}-out`
@@ -924,7 +922,7 @@ export class PagedReadingMode {
 			// 次のアニメーション開始直前に再表示
 			requestAnimationFrame(() => {
 				if (!this.pagesContainerEl) return;
-				this.pagesContainerEl.setCssStyles({ visibility: "" });
+				this.pagesContainerEl.classList.remove("tategaki-pages-transition-hidden");
 				this.pagesContainerEl.classList.add(
 					`page-transition-${effect}-in`
 				);

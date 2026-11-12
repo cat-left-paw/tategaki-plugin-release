@@ -10,7 +10,6 @@ const jaDict = {
 	"common.copy": "コピー",
 	"common.paste": "貼り付け",
 	"common.selectAll": "すべて選択",
-	"common.discard": "破棄",
 	"common.delete": "削除",
 	"common.confirmation": "確認",
 	"common.displaySettings": "表示設定",
@@ -63,28 +62,12 @@ const jaDict = {
 	"toolbar.source.enable": "ソーステキスト編集モード",
 	"toolbar.source.disable": "装飾表示に戻す",
 	"toolbar.outline": "アウトライン",
-	"toolbar.findReplace": "検索・置換",
-	"toolbar.readingMode.pagination": "書籍モード",
-	"toolbar.auxiliary.toggle": "補助入力パネル",
-	"toolbar.auxiliary.enable": "補助入力パネルをオンにする",
-	"toolbar.auxiliary.disable": "補助入力パネルをオフにする",
-	"toolbar.syncMode.manualToAuto":
-		"手動同期モード（クリックで自動同期に切替）",
-	"toolbar.syncMode.autoToManual":
-		"自動同期モード（クリックで手動同期に切替）",
-	"toolbar.status.saved": "保存済み",
-	"toolbar.status.saving": "保存中...",
-	"toolbar.status.syncError": "同期エラー",
-	"toolbar.status.unsaved": "未保存",
-	"toolbar.sync.saveShortcut": "保存 ({shortcut})",
 	"toolbar.reading.return": "戻る",
 	"toolbar.reading.returnTo": "{view}へ戻る",
 	"reading.returnLabel.sot": "執筆・参照ビュー",
-	"reading.returnLabel.compat": "互換ビュー",
 	"view.reading.display": "書籍ビュー",
 	"view.reading.displayWithTitle": "書籍ビュー: - {title} -",
 	"badge.mode.reading": "書籍",
-	"badge.mode.compat": "互換",
 	"badge.pairedMarkdown.short": "縦",
 	"badge.pairedMarkdown.title": "Tategaki編集中",
 	"outline.title": "アウトライン",
@@ -106,17 +89,60 @@ const jaDict = {
 		"同期バックアップを .trash に移動しました。",
 	"plugin.notice.syncBackup.moveFailed":
 		"同期バックアップの移動に失敗しました。",
-	"plugin.notice.backup.desktopOnly":
-		"バックアップフォルダを開くにはデスクトップ版が必要です。",
-	"plugin.notice.backup.notFound":
-		"同期バックアップフォルダが見つかりませんでした。",
-	"plugin.notice.backup.openFailed":
-		"バックアップフォルダを開けませんでした。",
 
 	"settings.section.main": "一般",
-	"settings.compatMode.name": "互換モード",
-	"settings.compatMode.desc":
-		"互換ビューと同期機能を有効化します。オフにすると互換用の同期/バックアップ設定を非表示にします",
+	"pm.settings.name": "新執筆モード（実験的）",
+	"pm.settings.desc": "基本的な入力・変換・選択・コピーと貼り付けは使えますが、実験的な機能で、まだできないことがあります（マニュアルの『新執筆モードでまだできないこと』）。開いたノートへ直接書き込みます。大事な原稿は控えを取ってからお使いください。",
+	"pm.settings.preeditDisplay.name": "新執筆モード: 変換中の表示",
+	"pm.settings.preeditDisplay.desc": "変換中の字を、本文の中に場所を取って表示する（後ろの本文が押し出される）か、本文の上に重ねて表示するかを選びます。変換を始めるときに読むので、変えた設定は次の変換から効きます。範囲を選んだまま始める変換は、いつも重ねて表示します。",
+	"pm.settings.preeditDisplay.inline": "押し出す（既定）",
+	"pm.settings.preeditDisplay.overlay": "重ねる",
+	"pm.view.title": "新執筆モード: {name}",
+	"pm.badge.title": "新執筆モード",
+	"pm.badge.short": "新",
+	"pm.paired.title": "新執筆モードと対応するMarkdown",
+	"pm.notice.unavailable": "この環境では新執筆モードを使えません: ",
+	"pm.notice.cmMissing": "Markdownの編集画面を取得できません。現行の執筆モードを使ってください。",
+	"pm.notice.pairClosed": "対応するMarkdownが閉じたか別の文書に変わったため、新執筆モードを閉じました。",
+	"pm.notice.keyBlocked": "新執筆モード: 編集しませんでした（{reason}）。",
+	"pm.notice.key.inside-inline": "Ruby・縦中横の途中では改行できないため",
+	"pm.notice.inputRetained": "新執筆モード: 書き込みませんでした（{reason}）。入力面の文字はBackspaceで消すか、コピーして使ってください。",
+	"pm.notice.inputBlocked": "新執筆モード: ここには打てません（{reason}）。",
+	"pm.notice.inputBlockedComposition": "新執筆モード: ここで確定しても書き込みません（{reason}）。確定した字は入力面に残ります。",
+	"pm.notice.inputMismatch": "書き込みが計画と違う形で本文に入ったため、新執筆モードの書き込みを止めました。Markdownの編集画面で本文を確かめてください（Undoで戻せます）。新執筆モードを開き直すと再開します。",
+	"pm.notice.input.stale": "本文が変わったため",
+	"pm.notice.input.newline-in-payload": "改行を含むため",
+	"pm.notice.input.dispatch-rejected": "ほかの処理が書き込みを変えたため",
+	"pm.notice.input.structure": "表示の形を保てないため",
+	"pm.notice.input.partial-ruby": "Rubyの一部だけを選んでいるため",
+	"pm.notice.input.inside-inline": "Rubyの親文字・縦中横の中には書けない字を含むため",
+	"pm.notice.input.location": "ここには書けないため",
+	"pm.notice.input.reading-view": "Markdownの編集画面が閲覧表示のため",
+	"pm.notice.input.out-of-scope": "この文書には書き込みません（Markdownのnoteでないか、この環境では範囲の見せ方が書き込みに向かないため）",
+	"pm.notice.input.stopped": "書き込みを止めています。新執筆モードを開き直すと再開します",
+	"pm.notice.input.keyless-range": "範囲の上では、打鍵で始まっていない変換は書かないため",
+	"pm.notice.input.keyless-after-input": "再変換と思われる変換は書かないため",
+	"pm.notice.clipboard.composing": "変換中のため",
+	"pm.notice.clipboard.retained": "書き込めなかった字が入力面に残っているため",
+	"pm.notice.leaveBlocked.composing": "新執筆モード: 変換中のため、何もしませんでした。変換を終えてから、もう一度行ってください。",
+	"pm.notice.leaveBlocked.retained": "新執筆モード: 書き込めなかった字が入力面に残っているため、何もしませんでした。字をBackspaceで消すか、コピーしてから、もう一度行ってください。",
+	"pm.notice.lostText": "新執筆モードを閉じました。入力面にあった字は本文に書き込まれていません（クリップボードにも書いていません）: 「{text}」",
+	"pm.command.discardComposition": "新執筆モード: 終わらない変換を捨てる",
+	"pm.command.recordInput": "Tategaki（開発用）: 新執筆モードの入力の記録（M2-4）の開始・終了",
+	"pm.record.label": "記録のラベル（例: mac-standard）",
+	"pm.record.start": "記録を開始",
+	"pm.record.cancel": "キャンセル",
+	"pm.record.started": "新執筆モードの入力の記録を始めました。終わったら同じcommandを実行してください。",
+	"pm.record.saved": "入力の記録を保存しました:",
+	"pm.record.limit": "上限に達したため記録を停止",
+	"pm.record.failed": "入力の記録を保存できませんでした:",
+	"pm.notice.discardCompositionRetained": "新執筆モード: 変換を捨てませんでした（変換の開始時に入力面へ保持した文字があるため）。",
+	"pm.notice.discardCompositionFirst": "新執筆モード: 変換中です。同じ変換が終わらない場合は、もう一度このコマンドを実行すると、捨てるかを確認します。",
+	"pm.recovery.title": "終わらない変換を捨てますか？",
+	"pm.recovery.message": "変換中の文字を捨てます。本文には書き込みません。",
+	"pm.recovery.cancel": "キャンセル",
+	"pm.recovery.discard": "変換を捨てる",
+	"pm.input.label": "新執筆モードの入力面",
 	"settings.showModeDialog.name": "ビュー起動時にモード選択を表示",
 	"settings.showModeDialog.desc":
 		"縦書きビューを開くときに、表示モードを選ぶダイアログを表示します",
@@ -179,56 +205,11 @@ const jaDict = {
 		"プレーンテキスト表示中はタイプライター機能が一時的に利用できません。プレーンテキスト表示を解除すると、保存されている設定がそのまま復帰します",
 	"settings.sotTypewriter.unavailable.plainEdit":
 		"段落プレーン編集中はタイプライター機能が一時的に利用できません。プレーン編集を抜けると、保存されている設定がそのまま復帰します",
-	"settings.section.sotExperimental": "表示補正（実験的）",
-	"settings.sotVerticalLayoutNudge.name": "縦書きの列境界崩れを緩和",
-	"settings.sotVerticalLayoutNudge.desc":
-		"実験的機能です。執筆・参照モードと書籍モードの縦書きで、閉じカッコやルビ付近の不自然な列送りを軽減します。保存内容やコピー結果には影響しません。大きい文書でちらつく場合は OFF にしてください",
-	"settings.section.syncAndUpdateCompat": "互換モード",
-	"settings.updateInterval.name": "外部同期の更新間隔(ms)",
-	"settings.updateInterval.desc":
-		"カーソル同期や追従時のポーリング間隔です。0=リアルタイム（高負荷の可能性）。値を大きくするほど負荷は軽くなります",
-	"settings.syncMode.name": "同期モード",
-	"settings.syncMode.desc":
-		"自動: 編集時に自動保存、手動: 同期ボタンで保存します（縦書きエディタ）",
-	"settings.syncMode.auto": "自動同期",
-	"settings.syncMode.manual": "手動同期",
-	"settings.syncBackupCreate.name": "同期バックアップを作成",
-	"settings.syncBackupCreate.desc":
-		"互換モードの同期時にバックアップを作成します。無効にするとバックアップは作成されません（必要に応じて「バージョン履歴」を利用してください）。",
-	"settings.syncBackupOpen.name": "同期バックアップフォルダを開く",
-	"settings.syncBackupOpen.desc": "バックアップ保存先フォルダを開きます。",
-	"settings.syncBackupMove.name": "同期バックアップをゴミ箱へ移動",
+	"settings.syncBackupMove.name": "互換モードの古いバックアップをゴミ箱へ移す",
 	"settings.syncBackupMove.desc":
-		"同期の安全策として作成されたバックアップをゴミ箱へ移動します（復元できなくなるので注意）",
-	"settings.appCloseAction.name": "アプリ終了時の未保存変更",
-	"settings.appCloseAction.desc":
-		"未保存の変更がある場合に、終了時に保存するか破棄するかを選びます",
-	"settings.appCloseAction.save": "保存して終了",
-	"settings.appCloseAction.discard": "破棄して終了",
-	"settings.syncCursor.name": "カーソル同期",
-	"settings.syncCursor.desc":
-		"標準エディタでアクティブなカーソル位置を縦書きエディタにも反映します",
-	"settings.section.update": "アップデート",
-	"settings.manualUpdate.name": "手動でアップデートを確認",
-	"settings.manualUpdate.desc":
-		"ボタンを押したときだけ通信して、公開URL上の最新版情報を確認します",
-	"settings.manualUpdate.button": "更新の確認",
-	"settings.notice.update.invalidResponse":
-		"更新情報を取得できませんでした（latest.jsonの形式を確認してください）。",
-	"settings.notice.update.latest": "最新です（現在: {current}）。",
-	"settings.notice.update.compareUnavailableWithUrl":
-		"更新情報を取得しました（公開: {latest} / 現在: {current}）。バージョン比較ができないため、Releases を確認してください: {url}",
-	"settings.notice.update.compareUnavailableNoUrl":
-		"更新情報を取得しました（公開: {latest} / 現在: {current}）。バージョン比較ができないため、Releases を確認してください。",
-	"settings.notice.update.currentNewer":
-		"現在のほうが新しいバージョンです（現在: {current} / 公開: {latest}）。",
-	"settings.notice.update.newVersionWithUrl":
-		"新しいバージョン {latest} が利用可能です（現在: {current}）。ダウンロード: {url}",
-	"settings.notice.update.newVersionNoUrl":
-		"新しいバージョン {latest} が利用可能です（現在: {current}）。",
-	"settings.notice.update.failed":
-		"更新確認に失敗しました。通信状況と更新URLを確認してください。",
+		"互換モード（1.4.0 で廃止）が同期の安全策として作っていたバックアップを、ゴミ箱へ移します（復元できなくなるので注意）",
 	"settings.releasePage": "リリースページ",
+	"settings.releasePage.name": "リリースノート",
 	"settings.notice.linkOpenFailed": "リンクを開けませんでした。",
 	"settings.section.support": "サポート",
 	"settings.supportDonation.name": "サポート（寄付）",
@@ -279,8 +260,6 @@ const jaDict = {
 	"modal.viewMode.reading.title": "書籍モード",
 	"modal.viewMode.reading.desc":
 		"縦書き読書モードで、ページめくりスタイルで閲覧します。",
-	"modal.viewMode.compat.title": "互換モード",
-	"modal.viewMode.compat.desc": "TipTapベースの互換ビューで編集します。",
 	"modal.viewMode.placement.right": "右側に開く",
 	"modal.viewMode.placement.tab": "隣のタブに開く",
 	"modal.viewMode.placement.window": "新規ウィンドウで開く",
@@ -289,17 +268,7 @@ const jaDict = {
 	"modal.viewAlreadyOpen.desc":
 		"既に縦書きビューが開かれています。新しいビューを開くには、既存のビューを閉じてください。",
 
-	"modal.unsupportedHtml.title": "未対応HTMLタグの検出",
-	"modal.unsupportedHtml.desc":
-		"未対応のHTMLタグが含まれているため、そのまま編集すると失われる可能性があります。",
-	"modal.unsupportedHtml.detectedTags": "検出されたタグ: {tags}",
-	"modal.unsupportedHtml.readOnly": "読み取り専用で開く",
-	"modal.unsupportedHtml.discard": "破棄して開く",
 
-	"modal.unsavedChanges.defaultMessage": "未保存の変更があります。",
-	"modal.unsavedChanges.closeTabPrompt":
-		"未保存の変更があります。タブを閉じる前に保存しますか？",
-	"modal.unsavedChanges.title": "未保存の変更",
 	"modal.settingsPanel.title": "表示設定",
 	"modal.settingsPanel.pluginSettingsHint":
 		"起動方法や一般項目はプラグイン設定から変更できます。",
@@ -348,49 +317,8 @@ const jaDict = {
 		"※ 傍点文字（﹅/﹆/⚬など）はフォント・OSにより見え方が変わる場合があります。",
 	"modal.rubyInput.insert": "挿入",
 
-	"modal.fileSwitch.title": "未保存の変更があります",
-	"modal.fileSwitch.heading": "ファイルを切り替えようとしています",
-	"modal.fileSwitch.detail":
-		"現在のファイルに未保存の変更があります。変更を保存しますか？",
-	"modal.fileSwitch.currentFile": "現在のファイル:",
-	"modal.fileSwitch.unsaved": "●未保存",
-	"modal.fileSwitch.nextFile": "切り替え先:",
-	"modal.fileSwitch.choose": "次のいずれかを選択してください：",
-	"modal.fileSwitch.option.save": "保存して切り替え:",
-	"modal.fileSwitch.option.saveDesc":
-		"現在の変更を保存してから新しいファイルを開きます",
-	"modal.fileSwitch.option.discard": "破棄して切り替え:",
-	"modal.fileSwitch.option.discardDesc":
-		"変更を破棄して新しいファイルを開きます",
-	"modal.fileSwitch.option.cancel": "キャンセル:",
-	"modal.fileSwitch.option.cancelDesc": "ファイル切り替えをキャンセルします",
-	"modal.fileSwitch.button.discardAndSwitch": "破棄して切り替え",
-	"modal.fileSwitch.button.saveAndSwitch": "保存して切り替え",
 
-	"modal.conflict.title": "ファイル競合の解決",
-	"modal.conflict.file": "ファイル: {filePath}",
-	"modal.conflict.desc":
-		"このファイルが外部で変更されましたが、未保存の編集内容があります。保存方法を選択してください。",
-	"modal.conflict.overwrite": "現在の内容で上書き保存",
-	"modal.conflict.acceptExternal": "外部変更を取り込む",
-	"modal.conflict.keepBoth": "両方のバージョンを保存",
 
-	"context.notice.copyFailed": "コピーに失敗しました。",
-	"context.notice.cutFailed": "切り取りに失敗しました。",
-	"context.notice.pasteFailed":
-		"貼り付けに失敗しました。ブラウザの権限設定を確認してください。",
-	"context.notice.findReplaceNotImplemented": "検索・置換は未実装です。",
-	"search.placeholder": "検索...",
-	"search.prev": "前を検索",
-	"search.next": "次を検索",
-	"search.close": "閉じる",
-	"search.replacePlaceholder": "置換...",
-	"search.replaceOne": "置換",
-	"search.replaceAll": "全置換",
-	"search.caseSensitive": "大文字小文字区別",
-	"search.noMatch": "マッチなし",
-	"aux.placeholder": "入力して Enter で挿入、Shift+Enter で改行...",
-	"aux.insert": "挿入",
 	"link.defaultText": "リンクテキスト",
 	"widget.math.parseFailed": "数式ブロックの解析に失敗しました。",
 	"widget.math.rendering": "数式をレンダリング中…",
@@ -412,8 +340,8 @@ const jaDict = {
 	"widget.embed.headingNotFound": "見出しが見つかりません: {heading}",
 	"widget.embed.blockNotFound": "ブロックが見つかりません: {blockId}",
 	"widget.embed.renderFailed": "埋め込みのレンダリングに失敗しました。",
-	"notice.compatMode.disabled":
-		"互換モードが無効です。設定で有効化してください。",
+	"notice.compatMode.retired":
+		"互換モードは 1.4.0 で廃止しました。執筆・参照モードで開きます。",
 	"notice.writingMode.toggleFailed": "書字方向の切り替えに失敗しました。",
 	"notice.displaySettings.switchingTo":
 		"表示設定を開くため、{view}へ切り替えます。",
@@ -443,19 +371,6 @@ const jaDict = {
 		"ペアの Markdown ビューが対象ファイルと一致しないため閉じます。",
 	"notice.layoutChanged.switchedTo":
 		"レイアウト変更を検出したため、{view}へ切り替えました。",
-	"notice.layoutChanged.readingClosed":
-		"レイアウト変更を検出したため、書籍モードを終了しました。",
-	"notice.readOnly.sourceEditUnavailable":
-		"読み取り専用ではソーステキスト編集は使用できません。",
-	"notice.readOnly.syncModeUnavailable":
-		"読み取り専用では同期モードは変更できません。",
-	"notice.readOnly.saveUnavailable": "読み取り専用では保存できません。",
-	"notice.readOnly.auxiliaryUnavailable":
-		"読み取り専用では補助入力パネルは使用できません。",
-	"notice.auxiliary.toggleFailed": "補助入力パネルの切り替えに失敗しました。",
-	"notice.syncMode.switched.manual": "手動同期モードに切り替えました。",
-	"notice.syncMode.switched.auto": "自動同期モードに切り替えました。",
-	"notice.syncMode.toggleFailed": "同期モードの切り替えに失敗しました。",
 	"notice.ruby.enabled": "ルビ表示をオンにしました。",
 	"notice.ruby.disabled": "ルビ表示をオフにしました。",
 	"notice.ruby.toggleFailed": "ルビ表示の切り替えに失敗しました。",
@@ -473,41 +388,6 @@ const jaDict = {
 	"notice.ceIme.reason.caretVerification": "キャレット整合性チェック",
 	"notice.tcy.invalidSelection":
 		"縦中横は半角英数字/!? の1〜4文字のみ対応です。",
-	"notice.unsupported.readOnlyOpened":
-		"未対応タグがあるため読み取り専用で開きました。",
-	"notice.unsupported.backupFailed":
-		"未対応タグのバックアップ作成に失敗しました。",
-	"notice.sync.noFileOpen": "同期するファイルが開かれていません。",
-	"notice.sync.fileSaved": "ファイルを保存しました。",
-	"notice.sync.readBeforeSaveFailed": "保存前の読み取りに失敗しました。",
-	"notice.sync.backupCreateFailedContinue":
-		"バックアップの作成に失敗しました（保存は続行します）。",
-	"notice.sync.readBackFailedBackedUp":
-		"保存後の読み戻し検証に失敗しました（バックアップ済み）。",
-	"notice.sync.readBackFailed": "保存後の読み戻し検証に失敗しました。",
-	"notice.sync.mismatchBackedUp":
-		"同期に失敗した可能性があります（読み戻し不一致）。バックアップ済みです。",
-	"notice.sync.rollbackDone": "安全のため同期前の内容へロールバックしました。",
-	"notice.sync.rollbackFailedRestore":
-		"ロールバックに失敗しました。バックアップから復元してください。",
-	"notice.sync.rollbackDueToMismatch":
-		"読み戻し不一致のためロールバックしました。",
-	"notice.sync.saveFailed": "ファイルの保存に失敗しました。",
-	"notice.sync.loadFailed": "ファイルの読み込みに失敗しました。",
-	"notice.sync.conflictCancelled": "競合解決がキャンセルされました。",
-	"notice.sync.conflictOverwriteSaved": "現在の内容で上書き保存しました。",
-	"notice.sync.conflictAcceptedExternal": "外部変更を取り込みました。",
-	"notice.sync.conflictResolutionFailed":
-		"競合解決処理でエラーが発生しました。",
-	"notice.sync.conflictCopyLabel": "競合コピー",
-	"notice.sync.keepBothApplied":
-		"現在の内容を「{copyName}」として保存し、外部変更を反映しました。",
-	"notice.sync.fileSwitchActionFailed":
-		"ファイル切り替え処理でエラーが発生しました。",
-	"notice.sync.switchedAfterSave":
-		"変更を保存してファイルを切り替えました。",
-	"notice.sync.switchedAfterDiscard":
-		"変更を破棄してファイルを切り替えました。",
 } as const;
 
 type I18nKey = keyof typeof jaDict;
@@ -522,7 +402,6 @@ const enDict: Record<I18nKey, string> = {
 	"common.copy": "Copy",
 	"common.paste": "Paste",
 	"common.selectAll": "Select all",
-	"common.discard": "Discard",
 	"common.delete": "Delete",
 	"common.confirmation": "Confirmation",
 	"common.displaySettings": "Display settings",
@@ -575,28 +454,12 @@ const enDict: Record<I18nKey, string> = {
 	"toolbar.source.enable": "Source text editing mode",
 	"toolbar.source.disable": "Return to formatted view",
 	"toolbar.outline": "Outline",
-	"toolbar.findReplace": "Find and replace",
-	"toolbar.readingMode.pagination": "Book mode",
-	"toolbar.auxiliary.toggle": "Auxiliary input panel",
-	"toolbar.auxiliary.enable": "Enable auxiliary input panel",
-	"toolbar.auxiliary.disable": "Disable auxiliary input panel",
-	"toolbar.syncMode.manualToAuto":
-		"Manual sync mode (click to switch to auto sync)",
-	"toolbar.syncMode.autoToManual":
-		"Auto sync mode (click to switch to manual sync)",
-	"toolbar.status.saved": "Saved",
-	"toolbar.status.saving": "Saving...",
-	"toolbar.status.syncError": "Sync error",
-	"toolbar.status.unsaved": "Unsaved",
-	"toolbar.sync.saveShortcut": "Save ({shortcut})",
 	"toolbar.reading.return": "Back",
 	"toolbar.reading.returnTo": "Back to {view}",
 	"reading.returnLabel.sot": "Writing/Reading view",
-	"reading.returnLabel.compat": "Compatibility view",
 	"view.reading.display": "Book view",
 	"view.reading.displayWithTitle": "Book view: - {title} -",
 	"badge.mode.reading": "Book",
-	"badge.mode.compat": "Compat",
 	"badge.pairedMarkdown.short": "V",
 	"badge.pairedMarkdown.title": "Editing in Tategaki",
 	"outline.title": "Outline",
@@ -617,15 +480,60 @@ const enDict: Record<I18nKey, string> = {
 	"plugin.notice.syncBackup.movedDotTrash":
 		"Sync backups were moved to .trash.",
 	"plugin.notice.syncBackup.moveFailed": "Failed to move sync backups.",
-	"plugin.notice.backup.desktopOnly":
-		"Desktop app is required to open the backup folder.",
-	"plugin.notice.backup.notFound": "Sync backup folder was not found.",
-	"plugin.notice.backup.openFailed": "Failed to open the backup folder.",
 
 	"settings.section.main": "General",
-	"settings.compatMode.name": "Compatibility mode",
-	"settings.compatMode.desc":
-		"Enable the compatibility view and sync features. Turning this off hides compatibility sync/backup settings.",
+	"pm.settings.name": "New writing mode (Experimental)",
+	"pm.settings.desc": "Basic typing, composition, selection, copy and paste work, but this is an experimental feature and some things are not possible yet (see “What the new writing mode cannot do yet” in the README). Edits are written directly to the open note. Back up important manuscripts before use.",
+	"pm.settings.preeditDisplay.name": "New writing mode: display while composing",
+	"pm.settings.preeditDisplay.desc": "Choose whether the text being composed takes room in the line (the text after it is pushed aside) or is drawn over the text. The setting is read when a composition starts, so a change applies from the next one. A composition that starts over a selected range is always drawn over.",
+	"pm.settings.preeditDisplay.inline": "Push aside (default)",
+	"pm.settings.preeditDisplay.overlay": "Draw over",
+	"pm.view.title": "New writing mode: {name}",
+	"pm.badge.title": "New writing mode",
+	"pm.badge.short": "N",
+	"pm.paired.title": "Markdown paired with new writing mode",
+	"pm.notice.unavailable": "New writing mode is unavailable in this environment: ",
+	"pm.notice.cmMissing": "The Markdown editor is unavailable. Please use the existing writing mode.",
+	"pm.notice.pairClosed": "New writing mode closed because its paired Markdown closed or changed files.",
+	"pm.notice.keyBlocked": "New writing mode: the edit was not applied ({reason}).",
+	"pm.notice.key.inside-inline": "a line break cannot be inserted inside Ruby or vertical-in-horizontal text",
+	"pm.notice.inputRetained": "New writing mode: text was not written ({reason}). Delete the retained text with Backspace, or copy it for use elsewhere.",
+	"pm.notice.inputBlocked": "New writing mode: text cannot be typed here ({reason}).",
+	"pm.notice.inputBlockedComposition": "New writing mode: text confirmed here will not be written ({reason}). The confirmed text stays on the input surface.",
+	"pm.notice.inputMismatch": "The write reached the document in a different form than planned. New writing mode has stopped writing. Check the text in the Markdown editor (Undo can restore it). Close and reopen new writing mode to resume.",
+	"pm.notice.input.stale": "the document or connection changed",
+	"pm.notice.input.newline-in-payload": "the text contains a line break",
+	"pm.notice.input.dispatch-rejected": "another process changed the write",
+	"pm.notice.input.structure": "the displayed structure could not be preserved",
+	"pm.notice.input.partial-ruby": "only part of a Ruby is selected",
+	"pm.notice.input.inside-inline": "the text contains characters that cannot be written inside a Ruby base or vertical-in-horizontal text",
+	"pm.notice.input.location": "text cannot be written here",
+	"pm.notice.input.reading-view": "the Markdown editor is in reading view",
+	"pm.notice.input.out-of-scope": "this document is not writable (it is not a Markdown note, or this environment does not show a range in a way that is safe to write)",
+	"pm.notice.input.stopped": "writing has stopped; close and reopen new writing mode to resume",
+	"pm.notice.input.keyless-range": "a conversion that no typed key began is not written over a selection",
+	"pm.notice.input.keyless-after-input": "a conversion that looks like a reconversion is not written",
+	"pm.notice.clipboard.composing": "a composition is in progress",
+	"pm.notice.clipboard.retained": "text that could not be written is still on the input surface",
+	"pm.notice.leaveBlocked.composing": "New writing mode: nothing was done because a composition is in progress. Finish the composition, then try again.",
+	"pm.notice.leaveBlocked.retained": "New writing mode: nothing was done because text that could not be written is still on the input surface. Delete it with Backspace, or copy it, then try again.",
+	"pm.notice.lostText": "New writing mode closed. Text that was on the input surface was not written to the note (and not copied to the clipboard): \"{text}\"",
+	"pm.command.discardComposition": "New writing mode: discard a stuck composition",
+	"pm.command.recordInput": "Tategaki (development): Start/stop new writing mode input recording (M2-4)",
+	"pm.record.label": "Recording label (e.g. mac-standard)",
+	"pm.record.start": "Start recording",
+	"pm.record.cancel": "Cancel",
+	"pm.record.started": "Input recording started. Run the same command to stop.",
+	"pm.record.saved": "Input recording saved:",
+	"pm.record.limit": "Recording stopped at the limit",
+	"pm.record.failed": "Could not save input recording:",
+	"pm.notice.discardCompositionRetained": "New writing mode: the composition was not discarded (the input surface held retained text when it started).",
+	"pm.notice.discardCompositionFirst": "New writing mode: a composition is active. If it remains stuck, run this command again to confirm discarding it.",
+	"pm.recovery.title": "Discard the stuck composition?",
+	"pm.recovery.message": "The composing text will be discarded without writing it to the document.",
+	"pm.recovery.cancel": "Cancel",
+	"pm.recovery.discard": "Discard composition",
+	"pm.input.label": "Input surface of the new writing mode",
 	"settings.showModeDialog.name": "Show mode selection when opening view",
 	"settings.showModeDialog.desc":
 		"Show a dialog to choose a view mode when opening the vertical writing view.",
@@ -687,57 +595,11 @@ const enDict: Record<I18nKey, string> = {
 		"Typewriter features are temporarily unavailable while plain text view is on. Disabling plain text view restores the saved settings.",
 	"settings.sotTypewriter.unavailable.plainEdit":
 		"Typewriter features are temporarily unavailable while editing a paragraph in plain mode. Exiting plain edit restores the saved settings.",
-	"settings.section.sotExperimental": "Display correction",
-	"settings.sotVerticalLayoutNudge.name":
-		"Ease vertical column-break glitches",
-	"settings.sotVerticalLayoutNudge.desc":
-		"Reduces unwanted column breaks around closing brackets and ruby in vertical Writing & Reference and Book mode. It does not affect saved content or copied text. Turn this off if the display looks wrong.",
-	"settings.section.syncAndUpdateCompat": "Compatibility mode",
-	"settings.updateInterval.name": "External sync update interval (ms)",
-	"settings.updateInterval.desc":
-		"Polling interval for cursor sync/follow behavior. 0 = real-time (may increase load). Larger values reduce load.",
-	"settings.syncMode.name": "Sync mode",
-	"settings.syncMode.desc":
-		"Auto: saves automatically while editing. Manual: saves only when you click the sync button (vertical editor).",
-	"settings.syncMode.auto": "Auto sync",
-	"settings.syncMode.manual": "Manual sync",
-	"settings.syncBackupCreate.name": "Create sync backups",
-	"settings.syncBackupCreate.desc":
-		'Create backups when syncing in compatibility mode. If disabled, backups are not created (use "Version history" if needed).',
-	"settings.syncBackupOpen.name": "Open sync backup folder",
-	"settings.syncBackupOpen.desc": "Open the folder where backups are stored.",
-	"settings.syncBackupMove.name": "Move sync backups to trash",
+	"settings.syncBackupMove.name": "Move old compatibility-mode backups to trash",
 	"settings.syncBackupMove.desc":
-		"Move safety backups created during sync to the trash (cannot be restored afterward).",
-	"settings.appCloseAction.name": "Unsaved changes on app close",
-	"settings.appCloseAction.desc":
-		"Choose whether to save or discard when unsaved changes exist on exit.",
-	"settings.appCloseAction.save": "Save and exit",
-	"settings.appCloseAction.discard": "Discard and exit",
-	"settings.syncCursor.name": "Cursor sync",
-	"settings.syncCursor.desc":
-		"Reflect cursor position from the standard editor in the vertical editor.",
-	"settings.section.update": "Updates",
-	"settings.manualUpdate.name": "Check for updates manually",
-	"settings.manualUpdate.desc":
-		"Only contacts the network when the button is pressed, and checks latest version info from the public URL.",
-	"settings.manualUpdate.button": "Check updates",
-	"settings.notice.update.invalidResponse":
-		"Could not get update info (check latest.json format).",
-	"settings.notice.update.latest": "Up to date (current: {current}).",
-	"settings.notice.update.compareUnavailableWithUrl":
-		"Update info received (published: {latest} / current: {current}). Could not compare versions, please check Releases: {url}",
-	"settings.notice.update.compareUnavailableNoUrl":
-		"Update info received (published: {latest} / current: {current}). Could not compare versions, please check Releases.",
-	"settings.notice.update.currentNewer":
-		"Current version is newer (current: {current} / published: {latest}).",
-	"settings.notice.update.newVersionWithUrl":
-		"New version {latest} is available (current: {current}). Download: {url}",
-	"settings.notice.update.newVersionNoUrl":
-		"New version {latest} is available (current: {current}).",
-	"settings.notice.update.failed":
-		"Failed to check updates. Check your network and update URL.",
+		"Move the backups that compatibility mode (retired in 1.4.0) made as a sync safety net to the trash (cannot be restored afterward).",
 	"settings.releasePage": "Releases",
+	"settings.releasePage.name": "Release notes",
 	"settings.notice.linkOpenFailed": "Failed to open link.",
 	"settings.section.support": "Support",
 	"settings.supportDonation.name": "Support (donation)",
@@ -789,9 +651,6 @@ const enDict: Record<I18nKey, string> = {
 	"modal.viewMode.reading.title": "Book mode",
 	"modal.viewMode.reading.desc":
 		"Browse in vertical reading mode with page-turn style navigation.",
-	"modal.viewMode.compat.title": "Compatibility mode",
-	"modal.viewMode.compat.desc":
-		"Edit in the TipTap-based compatibility view.",
 	"modal.viewMode.placement.right": "Open on the right",
 	"modal.viewMode.placement.tab": "Open in adjacent tab",
 	"modal.viewMode.placement.window": "Open in new window",
@@ -800,17 +659,7 @@ const enDict: Record<I18nKey, string> = {
 	"modal.viewAlreadyOpen.desc":
 		"A vertical writing view is already open. Close the existing view before opening a new one.",
 
-	"modal.unsupportedHtml.title": "Unsupported HTML tags detected",
-	"modal.unsupportedHtml.desc":
-		"This note contains unsupported HTML tags. Editing as-is may cause data loss.",
-	"modal.unsupportedHtml.detectedTags": "Detected tags: {tags}",
-	"modal.unsupportedHtml.readOnly": "Open read-only",
-	"modal.unsupportedHtml.discard": "Discard and open",
 
-	"modal.unsavedChanges.defaultMessage": "You have unsaved changes.",
-	"modal.unsavedChanges.closeTabPrompt":
-		"You have unsaved changes. Save before closing the tab?",
-	"modal.unsavedChanges.title": "Unsaved changes",
 	"modal.settingsPanel.title": "Display settings",
 	"modal.settingsPanel.pluginSettingsHint":
 		"Startup and general options can be changed in the plugin settings.",
@@ -861,51 +710,8 @@ const enDict: Record<I18nKey, string> = {
 		"Note: Emphasis marks (e.g., ﹅/﹆/⚬) may render differently depending on OS and fonts.",
 	"modal.rubyInput.insert": "Insert",
 
-	"modal.fileSwitch.title": "You have unsaved changes",
-	"modal.fileSwitch.heading": "You are about to switch files",
-	"modal.fileSwitch.detail":
-		"The current file has unsaved changes. Do you want to save them?",
-	"modal.fileSwitch.currentFile": "Current file:",
-	"modal.fileSwitch.unsaved": "●Unsaved",
-	"modal.fileSwitch.nextFile": "Switching to:",
-	"modal.fileSwitch.choose": "Please choose one of the following:",
-	"modal.fileSwitch.option.save": "Save and switch:",
-	"modal.fileSwitch.option.saveDesc":
-		"Save current changes, then open the new file.",
-	"modal.fileSwitch.option.discard": "Discard and switch:",
-	"modal.fileSwitch.option.discardDesc":
-		"Discard changes, then open the new file.",
-	"modal.fileSwitch.option.cancel": "Cancel:",
-	"modal.fileSwitch.option.cancelDesc": "Cancel file switching.",
-	"modal.fileSwitch.button.discardAndSwitch": "Discard and switch",
-	"modal.fileSwitch.button.saveAndSwitch": "Save and switch",
 
-	"modal.conflict.title": "Resolve file conflict",
-	"modal.conflict.file": "File: {filePath}",
-	"modal.conflict.desc":
-		"This file was changed externally and there are unsaved edits. Choose how to proceed.",
-	"modal.conflict.overwrite": "Overwrite with current content",
-	"modal.conflict.acceptExternal": "Accept external changes",
-	"modal.conflict.keepBoth": "Keep both versions",
 
-	"context.notice.copyFailed": "Failed to copy.",
-	"context.notice.cutFailed": "Failed to cut.",
-	"context.notice.pasteFailed":
-		"Failed to paste. Check browser permission settings.",
-	"context.notice.findReplaceNotImplemented":
-		"Find and replace is not implemented.",
-	"search.placeholder": "Search...",
-	"search.prev": "Find previous",
-	"search.next": "Find next",
-	"search.close": "Close",
-	"search.replacePlaceholder": "Replace...",
-	"search.replaceOne": "Replace",
-	"search.replaceAll": "Replace all",
-	"search.caseSensitive": "Case sensitive",
-	"search.noMatch": "No matches",
-	"aux.placeholder":
-		"Type and press Enter to insert, Shift+Enter for newline...",
-	"aux.insert": "Insert",
 	"link.defaultText": "Link text",
 	"widget.math.parseFailed": "Failed to parse math block.",
 	"widget.math.rendering": "Rendering math...",
@@ -927,8 +733,8 @@ const enDict: Record<I18nKey, string> = {
 	"widget.embed.headingNotFound": "Heading not found: {heading}",
 	"widget.embed.blockNotFound": "Block not found: {blockId}",
 	"widget.embed.renderFailed": "Failed to render embed.",
-	"notice.compatMode.disabled":
-		"Compatibility mode is disabled. Enable it in settings.",
+	"notice.compatMode.retired":
+		"Compatibility mode was retired in 1.4.0. Opening in Writing/Reading mode instead.",
 	"notice.writingMode.toggleFailed":
 		"Failed to toggle writing direction.",
 	"notice.displaySettings.switchingTo":
@@ -959,20 +765,6 @@ const enDict: Record<I18nKey, string> = {
 		"Closing because the paired Markdown view does not match the target file.",
 	"notice.layoutChanged.switchedTo":
 		"Layout change detected. Switched to {view}.",
-	"notice.layoutChanged.readingClosed":
-		"Layout change detected, so book mode was closed.",
-	"notice.readOnly.sourceEditUnavailable":
-		"Source text editing is unavailable in read-only mode.",
-	"notice.readOnly.syncModeUnavailable":
-		"Cannot change sync mode in read-only mode.",
-	"notice.readOnly.saveUnavailable": "Cannot save in read-only mode.",
-	"notice.readOnly.auxiliaryUnavailable":
-		"Auxiliary input panel is unavailable in read-only mode.",
-	"notice.auxiliary.toggleFailed":
-		"Failed to toggle auxiliary input panel.",
-	"notice.syncMode.switched.manual": "Switched to manual sync mode.",
-	"notice.syncMode.switched.auto": "Switched to auto sync mode.",
-	"notice.syncMode.toggleFailed": "Failed to toggle sync mode.",
 	"notice.ruby.enabled": "Ruby display enabled.",
 	"notice.ruby.disabled": "Ruby display disabled.",
 	"notice.ruby.toggleFailed": "Failed to toggle ruby display.",
@@ -995,45 +787,6 @@ const enDict: Record<I18nKey, string> = {
 		"caret consistency check",
 	"notice.tcy.invalidSelection":
 		"TCY supports only 1-4 half-width alphanumeric/!? characters.",
-	"notice.unsupported.readOnlyOpened":
-		"Opened in read-only mode because unsupported tags were found.",
-	"notice.unsupported.backupFailed":
-		"Failed to create backup for unsupported tags.",
-	"notice.sync.noFileOpen": "No file is open for sync.",
-	"notice.sync.fileSaved": "File saved.",
-	"notice.sync.readBeforeSaveFailed":
-		"Failed to read file before saving.",
-	"notice.sync.backupCreateFailedContinue":
-		"Failed to create backup (save will continue).",
-	"notice.sync.readBackFailedBackedUp":
-		"Failed to verify read-back after save (backup created).",
-	"notice.sync.readBackFailed": "Failed to verify read-back after save.",
-	"notice.sync.mismatchBackedUp":
-		"Sync may have failed (read-back mismatch). Backup is available.",
-	"notice.sync.rollbackDone":
-		"Rolled back to pre-sync content for safety.",
-	"notice.sync.rollbackFailedRestore":
-		"Rollback failed. Please restore from backup.",
-	"notice.sync.rollbackDueToMismatch":
-		"Rolled back due to read-back mismatch.",
-	"notice.sync.saveFailed": "Failed to save file.",
-	"notice.sync.loadFailed": "Failed to load file.",
-	"notice.sync.conflictCancelled": "Conflict resolution was cancelled.",
-	"notice.sync.conflictOverwriteSaved":
-		"Overwritten with current content and saved.",
-	"notice.sync.conflictAcceptedExternal":
-		"Accepted external changes.",
-	"notice.sync.conflictResolutionFailed":
-		"An error occurred during conflict resolution.",
-	"notice.sync.conflictCopyLabel": "Conflict copy",
-	"notice.sync.keepBothApplied":
-		'Saved current content as "{copyName}" and applied external changes.',
-	"notice.sync.fileSwitchActionFailed":
-		"An error occurred during file switch processing.",
-	"notice.sync.switchedAfterSave":
-		"Saved changes and switched file.",
-	"notice.sync.switchedAfterDiscard":
-		"Discarded changes and switched file.",
 };
 
 const dictionaries: Record<Locale, Record<I18nKey, string>> = {
@@ -1056,8 +809,9 @@ function detectLanguageCode(): string {
 	}
 
 	if (typeof navigator !== "undefined") {
-		if (Array.isArray(navigator.languages)) {
-			for (const lang of navigator.languages) {
+		const languages: unknown = navigator.languages;
+		if (Array.isArray(languages)) {
+			for (const lang of languages as string[]) {
 				if (lang && lang.trim()) {
 					return lang;
 				}
@@ -1093,7 +847,7 @@ export function t(
 	if (!params) {
 		return template;
 	}
-	return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, token) => {
+	return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (match: string, token: string) => {
 		const value = params[token];
 		return value === undefined ? match : String(value);
 	});

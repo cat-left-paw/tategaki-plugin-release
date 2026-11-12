@@ -44,10 +44,10 @@ export function applyAozoraRubyToElement(root: HTMLElement): boolean {
 	}
 
 	const textNodes: Text[] = [];
-	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	const walker = activeDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 	let currentNode = walker.nextNode();
 	while (currentNode) {
-		if (currentNode instanceof Text) {
+		if (currentNode.instanceOf(Text)) {
 			textNodes.push(currentNode);
 		}
 		currentNode = walker.nextNode();
@@ -90,12 +90,12 @@ export function applyAozoraRubyToElement(root: HTMLElement): boolean {
 			const beforeNode = workingNode.splitText(index);
 			const afterNode = beforeNode.splitText(fullMatch.length);
 
-			const rubyEl = workingNode.ownerDocument?.createElement("ruby") ?? document.createElement("ruby");
+			const rubyEl = workingNode.ownerDocument?.createElement("ruby") ?? createEl("ruby");
 			rubyEl.textContent = "";
-			const baseNode = workingNode.ownerDocument?.createTextNode(base) ?? document.createTextNode(base);
+			const baseNode = workingNode.ownerDocument?.createTextNode(base) ?? activeDocument.createTextNode(base);
 			rubyEl.appendChild(baseNode);
 
-			const rtEl = workingNode.ownerDocument?.createElement("rt") ?? document.createElement("rt");
+			const rtEl = workingNode.ownerDocument?.createElement("rt") ?? createEl("rt");
 			rtEl.textContent = ruby;
 			rubyEl.appendChild(rtEl);
 
@@ -153,7 +153,7 @@ export function convertRubyElementsToAozora(
 			const replacement = rubyElementToAozora(rubyEl, addDelimiter);
 			const textNode =
 				container.ownerDocument?.createTextNode(replacement) ??
-				document.createTextNode(replacement);
+				activeDocument.createTextNode(replacement);
 			rubyEl.replaceWith(textNode);
 		}
 		return container.innerHTML;

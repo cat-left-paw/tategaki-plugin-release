@@ -1,11 +1,12 @@
-import { App, WorkspaceLeaf, EventRef, TFile, Notice } from "obsidian";
+import { PmModeView } from "../wysiwyg/pm-mode/obsidian/pm-mode-view";
+import { TATEGAKI_PM_VIEW_TYPE, canOpenPmMode, resolvePmModePreference } from "../wysiwyg/pm-mode/obsidian/entry";
+import { App, WorkspaceLeaf, EventRef, TFile } from "obsidian";
 import type { TategakiV2Settings } from "../types/settings";
 import {
-	TipTapCompatView,
+	LegacyCompatRedirectView,
 	TIPTAP_COMPAT_VIEW_TYPE,
 	TIPTAP_COMPAT_VIEW_TYPE_LEGACY,
-	type TategakiViewMode,
-} from "../wysiwyg/tiptap-compat-view";
+} from "../wysiwyg/legacy-compat-redirect-view";
 import {
 	TategakiReadingView,
 	TATEGAKI_READING_VIEW_TYPE,
@@ -21,9 +22,8 @@ import {
 } from "../shared/ui/view-mode-selection-modal";
 import { ViewAlreadyOpenModal } from "../shared/ui/view-already-open-modal";
 import { debugWarn } from "../shared/logger";
-import { t } from "../shared/i18n";
 
-type ReadingReturnMode = TategakiViewMode | "sot";
+type ReadingReturnMode = "sot";
 
 type SyncStateLike = {
 	dirty?: boolean;
@@ -64,12 +64,12 @@ type ManagedLeaf = WorkspaceLeaf & {
 
 function getManagedLeafView(view: unknown): ManagedLeafView {
 	return typeof view === "object" && view !== null
-		? (view as ManagedLeafView)
+		? (view)
 		: {};
 }
 
 /**
- * Tiptap ビューの管理クラス
+ * Tategaki のビュー（執筆・参照モード・新執筆モード・書籍モード）の管理クラス
  */
 export class ModeManager {
 	private readonly app: App;
@@ -80,9 +80,8 @@ export class ModeManager {
 	private readonly managedLeaves = new Set<WorkspaceLeaf>();
 	private readonly workspaceGuards: EventRef[] = [];
 	private primaryLeaf: WorkspaceLeaf | null = null;
-	private enforceTimer: ReturnType<typeof setTimeout> | null = null;
+	private enforceTimer: number | null = null;
 	private static readonly INITIAL_FILE_PROP = "__tategakiInitialFile";
-	private static readonly INITIAL_VIEW_MODE_PROP = "__tategakiInitialViewMode";
 	private nextViewMode: ViewModeSelectionType | null = null;
 
 	constructor(app: App, settings: TategakiV2Settings, plugin: TategakiV2Plugin) {
@@ -99,65 +98,44 @@ export class ModeManager {
 		return leaf as ManagedLeaf;
 	}
 
+	/** M4a: the open views of the new writing mode. */
+	private pmViews(): PmModeView[] {
+		const views: PmModeView[] = [];
+		for (const leaf of this.app.workspace.getLeavesOfType(TATEGAKI_PM_VIEW_TYPE)) if (leaf.view instanceof PmModeView) views.push(leaf.view);
+		return views;
+	}
+
+	/**
+	 * M4a (D-M4-11, a stoppable entry): opening, replacing or closing Tategaki's views would close a new writing mode view (a view is reused, or the single-view constraint closes the
+	 * others). While one is composing, committing or holds text (a write that was refused), nothing is done: it tells why in one notice (`PmModeView.requestLeave`).
+	 */
+	private mayLeavePmViews(): boolean {
+		return this.pmViews().every(view => view.requestLeave());
+	}
+
+	/** M4a (D-M4-12, a way out that cannot be stopped): every new writing mode view ends its composition while it is shown and tells what it still holds, before its leaf is detached. */
+	private settlePmViews(): void {
+		for (const view of this.pmViews()) view.settleBeforeClose();
+	}
+
 	/**
 	 * ビューを登録
 	 */
-	async registerViews(): Promise<void> {
-		// 既に登録されているかチェック
-		try {
-			const existingTipTapLeaves = [
-				...this.app.workspace.getLeavesOfType(
-					TIPTAP_COMPAT_VIEW_TYPE,
-				),
-				...this.app.workspace.getLeavesOfType(
-					TIPTAP_COMPAT_VIEW_TYPE_LEGACY,
-				),
-			];
-
-			// 既存のビューがある場合は強制的に閉じる
-			if (existingTipTapLeaves.length > 0) {
-				// 破棄前に可能なら同期を試みる（旧インスタンスが残っている場合の安全策）
-				for (const leaf of existingTipTapLeaves) {
-					const view = getManagedLeafView(leaf.view);
-					try {
-						if (view?.syncManager?.getState?.()?.dirty) {
-							await view.syncManager.flush?.();
-						} else if (typeof view?.handleAppQuit === "function") {
-							await view.handleAppQuit("save");
-						}
-					} catch (error) {
-						debugWarn("Tategaki: failed to flush view before detach", error);
-					}
-				}
-
-				existingTipTapLeaves.forEach(leaf => leaf.detach());
-
-				// 少し待ってからビューを登録
-				await new Promise(resolve => setTimeout(resolve, 100));
-			}
-		} catch (error) {
-			debugWarn("Tategaki: Error checking existing views", error);
-		}
-
+	registerViews(): void {
 		// ビューが既に登録されているかチェック
 		const viewRegistry = this.getViewRegistry();
-		if (!viewRegistry?.viewByType?.[TIPTAP_COMPAT_VIEW_TYPE]) {
-			this.plugin.registerView(TIPTAP_COMPAT_VIEW_TYPE, (leaf) =>
-				new TipTapCompatView(
-					leaf,
-					this.plugin,
-					TIPTAP_COMPAT_VIEW_TYPE,
-				),
-			);
-		}
-		if (!viewRegistry?.viewByType?.[TIPTAP_COMPAT_VIEW_TYPE_LEGACY]) {
-			this.plugin.registerView(TIPTAP_COMPAT_VIEW_TYPE_LEGACY, (leaf) =>
-				new TipTapCompatView(
-					leaf,
-					this.plugin,
-					TIPTAP_COMPAT_VIEW_TYPE_LEGACY,
-				),
-			);
+		// 互換モード（廃止）の leaf が workspace に残っているときの受け口。執筆・参照モードで開き直す（1.6.0 で消す）。
+		for (const retiredType of [
+			TIPTAP_COMPAT_VIEW_TYPE,
+			TIPTAP_COMPAT_VIEW_TYPE_LEGACY,
+		]) {
+			if (!viewRegistry?.viewByType?.[retiredType]) {
+				this.plugin.registerView(
+					retiredType,
+					(leaf) =>
+						new LegacyCompatRedirectView(leaf, this.plugin, retiredType),
+				);
+			}
 		}
 		if (!viewRegistry?.viewByType?.[TATEGAKI_READING_VIEW_TYPE]) {
 			this.plugin.registerView(
@@ -170,6 +148,10 @@ export class ModeManager {
 				TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
 				(leaf) => new SoTWysiwygView(leaf, this.plugin)
 			);
+		}
+
+		if (!viewRegistry?.viewByType?.[TATEGAKI_PM_VIEW_TYPE]) {
+			this.plugin.registerView(TATEGAKI_PM_VIEW_TYPE, leaf => new PmModeView(leaf, this.plugin));
 		}
 
 		this.setupWorkspaceGuards();
@@ -194,9 +176,9 @@ export class ModeManager {
 
 		if (this.settings.showModeDialog) {
 			const modal = new ViewModeSelectionModal(this.app, {
-				defaultMode: this.settings.lastViewMode ?? "edit",
+				defaultMode: resolvePmModePreference(this.settings.lastViewMode ?? "edit", this.settings.enablePmMode, this.plugin.pmModeCapabilities),
+				showPm: canOpenPmMode(this.settings.enablePmMode, this.plugin.pmModeCapabilities),
 				placement: storedPlacement,
-				showCompat: this.settings.enableLegacyTiptap ?? true,
 			});
 			const result = await modal.openAndWait();
 			if (!result.mode) {
@@ -218,10 +200,7 @@ export class ModeManager {
 				this.settings.lastViewMode === "preview"
 					? "edit"
 					: this.settings.lastViewMode ?? "edit";
-			this.nextViewMode =
-				last === "compat" && !this.settings.enableLegacyTiptap
-					? "edit"
-					: last;
+			this.nextViewMode = resolvePmModePreference(last, this.settings.enablePmMode, this.plugin.pmModeCapabilities);
 		}
 
 		try {
@@ -234,12 +213,9 @@ export class ModeManager {
 						openOnRightSide: this.openOnRightSide,
 					});
 				}
-			} else if (this.nextViewMode === "compat") {
-				if (!this.settings.enableLegacyTiptap) {
-					new Notice(t("notice.compatMode.disabled"), 2500);
-					return;
-				}
-				await this.openTipTapView();
+			} else if (this.nextViewMode === "pm") {
+				const file = this.resolveRetainedFile();
+				if (file) await this.openPmModeView(file, { openInNewWindow: this.openInNewWindow, openOnRightSide: this.openOnRightSide });
 			} else {
 				const file = this.resolveRetainedFile();
 				if (!file) {
@@ -260,6 +236,11 @@ export class ModeManager {
 	 */
 	async onSettingsChanged(settings: TategakiV2Settings): Promise<void> {
 		this.settings = settings;
+		if (!settings.enablePmMode) {
+			// M4a (D-M4-12): turning the setting off cannot be stopped; the views settle first.
+			this.settlePmViews();
+			for (const leaf of this.app.workspace.getLeavesOfType(TATEGAKI_PM_VIEW_TYPE)) leaf.detach();
+		}
 		const leaves = this.getAllEditorLeaves();
 		for (const leaf of leaves) {
 			const view = leaf.view as unknown as { updateSettings?: (s: TategakiV2Settings) => Promise<void> };
@@ -276,6 +257,8 @@ export class ModeManager {
 	 * クリーンアップ
 	 */
 	cleanup(): void {
+		// M4a (D-M4-12): the plugin unloads (or is reloaded): the views settle before any leaf is detached.
+		this.settlePmViews();
 		for (const leaf of this.managedLeaves) {
 			try {
 				const managedLeaf = this.getManagedLeaf(leaf);
@@ -298,6 +281,7 @@ export class ModeManager {
 	}
 
 	private unregisterViews(): void {
+		this.settlePmViews();
 		try {
 			// すべてのTategakiビューを閉じる
 			const editorLeaves = this.getAllEditorLeaves();
@@ -332,14 +316,11 @@ export class ModeManager {
 
 		const targetLeaf = options?.targetLeaf ?? null;
 		if (targetLeaf) {
+			// M4a (D-M4-11): the target leaf's view is replaced by this entry.
+			if (targetLeaf.view instanceof PmModeView && !targetLeaf.view.requestLeave()) return false;
 			const currentType = targetLeaf.view?.getViewType?.();
 			if (currentType === TATEGAKI_READING_VIEW_TYPE) {
-				const returnMode = options?.returnViewMode ?? "sot";
-				if (returnMode === "sot") {
-					await this.openSoTWysiwygViewInLeaf(file, targetLeaf);
-				} else {
-					await this.openTipTapViewInLeaf(file, targetLeaf, returnMode);
-				}
+				await this.openSoTWysiwygViewInLeaf(file, targetLeaf);
 				return false;
 			}
 			await this.openReadingViewInLeaf(
@@ -375,6 +356,8 @@ export class ModeManager {
 		leaf: WorkspaceLeaf,
 		returnViewMode: ReadingReturnMode = "sot"
 	): Promise<void> {
+		// M4a (D-M4-11): a new writing mode view in this leaf is replaced by this entry.
+		if (leaf.view instanceof PmModeView && !leaf.view.requestLeave()) return;
 		await leaf.setViewState({
 			type: TATEGAKI_READING_VIEW_TYPE,
 			state: { filePath: file.path, returnViewMode },
@@ -383,25 +366,12 @@ export class ModeManager {
 		this.app.workspace.setActiveLeaf(leaf);
 	}
 
-	async openTipTapViewInLeaf(
-		file: TFile,
-		leaf: WorkspaceLeaf,
-		viewMode: TategakiViewMode = "edit"
-	): Promise<void> {
-		this.prepareLeafInitialFile(leaf, file);
-		this.prepareLeafInitialViewMode(leaf, viewMode);
-		await leaf.setViewState({
-			type: TIPTAP_COMPAT_VIEW_TYPE,
-			active: true,
-		});
-		this.app.workspace.setActiveLeaf(leaf);
-		this.trackManagedLeaf(leaf);
-	}
-
 	async openSoTWysiwygViewInLeaf(
 		file: TFile,
 		leaf: WorkspaceLeaf
 	): Promise<void> {
+		// M4a (D-M4-11): this entry replaces the leaf's view and closes the other Tategaki views.
+		if (!this.mayLeavePmViews()) return;
 		this.prepareLeafInitialFile(leaf, file);
 		await leaf.setViewState({
 			type: TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
@@ -416,21 +386,38 @@ export class ModeManager {
 		file: TFile,
 		options?: { openInNewWindow?: boolean; openOnRightSide?: boolean }
 	): Promise<void> {
+		// M4a (D-M4-11): opening a view reuses a Tategaki leaf or lets the single-view constraint close the others.
+		if (!this.mayLeavePmViews()) return;
 		this.openInNewWindow = options?.openInNewWindow ?? false;
 		this.openOnRightSide = options?.openOnRightSide ?? true;
 
 		if (this.openInNewWindow) {
-			await this.openInPopout(
-				TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
-				file,
-				"edit"
-			);
+			await this.openInPopout(TATEGAKI_SOT_WYSIWYG_VIEW_TYPE, file);
 		} else {
-			await this.openInPane(TATEGAKI_SOT_WYSIWYG_VIEW_TYPE, file, "edit");
+			await this.openInPane(TATEGAKI_SOT_WYSIWYG_VIEW_TYPE, file);
 		}
 
 		this.openInNewWindow = false;
 		this.openOnRightSide = true;
+		this.applySingleViewConstraints();
+	}
+
+	async openPmModeView(file: TFile, options?: { openInNewWindow?: boolean; openOnRightSide?: boolean }): Promise<void> {
+		if (!canOpenPmMode(this.settings.enablePmMode, this.plugin.pmModeCapabilities)) {
+			await this.openSoTWysiwygView(file, options);
+			return;
+		}
+		// M4a (D-M4-11): opening a view reuses a Tategaki leaf or lets the single-view constraint close the others.
+		if (!this.mayLeavePmViews()) return;
+		this.openInNewWindow = options?.openInNewWindow ?? false;
+		this.openOnRightSide = options?.openOnRightSide ?? true;
+		try {
+			if (this.openInNewWindow) await this.openInPopout(TATEGAKI_PM_VIEW_TYPE, file);
+			else await this.openInPane(TATEGAKI_PM_VIEW_TYPE, file);
+		} finally {
+			this.openInNewWindow = false;
+			this.openOnRightSide = true;
+		}
 		this.applySingleViewConstraints();
 	}
 
@@ -465,56 +452,9 @@ export class ModeManager {
 		);
 	}
 
-	private async openTipTapView(): Promise<void> {
-		const retainedFile = this.resolveRetainedFile();
-		// nextViewMode が "reading" の場合はここには来ないはず
-		const viewMode: TategakiViewMode = "edit";
-
-		const wantsPopout = this.openInNewWindow || this.isPopoutLeaf(this.primaryLeaf);
-
-		let targetLeaf: WorkspaceLeaf | null = null;
-		if (this.isLeafAvailable(this.primaryLeaf)) {
-			const isPrimaryPopout = this.isPopoutLeaf(this.primaryLeaf);
-			if (wantsPopout === isPrimaryPopout) {
-				targetLeaf = this.primaryLeaf;
-			}
-		}
-
-		if (!targetLeaf) {
-			targetLeaf = wantsPopout
-				? await this.openInPopout(
-						TIPTAP_COMPAT_VIEW_TYPE,
-						retainedFile,
-						viewMode
-					)
-				: await this.openInPane(
-						TIPTAP_COMPAT_VIEW_TYPE,
-						retainedFile,
-						viewMode
-					);
-		} else {
-			this.prepareLeafInitialFile(targetLeaf, retainedFile);
-			this.prepareLeafInitialViewMode(targetLeaf, viewMode);
-			await targetLeaf.setViewState({
-				type: TIPTAP_COMPAT_VIEW_TYPE,
-				active: true,
-			});
-			this.app.workspace.setActiveLeaf(targetLeaf);
-			this.trackManagedLeaf(targetLeaf);
-		}
-
-		this.openInNewWindow = false;
-		this.openOnRightSide = true; // リセット
-		this.applySingleViewConstraints();
-	}
-
-	private openInPane(viewType: string): Promise<WorkspaceLeaf>;
-	private openInPane(viewType: string, initialFile: TFile | null): Promise<WorkspaceLeaf>;
-	private openInPane(viewType: string, initialFile: TFile | null, viewMode: TategakiViewMode): Promise<WorkspaceLeaf>;
 	private async openInPane(
 		viewType: string,
-		initialFile: TFile | null = null,
-		viewMode: TategakiViewMode = "edit"
+		initialFile: TFile | null = null
 	): Promise<WorkspaceLeaf> {
 		let leaf: WorkspaceLeaf;
 
@@ -527,7 +467,6 @@ export class ModeManager {
 		}
 
 		this.prepareLeafInitialFile(leaf, initialFile);
-		this.prepareLeafInitialViewMode(leaf, viewMode);
 		await leaf.setViewState({ type: viewType, active: true });
 		this.app.workspace.setActiveLeaf(leaf);
 		this.getManagedLeaf(leaf).__tategakiPopout = false;
@@ -535,26 +474,21 @@ export class ModeManager {
 		return leaf;
 	}
 
-	private openInPopout(viewType: string): Promise<WorkspaceLeaf>;
-	private openInPopout(viewType: string, initialFile: TFile | null): Promise<WorkspaceLeaf>;
-	private openInPopout(viewType: string, initialFile: TFile | null, viewMode: TategakiViewMode): Promise<WorkspaceLeaf>;
 	private async openInPopout(
 		viewType: string,
-		initialFile: TFile | null = null,
-		viewMode: TategakiViewMode = "edit"
+		initialFile: TFile | null = null
 	): Promise<WorkspaceLeaf> {
 		try {
 			const leaf = this.getReusableLeaf(true) ?? this.app.workspace.getLeaf("window");
 			this.prepareLeafInitialFile(leaf, initialFile);
-			this.prepareLeafInitialViewMode(leaf, viewMode);
-			await leaf.setViewState({ type: viewType, active: true });
+				await leaf.setViewState({ type: viewType, active: true });
 			this.app.workspace.setActiveLeaf(leaf);
 			this.getManagedLeaf(leaf).__tategakiPopout = true;
 			this.trackManagedLeaf(leaf);
 			return leaf;
 		} catch (error) {
 			debugWarn("Tategaki: popout failed, falling back to pane", error);
-			return await this.openInPane(viewType, initialFile, viewMode);
+			return await this.openInPane(viewType, initialFile);
 		}
 	}
 
@@ -633,26 +567,10 @@ export class ModeManager {
 		}
 	}
 
-	private prepareLeafInitialViewMode(
-		leaf: WorkspaceLeaf | null,
-		mode: TategakiViewMode | null
-	): void {
-		if (!leaf) return;
-		const managedLeaf = this.getManagedLeaf(leaf);
-		if (mode === "edit") {
-			managedLeaf[ModeManager.INITIAL_VIEW_MODE_PROP] = mode;
-		} else {
-			delete managedLeaf[ModeManager.INITIAL_VIEW_MODE_PROP];
-		}
-	}
-
 	private getAllEditorLeaves(): WorkspaceLeaf[] {
 		return [
-			...this.app.workspace.getLeavesOfType(TIPTAP_COMPAT_VIEW_TYPE),
-			...this.app.workspace.getLeavesOfType(
-				TIPTAP_COMPAT_VIEW_TYPE_LEGACY,
-			),
 			...this.app.workspace.getLeavesOfType(TATEGAKI_SOT_WYSIWYG_VIEW_TYPE),
+			...this.app.workspace.getLeavesOfType(TATEGAKI_PM_VIEW_TYPE),
 		];
 	}
 
@@ -687,7 +605,7 @@ export class ModeManager {
 		if (this.enforceTimer !== null) {
 			return;
 		}
-		this.enforceTimer = setTimeout(() => {
+		this.enforceTimer = window.setTimeout(() => {
 			this.enforceTimer = null;
 			this.applySingleViewConstraints();
 		}, 16);
@@ -695,7 +613,7 @@ export class ModeManager {
 
 	private clearEnforcementTimer(): void {
 		if (this.enforceTimer !== null) {
-			clearTimeout(this.enforceTimer);
+			window.clearTimeout(this.enforceTimer);
 			this.enforceTimer = null;
 		}
 	}
@@ -728,7 +646,9 @@ export class ModeManager {
 		// 現在アクティブなleafが閉じられる場合のみ keepLeaf へリダイレクトする。
 		// ユーザーが別ノートを開いた場合（recentLeaf が Tategaki leaf でない）は
 		// フォーカスを奪わない。
-		const leavesToClose = leaves.filter(leaf => leaf !== keepLeaf);
+		// M4a (D-M4-11): a new writing mode view that is composing or holds text is not closed here (the notice says it once for its state); the constraint comes again with the next
+		// event of the workspace, and closes it once it is ready.
+		const leavesToClose = leaves.filter(leaf => leaf !== keepLeaf && !(leaf.view instanceof PmModeView && !leaf.view.requestLeave({ repeat: false })));
 		const activeLeafIsBeingClosed =
 			recentLeaf !== null && leavesToClose.includes(recentLeaf);
 

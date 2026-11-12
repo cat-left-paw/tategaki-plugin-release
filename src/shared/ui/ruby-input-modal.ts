@@ -81,7 +81,7 @@ export class RubyInputModal extends Modal {
 			text: t("modal.rubyInput.targetLabel"),
 			cls: "tategaki-ruby-input-label-strong",
 		});
-		textDisplay.createEl("div", {
+		textDisplay.createDiv({
 			text: this.selectedText,
 			cls: "tategaki-ruby-input-selected-text",
 		});
@@ -151,7 +151,7 @@ export class RubyInputModal extends Modal {
 			.setButtonText(t("modal.rubyInput.customRemove"))
 			.onClick(() => this.removeSelectedCustomEmphasisChar());
 
-		emphasisContainer.createEl("div", {
+		emphasisContainer.createDiv({
 			cls: "tategaki-ruby-input-note",
 			text: t("modal.rubyInput.emphasisNote"),
 		});
@@ -173,7 +173,7 @@ export class RubyInputModal extends Modal {
 			});
 
 		// ルビ入力欄にフォーカス
-		setTimeout(() => {
+		window.setTimeout(() => {
 			this.rubyInput?.inputEl.focus();
 		}, 100);
 	}

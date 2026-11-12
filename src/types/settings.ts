@@ -10,11 +10,10 @@ import {
 
 export type WritingMode = "vertical-rl" | "horizontal-tb";
 export type EditorMode = "tiptap";
-export type SyncMode = "manual" | "auto";
 export type ThemeMode = "obsidian-base" | "custom";
-export type AppCloseAction = "save" | "discard";
 export type SoTSelectionMode = "fast-click" | "native-drag";
-export type ViewModePreference = "edit" | "preview" | "compat" | "reading";
+// 1.4.0 で互換モード（"compat"）を廃止した。保存されていた "compat" は読み込みで "edit"（執筆・参照モード）にする。
+export type ViewModePreference = "edit" | "preview" | "reading" | "pm";
 export type HeaderFooterContent = "none" | "title" | "pageNumber";
 export type HeaderFooterAlign = "left" | "center" | "right";
 export type PageNumberFormat = "current" | "currentTotal";
@@ -58,6 +57,12 @@ export type ViewOpenPlacement = "right" | "tab" | "window";
  * - off: 何もしない（Obsidian のまま）
  */
 export type StatusBarOverlapMode = "translucent" | "hide" | "off";
+
+/**
+ * 新執筆モードの変換中の表示（M4b、D-M4-8）: 変換中の字の場所を本文の中に取って後ろの本文を押し出す（inline、既定）か、
+ * 本文の上に重ねて描く（overlay）。範囲の上の変換は常に重ねる。変換の開始の時点で1回だけ読み、その変換の間は変えない。
+ */
+export type PmPreeditDisplay = "inline" | "overlay";
 
 export function isStatusBarOverlapMode(
 	value: unknown,
@@ -134,8 +139,6 @@ export interface CommonSettings {
  * 参照モード設定
  */
 export interface PreviewSettings {
-	syncCursor: boolean;
-	updateInterval: number;
 	showCaret?: boolean;
 	pageModeEnabled?: boolean;
 	outlineOpen?: boolean;
@@ -181,11 +184,10 @@ export function resolveEffectiveBookHeadingPagination(
 	}
 
 	const configuredLevel = preview.bookHeadingPaginationLevel ?? 0;
-	const effectiveLevel = (
+	const effectiveLevel: BookHeadingLevel =
 		configuredLevel > 0
 			? configuredLevel
-			: (preview.bookPageBreakBeforeHeadingLevel ?? 0)
-	) as BookHeadingLevel;
+			: (preview.bookPageBreakBeforeHeadingLevel ?? 0);
 	const effectiveMode =
 		preview.bookHeadingPaginationMode !== undefined
 			? preview.bookHeadingPaginationMode
@@ -220,8 +222,6 @@ export function resolveEffectiveBookFrontmatterDisplayMode(
  */
 export interface WysiwygSettings {
 	autoSave: boolean;
-	syncMode: SyncMode;
-	syncCursor: boolean;
 	enableRuby: boolean;
 	customEmphasisChars?: string[]; // 傍点候補のユーザー登録文字
 	enableTcy: boolean; // 縦中横
@@ -229,10 +229,7 @@ export interface WysiwygSettings {
 	autoTcyMinDigits?: number; // 自動TCY対象の最小桁数
 	autoTcyMaxDigits?: number; // 自動TCY対象の最大桁数
 	autoTcyDigitsOnly?: boolean; // 自動TCYを数字列だけに限定
-	enableAssistantInput: boolean; // 補助入力パネル
-	enableSyncBackup: boolean; // 互換モードの同期バックアップ
 	plainTextView?: boolean; // SoTビューの全文プレーン表示
-	appCloseAction: AppCloseAction; // アプリ終了時の未保存変更の扱い
 	imeOffsetHorizontalEm?: number; // IME表示の縦方向補正（横書き）
 	imeOffsetVerticalEm?: number; // IME表示の横方向補正（縦書き）
 	caretColorMode?: CaretColorMode;
@@ -253,11 +250,6 @@ export interface WysiwygSettings {
 	sotTypewriterCurrentLineHighlightColor?: string; // SoT Typewriter 現在行ハイライト色
 	sotTypewriterCurrentLineHighlightOpacity?: number; // SoT Typewriter 現在行ハイライト透明度
 	sotTypewriterNonFocusOpacity?: number; // SoT Typewriter 非フォーカス opacity
-	// 縦書きの列境界レイアウト nudge（実験的 / 既定 OFF / 表示 DOM 限定 / 保存データには非干渉）。
-	// SoT（執筆・参照モード）と書籍モードの縦書きに適用する。
-	verticalLayoutNudgeEnabled?: boolean;
-	// 旧キー（〜v1.3.x、SoT 限定時代）。validateV2Settings で verticalLayoutNudgeEnabled へ移行し削除する。
-	sotVerticalLayoutNudgeEnabled?: boolean;
 }
 
 /**
@@ -278,7 +270,10 @@ export interface TategakiV2Settings {
 	showModeDialog: boolean;
 	lastViewMode: ViewModePreference;
 	lastViewOpenPlacement: ViewOpenPlacement;
-	enableLegacyTiptap: boolean;
+	// 互換モードの廃止（1.4.0）を知らせたか（1度だけ知らせる）
+	compatModeRetiredNoticeShown?: boolean;
+	enablePmMode: boolean;
+	pmPreeditDisplay: PmPreeditDisplay;
 	// Obsidian のステータスバーが Tategaki のビューに重なるときの扱い
 	statusBarOverlap: StatusBarOverlapMode;
 
@@ -347,7 +342,8 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 	showModeDialog: true,
 	lastViewMode: "edit",
 	lastViewOpenPlacement: "right",
-	enableLegacyTiptap: true,
+	enablePmMode: false,
+	pmPreeditDisplay: "inline",
 	statusBarOverlap: "translucent",
 
 	// 共通設定
@@ -377,8 +373,6 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 
 	// フロントマター設定
 	preview: {
-		syncCursor: true,
-		updateInterval: 300,
 		showCaret: true,
 		pageModeEnabled: false,
 		outlineOpen: false,
@@ -412,8 +406,6 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 	// WYSIWYG設定
 	wysiwyg: {
 		autoSave: true,
-		syncMode: "auto",
-		syncCursor: true,
 		enableRuby: true,
 		customEmphasisChars: [],
 		enableTcy: true,
@@ -421,10 +413,7 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		autoTcyMinDigits: DEFAULT_AUTO_TCY_MIN_DIGITS,
 		autoTcyMaxDigits: DEFAULT_AUTO_TCY_MAX_DIGITS,
 		autoTcyDigitsOnly: false,
-		enableAssistantInput: false,
-		enableSyncBackup: true,
 		plainTextView: false,
-		appCloseAction: "save",
 		imeOffsetHorizontalEm: 0.1,
 		imeOffsetVerticalEm: 0.5,
 		caretColorMode: "accent",
@@ -444,7 +433,6 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 		sotTypewriterCurrentLineHighlightColor: "#1e90ff",
 		sotTypewriterCurrentLineHighlightOpacity: 0.28,
 		sotTypewriterNonFocusOpacity: 0.42,
-		verticalLayoutNudgeEnabled: false,
 	},
 
 	// テーマシステム
@@ -609,24 +597,45 @@ export const DEFAULT_V2_SETTINGS: TategakiV2Settings = {
 	},
 };
 
-export function validateV2Settings(settings: any): TategakiV2Settings {
+type UnknownRecord = Record<string, unknown>;
+
+/** An object (arrays included, as `typeof` says) or null. The input of a settings load is whatever the data file held. */
+function asRecord(value: unknown): UnknownRecord | null {
+	return typeof value === "object" && value !== null
+		? (value as UnknownRecord)
+		: null;
+}
+
+/** Reads and deletes keys that the typed settings no longer (or not yet) declare. */
+function loose(value: object): UnknownRecord {
+	return value as UnknownRecord;
+}
+
+export function validateV2Settings(input: unknown): TategakiV2Settings {
 	const validated = { ...DEFAULT_V2_SETTINGS };
+	const settings = asRecord(input);
 
-	if (settings && typeof settings === "object") {
-		// 設定バージョンを確認してマイグレーションを行う
-		const oldVersion = typeof settings.settingsVersion === "number" ? settings.settingsVersion : 0;
-
+	if (settings) {
 		validated.defaultMode = "tiptap";
 		if (
 			settings.lastViewMode === "edit" ||
 			settings.lastViewMode === "preview" ||
-			settings.lastViewMode === "compat" ||
-			settings.lastViewMode === "reading"
+			settings.lastViewMode === "reading" ||
+			settings.lastViewMode === "pm"
 		) {
 			validated.lastViewMode = settings.lastViewMode;
+		} else if (settings.lastViewMode === "compat") {
+			// 1.4.0: 互換モードを廃止した。執筆・参照モードで開く。
+			validated.lastViewMode = "edit";
 		}
-		if (typeof settings.enableLegacyTiptap === "boolean") {
-			validated.enableLegacyTiptap = settings.enableLegacyTiptap;
+		if (typeof settings.compatModeRetiredNoticeShown === "boolean") {
+			validated.compatModeRetiredNoticeShown = settings.compatModeRetiredNoticeShown;
+		}
+		if (typeof settings.enablePmMode === "boolean") {
+			validated.enablePmMode = settings.enablePmMode;
+		}
+		if (settings.pmPreeditDisplay === "inline" || settings.pmPreeditDisplay === "overlay") {
+			validated.pmPreeditDisplay = settings.pmPreeditDisplay;
 		}
 		if (isStatusBarOverlapMode(settings.statusBarOverlap)) {
 			validated.statusBarOverlap = settings.statusBarOverlap;
@@ -649,25 +658,26 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 		// 設定バージョンを更新
 		validated.settingsVersion = CURRENT_SETTINGS_VERSION;
 
-		if (settings.common && typeof settings.common === "object") {
-			const mergedCommon = {
+		const commonInput = asRecord(settings.common);
+		if (commonInput) {
+			const mergedCommon: CommonSettings = {
 				...validated.common,
-				...settings.common,
+				...(commonInput as Partial<CommonSettings>),
 			};
 			mergedCommon.rubySize = normalizeRubySize(
-				(settings.common as any).rubySize ?? mergedCommon.rubySize
+				commonInput.rubySize ?? mergedCommon.rubySize
 			);
 			mergedCommon.rubyVerticalGap = normalizeRubyGap(
-				(settings.common as any).rubyVerticalGap ??
+				commonInput.rubyVerticalGap ??
 					mergedCommon.rubyVerticalGap,
 				DEFAULT_V2_SETTINGS.common.rubyVerticalGap
 			);
 			mergedCommon.rubyHorizontalGap = normalizeRubyGap(
-				(settings.common as any).rubyHorizontalGap ??
+				commonInput.rubyHorizontalGap ??
 					mergedCommon.rubyHorizontalGap,
 				DEFAULT_V2_SETTINGS.common.rubyHorizontalGap
 			);
-			if (typeof (mergedCommon as any).debugLogging !== "boolean") {
+			if (typeof loose(mergedCommon).debugLogging !== "boolean") {
 				mergedCommon.debugLogging =
 					DEFAULT_V2_SETTINGS.common.debugLogging;
 			}
@@ -713,15 +723,22 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 			};
 		}
 
-		if (settings.preview && typeof settings.preview === "object") {
-			validated.preview = { ...validated.preview, ...settings.preview };
+		const previewInput = asRecord(settings.preview);
+		if (previewInput) {
+			validated.preview = {
+				...validated.preview,
+				...(previewInput as Partial<PreviewSettings>),
+			};
+			// 1.4.0: 互換モードを廃止したので、その設定の保存値は読み込みで消す。
+			delete loose(validated.preview).syncCursor;
+			delete loose(validated.preview).updateInterval;
 		}
-		const bookPaddingTop = Number((validated.preview as any).bookPaddingTop);
+		const bookPaddingTop = Number(loose(validated.preview).bookPaddingTop);
 		validated.preview.bookPaddingTop = Number.isFinite(bookPaddingTop)
 			? Math.max(0, Math.min(200, bookPaddingTop))
 			: DEFAULT_V2_SETTINGS.preview.bookPaddingTop ?? 44;
 		const bookPaddingBottom = Number(
-			(validated.preview as any).bookPaddingBottom
+			loose(validated.preview).bookPaddingBottom
 		);
 		validated.preview.bookPaddingBottom = Number.isFinite(bookPaddingBottom)
 			? Math.max(0, Math.min(200, bookPaddingBottom))
@@ -746,7 +763,7 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 			const oldLevel = validated.preview.bookPageBreakBeforeHeadingLevel ?? 0;
 			if (oldLevel > 0) {
 				validated.preview.bookHeadingPaginationMode = "page-break";
-				validated.preview.bookHeadingPaginationLevel = oldLevel as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+				validated.preview.bookHeadingPaginationLevel = oldLevel;
 			} else {
 				validated.preview.bookHeadingPaginationMode = "none";
 				validated.preview.bookHeadingPaginationLevel = 0;
@@ -777,48 +794,49 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 		validated.preview.bookFrontmatterAsCoverPage =
 			validated.preview.bookFrontmatterDisplayMode === "separate-page";
 		validated.preview.bookPageBreakBeforeHeadingLevel =
-			(validated.preview.bookHeadingPaginationMode !== "none"
+			validated.preview.bookHeadingPaginationMode !== "none"
 				? validated.preview.bookHeadingPaginationLevel
-				: 0) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+				: 0;
 
-		if (settings.wysiwyg && typeof settings.wysiwyg === "object") {
-			validated.wysiwyg = { ...validated.wysiwyg, ...settings.wysiwyg };
-			if (typeof (validated.wysiwyg as any).enableSyncBackup !== "boolean") {
-				validated.wysiwyg.enableSyncBackup =
-					DEFAULT_V2_SETTINGS.wysiwyg.enableSyncBackup;
-			}
-			if (typeof (validated.wysiwyg as any).enableAutoTcy !== "boolean") {
+		const wysiwygInput = asRecord(settings.wysiwyg);
+		if (wysiwygInput) {
+			validated.wysiwyg = {
+				...validated.wysiwyg,
+				...(wysiwygInput as Partial<WysiwygSettings>),
+			};
+			// 1.4.0: 互換モードを廃止したので、その設定の保存値は読み込みで消す。
+			delete loose(validated.wysiwyg).syncMode;
+			delete loose(validated.wysiwyg).syncCursor;
+			delete loose(validated.wysiwyg).enableAssistantInput;
+			delete loose(validated.wysiwyg).enableSyncBackup;
+			delete loose(validated.wysiwyg).appCloseAction;
+			if (typeof loose(validated.wysiwyg).enableAutoTcy !== "boolean") {
 				validated.wysiwyg.enableAutoTcy =
 					DEFAULT_V2_SETTINGS.wysiwyg.enableAutoTcy;
 			}
 			validated.wysiwyg.autoTcyDigitsOnly = normalizeBooleanSetting(
-				(validated.wysiwyg as any).autoTcyDigitsOnly,
+				loose(validated.wysiwyg).autoTcyDigitsOnly,
 				DEFAULT_V2_SETTINGS.wysiwyg.autoTcyDigitsOnly ?? false,
 			);
 			const autoTcyDigitRange = resolveAutoTcyDigitRange({
-				minDigits: (validated.wysiwyg as any).autoTcyMinDigits,
-				maxDigits: (validated.wysiwyg as any).autoTcyMaxDigits,
+				minDigits: loose(validated.wysiwyg).autoTcyMinDigits,
+				maxDigits: loose(validated.wysiwyg).autoTcyMaxDigits,
 			});
 			validated.wysiwyg.autoTcyMinDigits = autoTcyDigitRange.minDigits;
 			validated.wysiwyg.autoTcyMaxDigits = autoTcyDigitRange.maxDigits;
-			if (typeof (validated.wysiwyg as any).plainTextView !== "boolean") {
+			if (typeof loose(validated.wysiwyg).plainTextView !== "boolean") {
 				validated.wysiwyg.plainTextView =
 					DEFAULT_V2_SETTINGS.wysiwyg.plainTextView;
 			}
-			const action = (validated.wysiwyg as any).appCloseAction;
-			if (action !== "save" && action !== "discard") {
-				validated.wysiwyg.appCloseAction =
-					DEFAULT_V2_SETTINGS.wysiwyg.appCloseAction;
-			}
 			validated.wysiwyg.imeOffsetHorizontalEm = normalizeImeOffset(
-				(validated.wysiwyg as any).imeOffsetHorizontalEm,
+				loose(validated.wysiwyg).imeOffsetHorizontalEm,
 				DEFAULT_V2_SETTINGS.wysiwyg.imeOffsetHorizontalEm ?? 0.1
 			);
 			validated.wysiwyg.imeOffsetVerticalEm = normalizeImeOffset(
-				(validated.wysiwyg as any).imeOffsetVerticalEm,
+				loose(validated.wysiwyg).imeOffsetVerticalEm,
 				DEFAULT_V2_SETTINGS.wysiwyg.imeOffsetVerticalEm ?? 0.5
 			);
-			const caretMode = (validated.wysiwyg as any).caretColorMode;
+			const caretMode = loose(validated.wysiwyg).caretColorMode;
 			if (
 				caretMode !== "text" &&
 				caretMode !== "accent" &&
@@ -828,7 +846,7 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 					DEFAULT_V2_SETTINGS.wysiwyg.caretColorMode;
 			}
 			const caretWidth = Number(
-				(validated.wysiwyg as any).caretWidthPx
+				loose(validated.wysiwyg).caretWidthPx
 			);
 			if (!Number.isFinite(caretWidth)) {
 				validated.wysiwyg.caretWidthPx =
@@ -840,112 +858,93 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 				);
 			}
 			if (
-				typeof (validated.wysiwyg as any).caretCustomColor !== "string"
+				typeof loose(validated.wysiwyg).caretCustomColor !== "string"
 			) {
 				validated.wysiwyg.caretCustomColor =
 					DEFAULT_V2_SETTINGS.wysiwyg.caretCustomColor;
 			}
 			// PR5: ceUseNativeCaret / useNativeSelection は削除済み。
 			// 旧データに残っていても無視（delete で除去）。
-			delete (validated.wysiwyg as any).ceUseNativeCaret;
-			delete (validated.wysiwyg as any).useNativeSelection;
+			delete loose(validated.wysiwyg).ceUseNativeCaret;
+			delete loose(validated.wysiwyg).useNativeSelection;
 			// sotSelectionMode のバリデーション
-			const sotSelMode = (validated.wysiwyg as any).sotSelectionMode;
+			const sotSelMode = loose(validated.wysiwyg).sotSelectionMode;
 			if (sotSelMode !== "fast-click" && sotSelMode !== "native-drag") {
 				validated.wysiwyg.sotSelectionMode =
 					DEFAULT_V2_SETTINGS.wysiwyg.sotSelectionMode;
 			}
 			// SoT余白のバリデーション
-			const sotPaddingTop = Number((validated.wysiwyg as any).sotPaddingTop);
+			const sotPaddingTop = Number(loose(validated.wysiwyg).sotPaddingTop);
 			validated.wysiwyg.sotPaddingTop = Number.isFinite(sotPaddingTop)
 				? Math.max(0, Math.min(200, sotPaddingTop))
 				: DEFAULT_V2_SETTINGS.wysiwyg.sotPaddingTop;
-			const sotPaddingBottom = Number((validated.wysiwyg as any).sotPaddingBottom);
+			const sotPaddingBottom = Number(loose(validated.wysiwyg).sotPaddingBottom);
 			validated.wysiwyg.sotPaddingBottom = Number.isFinite(sotPaddingBottom)
 				? Math.max(0, Math.min(200, sotPaddingBottom))
 				: DEFAULT_V2_SETTINGS.wysiwyg.sotPaddingBottom;
-			if (typeof (validated.wysiwyg as any).sotTypewriterMode !== "boolean") {
+			if (typeof loose(validated.wysiwyg).sotTypewriterMode !== "boolean") {
 				validated.wysiwyg.sotTypewriterMode =
 					DEFAULT_V2_SETTINGS.wysiwyg.sotTypewriterMode;
 			}
-			// 縦書き列境界 nudge。新キー優先、旧キー sotVerticalLayoutNudgeEnabled があれば移行する。
-			const legacyNudgeEnabled = (validated.wysiwyg as any)
-				.sotVerticalLayoutNudgeEnabled;
-			const currentNudgeEnabled = (validated.wysiwyg as any)
-				.verticalLayoutNudgeEnabled;
-			let normalizedNudgeEnabled = normalizeBooleanSetting(
-				currentNudgeEnabled !== undefined
-					? currentNudgeEnabled
-					: legacyNudgeEnabled,
-				DEFAULT_V2_SETTINGS.wysiwyg.verticalLayoutNudgeEnabled ??
-					false
-			);
-			// 1.3.1 では既定 ON だったが、巨大文書で入力時のちらつきが確認された。
-			// 1.3.2 への設定 migration では保存済み true も一度 OFF に倒し、
-			// 1.3.2 以降にユーザーが明示的に ON にした値だけを保持する。
-			if (oldVersion < CURRENT_SETTINGS_VERSION) {
-				normalizedNudgeEnabled = false;
-			}
-			validated.wysiwyg.verticalLayoutNudgeEnabled =
-				normalizedNudgeEnabled;
-			// 旧キーは移行済みのため保存値から取り除く
-			delete (validated.wysiwyg as any).sotVerticalLayoutNudgeEnabled;
+			// 1.4.0 で表示補正（縦書きの列境界 nudge）を廃止した。保存されていた値は読み込みで消す。
+			delete loose(validated.wysiwyg).verticalLayoutNudgeEnabled;
+			delete loose(validated.wysiwyg).sotVerticalLayoutNudgeEnabled;
 			validated.wysiwyg.sotTypewriterOffsetRatio =
 				normalizeSoTTypewriterOffsetRatio(
-					(validated.wysiwyg as any).sotTypewriterOffsetRatio
+					loose(validated.wysiwyg).sotTypewriterOffsetRatio
 				);
 			validated.wysiwyg.sotTypewriterFollowBandRatio =
 				normalizeSoTTypewriterFollowBandRatio(
-					(validated.wysiwyg as any).sotTypewriterFollowBandRatio
+					loose(validated.wysiwyg).sotTypewriterFollowBandRatio
 				);
 			validated.wysiwyg.sotTypewriterBlockHighlightEnabled =
 				normalizeBooleanSetting(
-					(validated.wysiwyg as any).sotTypewriterBlockHighlightEnabled,
+					loose(validated.wysiwyg).sotTypewriterBlockHighlightEnabled,
 					DEFAULT_V2_SETTINGS.wysiwyg
 						.sotTypewriterBlockHighlightEnabled ?? true
 				);
 			validated.wysiwyg.sotTypewriterCurrentLineHighlightEnabled =
 				normalizeBooleanSetting(
-					(validated.wysiwyg as any)
+					loose(validated.wysiwyg)
 						.sotTypewriterCurrentLineHighlightEnabled,
 					DEFAULT_V2_SETTINGS.wysiwyg
 						.sotTypewriterCurrentLineHighlightEnabled ?? true
 				);
 			validated.wysiwyg.sotTypewriterNonFocusDimEnabled =
 				normalizeBooleanSetting(
-					(validated.wysiwyg as any).sotTypewriterNonFocusDimEnabled,
+					loose(validated.wysiwyg).sotTypewriterNonFocusDimEnabled,
 					DEFAULT_V2_SETTINGS.wysiwyg
 						.sotTypewriterNonFocusDimEnabled ?? true
 				);
 			validated.wysiwyg.sotTypewriterBlockHighlightColor =
 				normalizeColorSetting(
-					(validated.wysiwyg as any).sotTypewriterBlockHighlightColor,
+					loose(validated.wysiwyg).sotTypewriterBlockHighlightColor,
 					DEFAULT_V2_SETTINGS.wysiwyg
 						.sotTypewriterBlockHighlightColor ?? "#1e90ff"
 				);
 			validated.wysiwyg.sotTypewriterBlockHighlightOpacity =
 				normalizeSoTTypewriterHighlightOpacity(
-					(validated.wysiwyg as any).sotTypewriterBlockHighlightOpacity,
+					loose(validated.wysiwyg).sotTypewriterBlockHighlightOpacity,
 					DEFAULT_V2_SETTINGS.wysiwyg
 						.sotTypewriterBlockHighlightOpacity ?? 0.16
 				);
 			validated.wysiwyg.sotTypewriterCurrentLineHighlightColor =
 				normalizeColorSetting(
-					(validated.wysiwyg as any)
+					loose(validated.wysiwyg)
 						.sotTypewriterCurrentLineHighlightColor,
 					DEFAULT_V2_SETTINGS.wysiwyg
 						.sotTypewriterCurrentLineHighlightColor ?? "#1e90ff"
 				);
 			validated.wysiwyg.sotTypewriterCurrentLineHighlightOpacity =
 				normalizeSoTTypewriterHighlightOpacity(
-					(validated.wysiwyg as any)
+					loose(validated.wysiwyg)
 						.sotTypewriterCurrentLineHighlightOpacity,
 					DEFAULT_V2_SETTINGS.wysiwyg
 						.sotTypewriterCurrentLineHighlightOpacity ?? 0.28
 				);
 			validated.wysiwyg.sotTypewriterNonFocusOpacity =
 				normalizeSoTTypewriterNonFocusOpacity(
-					(validated.wysiwyg as any).sotTypewriterNonFocusOpacity
+					loose(validated.wysiwyg).sotTypewriterNonFocusOpacity
 				);
 			validated.wysiwyg.customEmphasisChars = normalizeCustomEmphasisChars(
 				validated.wysiwyg.customEmphasisChars
@@ -982,13 +981,11 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 				);
 			}
 
-		if (
-			settings.controlPanel &&
-			typeof settings.controlPanel === "object"
-		) {
+		const controlPanelInput = asRecord(settings.controlPanel);
+		if (controlPanelInput) {
 			validated.controlPanel = {
 				...validated.controlPanel,
-				...settings.controlPanel,
+				...(controlPanelInput as Partial<typeof validated.controlPanel>),
 			};
 		}
 
@@ -997,13 +994,14 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 			for (const theme of validated.themes) {
 				merged.set(theme.id, theme);
 			}
-			for (const theme of settings.themes) {
+			for (const rawTheme of settings.themes as unknown[]) {
+				const theme = asRecord(rawTheme);
 				if (theme && typeof theme.id === "string") {
 					// マイグレーション: modeプロパティがない古いテーマは"custom"として扱う
 					if (!theme.mode) {
 						theme.mode = "custom";
 					}
-					merged.set(theme.id, theme);
+					merged.set(theme.id, theme as unknown as ThemePreset);
 				}
 			}
 			validated.themes = Array.from(merged.values());
@@ -1035,11 +1033,11 @@ export function validateV2Settings(settings: any): TategakiV2Settings {
 		}
 
 		// temporaryOverridesのマイグレーション
-		if (
-			settings.temporaryOverrides &&
-			typeof settings.temporaryOverrides === "object"
-		) {
-			validated.temporaryOverrides = { ...settings.temporaryOverrides };
+		const temporaryOverridesInput = asRecord(settings.temporaryOverrides);
+		if (temporaryOverridesInput) {
+			validated.temporaryOverrides = {
+				...(temporaryOverridesInput as typeof validated.temporaryOverrides),
+			};
 		} else {
 			validated.temporaryOverrides = {};
 		}

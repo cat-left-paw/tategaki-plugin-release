@@ -6,6 +6,7 @@ import type { SoTEditor } from "./sot-editor";
 import { resolveSoTFocusBlockForLineIndex } from "./sot-focus-block-resolver";
 import { resolveSoTPlainEditHomeEndSelection } from "./sot-plain-edit-navigation";
 import { getRectUnion } from "./sot-selection-geometry";
+import { setElementHidden } from "../../shared/element-visibility";
 
 export type PlainEditRange = {
 	from: number;
@@ -704,7 +705,7 @@ export class SoTPlainEditController {
 		this.clearTargets();
 		this.host.plainEditRange = null;
 		if (this.host.plainEditOverlayEl) {
-			this.host.plainEditOverlayEl.setCssStyles({ display: "none" });
+			setElementHidden(this.host.plainEditOverlayEl, true);
 		}
 		this.host.setSelectionNormalized(nextPos, nextPos);
 		this.startFromSelection();
@@ -956,7 +957,7 @@ export class SoTPlainEditController {
 		const text = doc.slice(next.from, next.to);
 		this.host.plainEditComposing = false;
 		this.host.plainEditOverlayEl.value = text;
-		this.host.plainEditOverlayEl.setCssStyles({ display: "" });
+		setElementHidden(this.host.plainEditOverlayEl, false);
 		const isLeafActive = this.host.isLeafActive?.() ?? true;
 		if (isLeafActive) {
 			this.host.plainEditOverlayEl.focus({ preventScroll: true });
@@ -989,7 +990,7 @@ export class SoTPlainEditController {
 		this.host.plainEditRange = null;
 		if (this.host.plainEditOverlayEl) {
 			this.host.plainEditOverlayEl.value = "";
-			this.host.plainEditOverlayEl.setCssStyles({ display: "none" });
+			setElementHidden(this.host.plainEditOverlayEl, true);
 		}
 		this.resetOverlayInputState();
 	}
@@ -1053,7 +1054,7 @@ export class SoTPlainEditController {
 
 			this.clearTargets();
 			this.host.plainEditRange = null;
-			this.host.plainEditOverlayEl.setCssStyles({ display: "none" });
+			setElementHidden(this.host.plainEditOverlayEl, true);
 			this.resetOverlayInputState();
 			this.retainedEdit = false;
 			return true;

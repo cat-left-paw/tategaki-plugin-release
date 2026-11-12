@@ -3,7 +3,6 @@ import {
 	PluginSettingTab,
 	Setting,
 	SliderComponent,
-	requestUrl,
 	Notice,
 } from "obsidian";
 import TategakiV2Plugin from "../../core/plugin";
@@ -14,8 +13,8 @@ import {
 	PRESET_THEME_IDS,
 	isStatusBarOverlapMode,
 } from "../../types/settings";
-import { compareSemver } from "../version";
 import { openExternalUrl } from "../open-external-url";
+import { hasSyncBackups } from "../sync-backup";
 import {
 	localizeThemeDescription,
 	localizePresetThemeName,
@@ -31,14 +30,12 @@ import {
 	resolveSoTTypewriterNonFocusOpacityFromUiPercent,
 	resolveSoTTypewriterFollowBandRatioFromUiPercent,
 	resolveSoTTypewriterOffsetRatioFromUiPercent,
-} from "../../wysiwyg/contenteditable/settings-panel-state";
+} from "./settings-panel/settings-panel-state";
 import {
 	SoTWysiwygView,
 	TATEGAKI_SOT_WYSIWYG_VIEW_TYPE,
 } from "../../wysiwyg/sot-wysiwyg-view";
 
-const UPDATE_CHECK_URL =
-	"https://raw.githubusercontent.com/cat-left-paw/tategaki-plugin-release/main/latest.json";
 const RELEASE_URL =
 	"https://github.com/cat-left-paw/tategaki-plugin-release/releases";
 
@@ -56,11 +53,9 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 
 		this.addSectionHeading(containerEl, t("settings.section.main"));
 
-		this.addTiptapSettings(this.plugin.settings);
+		this.addModeSettings(this.plugin.settings);
 		this.addSoTTypewriterSettings(this.plugin.settings);
-		this.addSoTExperimentalSettings(this.plugin.settings);
-		const legacyEnabled = this.plugin.settings.enableLegacyTiptap ?? true;
-		this.addUpdateAndSupportSection(legacyEnabled);
+		this.addSupportSection();
 		this.addThemeSettings(this.plugin.settings);
 	}
 
@@ -166,23 +161,35 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 		});
 	}
 
-	private addTiptapSettings(settings: TategakiV2Settings) {
+	private addModeSettings(settings: TategakiV2Settings) {
 		const { containerEl } = this;
-		const legacyEnabled = settings.enableLegacyTiptap ?? true;
 
+		const capabilities = this.plugin.pmModeCapabilities;
 		new Setting(containerEl)
-			.setName(t("settings.compatMode.name"))
-			.setDesc(t("settings.compatMode.desc"))
-			.addToggle((toggle) => {
-				toggle.setValue(legacyEnabled).onChange(async (value) => {
-					await this.plugin.updateSettings({
-						enableLegacyTiptap: value,
-					});
+			.setName(t("pm.settings.name"))
+			.setDesc(capabilities.available ? t("pm.settings.desc") : t("pm.notice.unavailable") + capabilities.unavailableReason)
+			.addToggle(toggle => {
+				toggle.setValue(settings.enablePmMode).setDisabled(!capabilities.available).onChange(async value => {
+					await this.plugin.updateSettings({ enablePmMode: value });
 					this.display();
 				});
 			});
-
-		// 互換モードのアクティブファイル追従は廃止
+		// M4b (D-M4-8): how the text being composed is shown. Read when a composition starts.
+		if (settings.enablePmMode) {
+			new Setting(containerEl)
+				.setName(t("pm.settings.preeditDisplay.name"))
+				.setDesc(t("pm.settings.preeditDisplay.desc"))
+				.addDropdown(dropdown => {
+					dropdown
+						.addOption("inline", t("pm.settings.preeditDisplay.inline"))
+						.addOption("overlay", t("pm.settings.preeditDisplay.overlay"))
+						.setValue(settings.pmPreeditDisplay === "overlay" ? "overlay" : "inline")
+						.onChange(async value => {
+							if (value !== "inline" && value !== "overlay") return;
+							await this.plugin.updateSettings({ pmPreeditDisplay: value });
+						});
+				});
+		}
 
 		new Setting(containerEl)
 			.setName(t("settings.showModeDialog.name"))
@@ -217,88 +224,11 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 					});
 			});
 
-		if (legacyEnabled) {
-			this.addSectionHeading(
-				containerEl,
-				t("settings.section.syncAndUpdateCompat"),
-			);
-
-			new Setting(containerEl)
-				.setName(t("settings.updateInterval.name"))
-				.setDesc(t("settings.updateInterval.desc"))
-				.addSlider((slider) => {
-					slider
-						.setLimits(0, 1000, 50)
-						.setDynamicTooltip()
-						.setValue(settings.preview.updateInterval);
-					this.bindDeferredSlider(
-						slider,
-						settings.preview.updateInterval,
-						{
-							debounce: 200,
-							onCommit: async (value) => {
-								if (
-									value ===
-									this.plugin.settings.preview.updateInterval
-								)
-									return;
-								await this.plugin.updateSettings({
-									preview: {
-										...this.plugin.settings.preview,
-										updateInterval: value,
-									},
-								});
-							},
-						},
-					);
-				});
-
-			new Setting(containerEl)
-				.setName(t("settings.syncMode.name"))
-				.setDesc(t("settings.syncMode.desc"))
-				.addDropdown((dropdown) => {
-					dropdown
-						.addOption("auto", t("settings.syncMode.auto"))
-						.addOption("manual", t("settings.syncMode.manual"))
-						.setValue(settings.wysiwyg.syncMode)
-						.onChange(async (value) => {
-							await this.plugin.updateSettings({
-								wysiwyg: {
-									...this.plugin.settings.wysiwyg,
-									syncMode: value as "auto" | "manual",
-								},
-							});
-						});
-				});
-
-			new Setting(containerEl)
-				.setName(t("settings.syncBackupCreate.name"))
-				.setDesc(t("settings.syncBackupCreate.desc"))
-				.addToggle((toggle) => {
-					toggle
-						.setValue(
-							!!this.plugin.settings.wysiwyg.enableSyncBackup,
-						)
-						.onChange(async (value) => {
-							await this.plugin.updateSettings({
-								wysiwyg: {
-									...this.plugin.settings.wysiwyg,
-									enableSyncBackup: value,
-								},
-							});
-						});
-				});
-
-			new Setting(containerEl)
-				.setName(t("settings.syncBackupOpen.name"))
-				.setDesc(t("settings.syncBackupOpen.desc"))
-				.addButton((button) => {
-					button.setButtonText(t("common.open")).onClick(async () => {
-						await this.plugin.openSyncBackupFolder();
-					});
-				});
-
-			new Setting(containerEl)
+		// 互換モード（1.4.0 で廃止）が作っていた古い同期バックアップがあるときだけ、ゴミ箱へ移す項目を出す（自動では消さない）。
+		const legacyBackupSlot = containerEl.createDiv();
+		void hasSyncBackups(this.app).then((found) => {
+			if (!found || !legacyBackupSlot.isConnected) return;
+			new Setting(legacyBackupSlot)
 				.setName(t("settings.syncBackupMove.name"))
 				.setDesc(t("settings.syncBackupMove.desc"))
 				.addButton((button) => {
@@ -307,46 +237,10 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 						.setWarning()
 						.onClick(async () => {
 							await this.plugin.moveSyncBackupsToTrash();
+							this.display();
 						});
 				});
-
-			new Setting(containerEl)
-				.setName(t("settings.appCloseAction.name"))
-				.setDesc(t("settings.appCloseAction.desc"))
-				.addDropdown((dropdown) => {
-					dropdown
-						.addOption("save", t("settings.appCloseAction.save"))
-						.addOption(
-							"discard",
-							t("settings.appCloseAction.discard"),
-						)
-						.setValue(settings.wysiwyg.appCloseAction ?? "save")
-						.onChange(async (value) => {
-							await this.plugin.updateSettings({
-								wysiwyg: {
-									...this.plugin.settings.wysiwyg,
-									appCloseAction: value as "save" | "discard",
-								},
-							});
-						});
-				});
-
-			new Setting(containerEl)
-				.setName(t("settings.syncCursor.name"))
-				.setDesc(t("settings.syncCursor.desc"))
-				.addToggle((toggle) => {
-					toggle
-						.setValue(!!settings.wysiwyg.syncCursor)
-						.onChange(async (value) => {
-							await this.plugin.updateSettings({
-								wysiwyg: {
-									...this.plugin.settings.wysiwyg,
-									syncCursor: value,
-								},
-							});
-						});
-				});
-		}
+		});
 	}
 
 	private resolveSoTTypewriterUnavailableForActiveView(): {
@@ -795,128 +689,18 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 		});
 	}
 
-	private addSoTExperimentalSettings(settings: TategakiV2Settings): void {
+	// 更新の確認は Obsidian のコミュニティプラグインの仕組みに任せる（1.4.0 で独自の更新確認を廃止）。
+	// ここに残るのは、利用者が押したときだけ外部のページを開くリンクだけ（通信しない）。
+	private addSupportSection(): void {
 		const { containerEl } = this;
-		this.addSectionHeading(
-			containerEl,
-			t("settings.section.sotExperimental"),
+
+		this.addSectionHeading(containerEl, t("settings.section.support"));
+
+		const releaseSetting = new Setting(containerEl).setName(
+			t("settings.releasePage.name"),
 		);
 
-		new Setting(containerEl)
-			.setName(t("settings.sotVerticalLayoutNudge.name"))
-			.setDesc(t("settings.sotVerticalLayoutNudge.desc"))
-			.addToggle((toggle) => {
-				toggle
-					.setValue(!!settings.wysiwyg.verticalLayoutNudgeEnabled)
-					.onChange(async (value) => {
-						await this.plugin.updateSettings({
-							wysiwyg: {
-								...this.plugin.settings.wysiwyg,
-								verticalLayoutNudgeEnabled: value,
-							},
-						});
-					});
-			});
-	}
-
-	private addUpdateAndSupportSection(legacyEnabled: boolean): void {
-		const { containerEl } = this;
-
-		this.addSectionHeading(containerEl, t("settings.section.update"));
-
-		const updateSetting = new Setting(containerEl)
-			.setName(t("settings.manualUpdate.name"))
-			.setDesc(t("settings.manualUpdate.desc"))
-			.addButton((button) => {
-				button
-					.setButtonText(t("settings.manualUpdate.button"))
-					.onClick(async () => {
-						const current = this.plugin.manifest.version;
-						try {
-							const resp = await requestUrl({
-								url: UPDATE_CHECK_URL,
-							});
-							const data = resp.json ?? {};
-							const latest = String(data.version ?? "").trim();
-							const downloadUrl = String(data.url ?? "").trim();
-
-							if (!latest) {
-								new Notice(
-									t("settings.notice.update.invalidResponse"),
-									3000,
-								);
-								return;
-							}
-
-							if (latest === current) {
-								new Notice(
-									t("settings.notice.update.latest", {
-										current,
-									}),
-									2500,
-								);
-								return;
-							}
-
-							const cmp = compareSemver(latest, current);
-							if (cmp === null) {
-								const msg = downloadUrl
-									? t(
-											"settings.notice.update.compareUnavailableWithUrl",
-											{
-												latest,
-												current,
-												url: downloadUrl,
-											},
-										)
-									: t(
-											"settings.notice.update.compareUnavailableNoUrl",
-											{
-												latest,
-												current,
-											},
-										);
-								new Notice(msg, 6000);
-								return;
-							}
-
-							if (cmp < 0) {
-								new Notice(
-									t("settings.notice.update.currentNewer", {
-										current,
-										latest,
-									}),
-									4000,
-								);
-								return;
-							}
-
-							const msg = downloadUrl
-								? t(
-										"settings.notice.update.newVersionWithUrl",
-										{
-											latest,
-											current,
-											url: downloadUrl,
-										},
-									)
-								: t("settings.notice.update.newVersionNoUrl", {
-										latest,
-										current,
-									});
-							new Notice(msg, 5000);
-						} catch (error) {
-							debugError("Update check failed", error);
-							new Notice(
-								t("settings.notice.update.failed"),
-								3500,
-							);
-						}
-					});
-			});
-
-		// リリースページへのリンクを追加
-		const releaseLinkEl = updateSetting.controlEl.createEl("a", {
+		const releaseLinkEl = releaseSetting.controlEl.createEl("a", {
 			text: t("settings.releasePage"),
 			attr: {
 				href: RELEASE_URL,
@@ -934,10 +718,6 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 				}
 			})();
 		});
-
-		if (legacyEnabled) {
-			// 同期バックアップ操作は互換モード設定へ移動
-		}
 	}
 
 	private addThemeSettings(settings: TategakiV2Settings) {
@@ -1028,12 +808,12 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 					"theme-info tategaki-theme-info",
 				);
 
-				themeInfo.createEl("div", {
+				themeInfo.createDiv({
 					text: themeName,
 					cls: "tategaki-theme-name",
 				});
 
-				themeInfo.createEl("div", {
+				themeInfo.createDiv({
 					text: themeDescription,
 					cls: "tategaki-theme-desc",
 				});
@@ -1099,7 +879,7 @@ export class TategakiV2SettingTab extends PluginSettingTab {
 					});
 				} else {
 					// 現在のテーマの場合は「現在使用中」を表示
-					buttonContainer.createEl("span", {
+					buttonContainer.createSpan({
 						text: t("settings.theme.inUse"),
 						cls: "tategaki-theme-current",
 					});

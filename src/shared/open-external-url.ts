@@ -1,11 +1,11 @@
 import type { App } from "obsidian";
 
 type AppWithOpenExternal = App & {
-	openExternal?: (url: string) => Promise<unknown> | unknown;
+	openExternal?: (url: string) => unknown;
 };
 
 type ElectronShell = {
-	openExternal?: (url: string) => Promise<unknown> | unknown;
+	openExternal?: (url: string) => unknown;
 };
 
 type ElectronModule = {

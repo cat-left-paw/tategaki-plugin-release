@@ -18,19 +18,15 @@ import {
 	type TategakiV2Settings,
 } from "../types/settings";
 import { PagedReadingMode } from "../wysiwyg/reading-mode/paged-reading-mode";
-import {
-	VerticalLayoutNudge,
-	collectBookNudgeTargets,
-} from "../wysiwyg/shared/vertical-layout-nudge";
-import { SettingsPanelModal } from "../wysiwyg/contenteditable/settings-panel";
+import { SettingsPanelModal } from "../shared/ui/settings-panel/settings-panel";
 import { t } from "../shared/i18n";
 import { FileSwitchModal } from "../shared/ui/file-switch-modal";
 import { NewNoteModal } from "../shared/ui/new-note-modal";
 import {
 	extractFrontmatterBlock,
-	normalizeMarkdownForTipTap,
+	normalizeMarkdownForBook,
 	protectIndentation,
-} from "../wysiwyg/tiptap-compat/markdown-adapter";
+} from "./book-markdown";
 import {
 	parseFrontmatterBlock,
 	type FrontmatterData,
@@ -40,7 +36,8 @@ import { debugError } from "../shared/logger";
 export const TATEGAKI_READING_VIEW_TYPE = "tategaki-reading-view";
 const RECENT_FILE_LIMIT = 20;
 
-type ReadingReturnMode = "edit" | "sot";
+// 1.4.0: 互換モード（"edit"）を廃止したので、戻り先は執筆・参照モードだけ。保存済みの "edit"・"preview" は "sot" として読む。
+type ReadingReturnMode = "sot";
 
 type ReadingViewState = {
 	filePath?: string;
@@ -72,8 +69,6 @@ export class TategakiReadingView extends ItemView {
 	private recentFilePaths: string[] = [];
 	private recentFilePathsInitialized = false;
 	private pager: PagedReadingMode | null = null;
-	// 縦書き列境界 nudge（実験的 / 既定 OFF）。書籍ページ確定後に probe 付与・rAF 後 cleanup。
-	private readonly verticalLayoutNudge = new VerticalLayoutNudge();
 	private filePath: string | null = null;
 	private returnViewMode: ReadingReturnMode = "sot";
 	private pendingState: ReadingViewState | null = null;
@@ -116,10 +111,7 @@ export class TategakiReadingView extends ItemView {
 			this.filePath = null;
 		}
 		if (state?.returnViewMode) {
-			// v1.2.0: "preview" は廃止（互換のため "edit" として扱う）
-			const returnMode = String(state.returnViewMode);
-			this.returnViewMode =
-				returnMode === "preview" ? "edit" : state.returnViewMode;
+			this.returnViewMode = "sot";
 			this.updateReturnButton();
 		}
 		if (!this.isReady) {
@@ -195,11 +187,7 @@ export class TategakiReadingView extends ItemView {
 			this.filePath = this.pendingState.filePath;
 		}
 		if (this.pendingState?.returnViewMode) {
-			const returnMode = String(this.pendingState.returnViewMode);
-			this.returnViewMode =
-				returnMode === "preview"
-					? "edit"
-					: this.pendingState.returnViewMode;
+			this.returnViewMode = "sot";
 		}
 		this.pendingState = null;
 		this.updateReturnButton();
@@ -460,14 +448,13 @@ export class TategakiReadingView extends ItemView {
 			2000
 		);
 		void this.returnToOriginView().finally(() => {
-			const mode = this.returnViewMode === "edit" ? "compat" : "sot";
 			const modal = new SettingsPanelModal(
 				this.app,
 				this.plugin,
 				async (newSettings) => {
 					await this.plugin.updateSettings(newSettings);
 				},
-				{ mode }
+				{ mode: "sot" }
 			);
 			modal.open();
 		});
@@ -478,14 +465,7 @@ export class TategakiReadingView extends ItemView {
 	}
 
 	private getReturnViewLabel(): string {
-		switch (this.returnViewMode) {
-			case "sot":
-				return t("reading.returnLabel.sot");
-			case "edit":
-				return t("reading.returnLabel.compat");
-			default:
-				return t("reading.returnLabel.compat");
-		}
+		return t("reading.returnLabel.sot");
 	}
 
 	private async returnToOriginView(): Promise<void> {
@@ -494,17 +474,9 @@ export class TategakiReadingView extends ItemView {
 			new Notice(t("notice.targetFileNotFound"), 2500);
 			return;
 		}
-		if (this.returnViewMode === "sot") {
-			await this.plugin.modeManager.openSoTWysiwygViewInLeaf(
-				file,
-				this.leaf
-			);
-			return;
-		}
-		await this.plugin.modeManager.openTipTapViewInLeaf(
+		await this.plugin.modeManager.openSoTWysiwygViewInLeaf(
 			file,
-			this.leaf,
-			this.returnViewMode
+			this.leaf
 		);
 	}
 
@@ -894,7 +866,6 @@ export class TategakiReadingView extends ItemView {
 				},
 				onRendered: ({ pages }) => {
 					this.updateOutlineItems(pages);
-					this.maybeScheduleBookVerticalLayoutNudge();
 				},
 			});
 		} catch (error) {
@@ -904,7 +875,6 @@ export class TategakiReadingView extends ItemView {
 	}
 
 	private destroyPager(): void {
-		this.verticalLayoutNudge.cancel();
 		if (!this.pager) {
 			return;
 		}
@@ -920,30 +890,6 @@ export class TategakiReadingView extends ItemView {
 		}
 	}
 
-	/**
-	 * 実験的: 書籍モード縦書きの列境界 nudge。設定 ON かつ縦書き (vertical-rl) のときだけ、
-	 * ページ確定後（onRendered）に閉じ約物終端の要素へ一時 probe を付与し、数フレーム後に外す。
-	 * 設定 OFF / 横書きでは付与せず、残っていれば除去する。pagination 測定は onRendered より
-	 * 前に完了しているため、probe が測定へ混ざらない。
-	 * 保存データ / DOM text / copy には影響しない（probe は CSS ::after のみ）。
-	 */
-	private maybeScheduleBookVerticalLayoutNudge(): void {
-		const isVertical =
-			this.getEffectiveCommonSettings().writingMode === "vertical-rl";
-		if (
-			!this.hostEl ||
-			!isVertical ||
-			!this.plugin.settings.wysiwyg.verticalLayoutNudgeEnabled
-		) {
-			this.verticalLayoutNudge.cancel();
-			return;
-		}
-		this.verticalLayoutNudge.schedule(
-			this.hostEl,
-			collectBookNudgeTargets,
-		);
-	}
-
 	private buildSnapshotHtmlParts(
 		content: string,
 		filePath: string,
@@ -953,7 +899,7 @@ export class TategakiReadingView extends ItemView {
 		const extracted = extractFrontmatterBlock(content);
 		const enableRuby = settings.wysiwyg.enableRuby !== false;
 		const protectedMarkdown = protectIndentation(extracted.body);
-		const normalizedMarkdown = normalizeMarkdownForTipTap(
+		const normalizedMarkdown = normalizeMarkdownForBook(
 			protectedMarkdown,
 			{
 				enableRuby,

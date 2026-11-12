@@ -98,7 +98,7 @@ import { CommandToolbar } from "./shared/command-toolbar";
 import { CommandContextMenu } from "./shared/command-context-menu";
 import { LinkInputModal, LinkInputResult } from "../shared/ui/link-input-modal";
 import { RubyInputModal, RubyInputResult } from "../shared/ui/ruby-input-modal";
-import { SettingsPanelModal } from "./contenteditable/settings-panel";
+import { SettingsPanelModal } from "../shared/ui/settings-panel/settings-panel";
 import {
 	renderCalloutWidgetLine,
 	renderDeflistWidgetLine,
@@ -118,6 +118,7 @@ import { SoTPointerHandler } from "./sot/sot-pointer";
 import { t } from "../shared/i18n";
 import { SoTSelectionOverlay } from "./sot/sot-selection-overlay";
 import { openExternalUrl } from "../shared/open-external-url";
+import { isElementHidden, setElementHidden } from "../shared/element-visibility";
 import { tryRenderNativeSelectionFallback } from "./sot/sot-selection-fallback";
 import { SoTNativeContextMenuHold } from "./sot/sot-native-contextmenu-hold";
 import { SoTCeSelectionSync } from "./sot/sot-ce-selection-sync";
@@ -222,10 +223,6 @@ import {
 	shouldRequestSoTTypewriterFollowForInput,
 	shouldUseSoTTypewriterPendingCaretForFollow,
 } from "./sot/sot-typewriter-follow-request";
-import {
-	VerticalLayoutNudge,
-	collectSoTNudgeTargets,
-} from "./shared/vertical-layout-nudge";
 import {
 	resolveSoTCaretScrollPolicy,
 	resolveSoTRenderScrollRestorePolicy,
@@ -409,16 +406,6 @@ export class SoTWysiwygView extends ItemView {
 
 	private renderPipeline: SoTRenderPipeline | null = null;
 	private readonly chunkController = new SoTChunkController();
-	// 縦書き列境界 nudge（実験的 / 既定 OFF）。probe 付与と rAF 後 cleanup を担う共通 controller。
-	private readonly verticalLayoutNudge = new VerticalLayoutNudge();
-	private verticalLayoutNudgeRaf: number | null = null;
-	// 編集後/undo 後の layout settle を待ってもう一度だけ probe を打ち直す遅延 retry timer。
-	// 1 つだけ保持し、再要求が来たら必ず既存タイマーを上書きする（多重に積まない）。
-	private verticalLayoutNudgeRetryTimer: number | null = null;
-	// probe 除去後（2 rAF 後）に caret / selection overlay を再測定するための予約 rAF。
-	// helper の onAfterCleanup から発火し、さらに 1 rAF 後に scheduleCaretUpdate(true) を呼ぶ。
-	// 多重予約しないよう raf id を 1 つだけ保持する。
-	private verticalLayoutNudgeCaretRefreshRaf: number | null = null;
 	private wheelThrottleTimer: number | null = null;
 	private scrollDebounceTimer: number | null = null;
 	private scrollDebounceRaf: number | null = null;
@@ -1536,7 +1523,7 @@ export class SoTWysiwygView extends ItemView {
 
 		// 行末揃え（justify）
 		targetEl.classList.add("text-justify-enabled");
-		targetEl.setCssStyles({ textAlign: "justify", textAlignLast: "auto" });
+		// (text-align: justify and text-align-last: auto are the class's rule in styles.css)
 
 		const headingFont =
 			effectiveCommon.headingFontFamily || effectiveCommon.fontFamily;
@@ -1653,9 +1640,7 @@ export class SoTWysiwygView extends ItemView {
 		const scaled = fillMode ? 1 : Math.max(0.7, Math.min(1, rawScale));
 
 		if (this.borderWrapperEl) {
-			this.borderWrapperEl.setCssStyles({
-				transformOrigin: "center center",
-			});
+			// (transform-origin: center center is the stylesheet's value for the wrapper)
 			this.borderWrapperEl.style.transform = `scale(${
 				fillMode ? 1 : scaled
 			})`;
@@ -1682,7 +1667,7 @@ export class SoTWysiwygView extends ItemView {
 			this.pageContainerEl.style.padding = fillMode
 				? "0"
 				: "40px 32px 22px 32px";
-			this.pageContainerEl.setCssStyles({ background: "transparent" });
+			// (background: transparent is the stylesheet's value for the page container)
 		}
 
 		if (this.viewRootEl) {
@@ -1799,15 +1784,11 @@ export class SoTWysiwygView extends ItemView {
 	private applyFrontmatterInlineEndAlignment(element: HTMLElement): void {
 		// text-align / text-align-last must keep winning over the `!important`
 		// heading rules; the class carries them as `!important` (see styles.css).
-		element.classList.add("tategaki-frontmatter-inline-end-forced");
-		element.setCssStyles({
-			display: "block",
-			marginInlineStart: "auto",
-			marginInlineEnd: "0",
-			marginLeft: "auto",
-			marginRight: "0",
-			justifySelf: "end",
-		});
+		// display, the margins and justify-self are the other class's rule (styles.css), as in the book mode.
+		element.classList.add(
+			"tategaki-frontmatter-inline-end",
+			"tategaki-frontmatter-inline-end-forced",
+		);
 	}
 
 	private applyFrontmatterWritingMode(
@@ -1815,7 +1796,7 @@ export class SoTWysiwygView extends ItemView {
 		writingMode: string,
 	): void {
 		element.style.writingMode = writingMode;
-		element.setCssStyles({ textOrientation: "mixed" });
+		element.classList.add("tategaki-frontmatter-writing-mode");
 	}
 
 	private computeLineRangesFromLines(lines: string[]): LineRange[] {
@@ -5413,7 +5394,6 @@ export class SoTWysiwygView extends ItemView {
 			resetPendingRenderState: () => this.resetPendingRenderState(),
 			finalizeRender: (scrollTop, scrollLeft, scrollAnchor) =>
 				this.finalizeRender(scrollTop, scrollLeft, scrollAnchor),
-			onVirtualLinesRendered: () => this.queueVerticalLayoutNudge(),
 			isLineHidden: (index) =>
 				this.lineHeadingHiddenBy[index] !== null &&
 				this.lineHeadingHiddenBy[index] !== undefined &&
@@ -5945,8 +5925,6 @@ export class SoTWysiwygView extends ItemView {
 		this.pointerWindowBinding.dispose();
 		this.renderPipeline?.dispose();
 		this.renderPipeline = null;
-		this.cancelQueuedVerticalLayoutNudge();
-		this.verticalLayoutNudge.cancel();
 		this.resetTouchScrollState();
 		this.cancelOutlineJump();
 		if (this.selectionOverlayRaf !== null) {
@@ -8537,7 +8515,7 @@ export class SoTWysiwygView extends ItemView {
 		this.updatePendingText("", true);
 		this.selectionLayerEl?.replaceChildren();
 		if (this.caretEl) {
-			this.caretEl.setCssStyles({ display: "none" });
+			setElementHidden(this.caretEl, true);
 		}
 		this.ensurePlainEditOverlay();
 		this.registerPlainEditOutsidePointerHandler();
@@ -8552,11 +8530,11 @@ export class SoTWysiwygView extends ItemView {
 		this.commitPlainEdit(true, true, true);
 		this.unregisterPlainEditOutsidePointerHandler();
 		if (this.plainEditOverlayEl) {
-			this.plainEditOverlayEl.setCssStyles({ display: "none" });
+			setElementHidden(this.plainEditOverlayEl, true);
 		}
 		this.overlayTextarea?.setActive(true);
 		if (this.caretEl) {
-			this.caretEl.setCssStyles({ display: "" });
+			setElementHidden(this.caretEl, false);
 		}
 		this.updateSourceToggleUi();
 		this.scheduleCaretUpdate(true);
@@ -8757,7 +8735,7 @@ export class SoTWysiwygView extends ItemView {
 			this.updatePendingText("", true);
 			this.selectionLayerEl?.replaceChildren();
 			if (this.caretEl) {
-				this.caretEl.setCssStyles({ display: "none" });
+				setElementHidden(this.caretEl, true);
 			}
 			this.syncSelectionToCe();
 			if (this.derivedContentEl) {
@@ -9808,22 +9786,14 @@ export class SoTWysiwygView extends ItemView {
 		this.pendingLineIndex = null;
 		this.pendingLocalOffset = null;
 
-		let rerenderedCount = 0;
 		for (let i = safeStart; i <= safeEnd; i += 1) {
 			const lineRange = this.lineRanges[i];
 			const lineEl = this.getLineElement(i);
 			if (!lineRange || !lineEl) continue;
 			lineEl.replaceChildren();
 			this.renderLine(lineEl, lineRange, i);
-			rerenderedCount += 1;
 		}
 		this.scheduleCaretUpdate(true);
-		// 部分再描画で 1 行以上差し替えたとき、縦書き列境界 nudge を再スケジュールする。
-		// 編集/undo 直後の DOM 差分適用後に probe を打ち直さないと、初回描画後に
-		// ルビ行の間延びや空列が再発するため、ここで即時 rAF + 遅延 retry を両方仕掛ける。
-		if (rerenderedCount > 0) {
-			this.queueVerticalLayoutNudge();
-		}
 	}
 
 	private computeSourceModeLineRange(): {
@@ -10035,11 +10005,11 @@ export class SoTWysiwygView extends ItemView {
 		if (!this.derivedRootEl) return;
 		const isMobile = Platform.isMobile || Platform.isMobileApp;
 		const isVertical = this.writingMode.startsWith("vertical");
-		if (isMobile && isVertical) {
-			this.derivedRootEl.setCssStyles({ touchAction: "none" });
-		} else {
-			this.derivedRootEl.style.removeProperty("touch-action");
-		}
+		// (touch-action: none is the class's rule in styles.css)
+		this.derivedRootEl.classList.toggle(
+			"tategaki-sot-touch-none",
+			isMobile && isVertical,
+		);
 	}
 
 	private shouldHandleTouchScroll(event: PointerEvent): boolean {
@@ -10439,121 +10409,6 @@ export class SoTWysiwygView extends ItemView {
 		if (this.loadingOverlayPending) {
 			this.hideLoadingOverlay();
 		}
-		this.maybeScheduleVerticalLayoutNudge();
-		// full render 後も chunked 経路や初期表示の layout settle 直後に
-		// probe 対象が変わることがあるため、軽量な遅延 retry を 1 本だけ仕掛ける。
-		// 設定 OFF / 横書き / root 不在のときは retry callback 内で即座に cancel される。
-		this.scheduleVerticalLayoutNudgeRetry();
-	}
-
-	/**
-	 * 編集/undo 直後の縦書き layout settle を待つための遅延 retry 間隔（ms）。
-	 * 80〜160ms 前後で `requestAnimationFrame` 後の inline layout 再構成が落ち着く想定。
-	 */
-	private static readonly VERTICAL_LAYOUT_NUDGE_RETRY_DELAY_MS = 120;
-
-	private queueVerticalLayoutNudge(): void {
-		// 即時 rAF probe は積み残さない（pending あればそのまま使う）。
-		if (this.verticalLayoutNudgeRaf === null) {
-			const target = this.derivedRootEl ?? this.containerEl;
-			this.verticalLayoutNudgeRaf = requestViewAnimationFrame(
-				target,
-				() => {
-					this.verticalLayoutNudgeRaf = null;
-					this.maybeScheduleVerticalLayoutNudge();
-				},
-			);
-		}
-		// 編集/undo 後の layout settle 用に、1 回だけ遅延 retry をかける。
-		// 連続呼び出しでは既存 timer を破棄して 1 本に正規化する。
-		this.scheduleVerticalLayoutNudgeRetry();
-	}
-
-	private scheduleVerticalLayoutNudgeRetry(): void {
-		this.cancelVerticalLayoutNudgeRetry();
-		this.verticalLayoutNudgeRetryTimer = window.setTimeout(() => {
-			this.verticalLayoutNudgeRetryTimer = null;
-			this.maybeScheduleVerticalLayoutNudge();
-		}, SoTWysiwygView.VERTICAL_LAYOUT_NUDGE_RETRY_DELAY_MS);
-	}
-
-	private cancelVerticalLayoutNudgeRetry(): void {
-		if (this.verticalLayoutNudgeRetryTimer === null) return;
-		window.clearTimeout(this.verticalLayoutNudgeRetryTimer);
-		this.verticalLayoutNudgeRetryTimer = null;
-	}
-
-	private cancelQueuedVerticalLayoutNudge(): void {
-		if (this.verticalLayoutNudgeRaf !== null) {
-			const target = this.derivedRootEl ?? this.containerEl;
-			cancelViewAnimationFrame(target, this.verticalLayoutNudgeRaf);
-			this.verticalLayoutNudgeRaf = null;
-		}
-		this.cancelVerticalLayoutNudgeRetry();
-		this.cancelVerticalLayoutNudgeCaretRefresh();
-	}
-
-	/**
-	 * probe 除去後に caret / selection overlay を 1 rAF 後に再測定する。
-	 * helper の `onAfterCleanup`（2 rAF 後）からさらに 1 rAF 待ってから走らせるため、
-	 * 合計約 3 rAF で probe 除去 → layout 安定 → caret 再測定の順序になる。
-	 * 多重予約はしない。pending raf がある間に再呼び出しされた場合は無視する。
-	 */
-	private scheduleVerticalLayoutNudgeCaretRefresh(): void {
-		if (this.verticalLayoutNudgeCaretRefreshRaf !== null) return;
-		const target = this.derivedRootEl ?? this.containerEl;
-		this.verticalLayoutNudgeCaretRefreshRaf = requestViewAnimationFrame(
-			target,
-			() => {
-				this.verticalLayoutNudgeCaretRefreshRaf = null;
-				// 発火時に設定が OFF / 横書き / root 不在になっていれば何もしない。
-				if (
-					!this.derivedRootEl ||
-					this.writingMode === "horizontal-tb" ||
-					!this.plugin.settings.wysiwyg
-						.verticalLayoutNudgeEnabled
-				) {
-					return;
-				}
-				this.scheduleCaretUpdate(true);
-			},
-		);
-	}
-
-	private cancelVerticalLayoutNudgeCaretRefresh(): void {
-		if (this.verticalLayoutNudgeCaretRefreshRaf === null) return;
-		const target = this.derivedRootEl ?? this.containerEl;
-		cancelViewAnimationFrame(
-			target,
-			this.verticalLayoutNudgeCaretRefreshRaf,
-		);
-		this.verticalLayoutNudgeCaretRefreshRaf = null;
-	}
-
-	/**
-	 * 実験的: SoT 縦書きの列境界 nudge。設定 ON かつ縦書きのときだけ、
-	 * render 後に閉じ約物終端 run へ一時 probe を付与し、数フレーム後に外す。
-	 * 設定 OFF / 横書き / root 不在では付与せず、残っていれば除去し、
-	 * 遅延 retry timer と pending caret refresh も合わせて止める。
-	 * probe 除去完了後（2 rAF 後）に caret / selection overlay の再測定を予約する。
-	 * 保存データ / DOM text / copy には影響しない（probe は CSS ::after のみ）。
-	 */
-	private maybeScheduleVerticalLayoutNudge(): void {
-		if (
-			!this.derivedRootEl ||
-			this.writingMode === "horizontal-tb" ||
-			!this.plugin.settings.wysiwyg.verticalLayoutNudgeEnabled
-		) {
-			this.cancelVerticalLayoutNudgeRetry();
-			this.cancelVerticalLayoutNudgeCaretRefresh();
-			this.verticalLayoutNudge.cancel();
-			return;
-		}
-		this.verticalLayoutNudge.schedule(
-			this.derivedRootEl,
-			collectSoTNudgeTargets,
-			() => this.scheduleVerticalLayoutNudgeCaretRefresh(),
-		);
 	}
 
 	/**
@@ -11375,7 +11230,7 @@ export class SoTWysiwygView extends ItemView {
 		const pairedMarkdownLeafActive = this.isPairedMarkdownLeafActive();
 		if (this.sourceModeEnabled) {
 			this.clearCurrentLineVisualOverlay();
-			this.caretEl.setCssStyles({ display: "none" });
+			setElementHidden(this.caretEl, true);
 			return;
 		}
 		const caretWidth = this.plugin.settings.wysiwyg.caretWidthPx ?? 3;
@@ -11401,7 +11256,7 @@ export class SoTWysiwygView extends ItemView {
 				: "transparent";
 			if (useNativeInCe) {
 				this.clearCurrentLineVisualOverlay();
-				this.caretEl.setCssStyles({ display: "none" });
+				setElementHidden(this.caretEl, true);
 				const shouldScroll = resolveSoTCaretScrollPolicy({
 					settingsPanelOpen: this.settingsPanelOpen,
 					pendingCaretScroll: this.pendingCaretScroll,
@@ -11425,19 +11280,19 @@ export class SoTWysiwygView extends ItemView {
 		const lineIndex = this.findLineIndex(offset);
 		if (lineIndex === null) {
 			this.clearCurrentLineVisualOverlay();
-			this.caretEl.setCssStyles({ display: "none" });
+			setElementHidden(this.caretEl, true);
 			return;
 		}
 		const lineRange = this.lineRanges[lineIndex];
 		if (!lineRange) {
 			this.clearCurrentLineVisualOverlay();
-			this.caretEl.setCssStyles({ display: "none" });
+			setElementHidden(this.caretEl, true);
 			return;
 		}
 		const lineEl = this.getLineElement(lineIndex);
 		if (!lineEl) {
 			this.clearCurrentLineVisualOverlay();
-			this.caretEl.setCssStyles({ display: "none" });
+			setElementHidden(this.caretEl, true);
 			return;
 		}
 		this.ensureLineRendered(lineEl);
@@ -11493,7 +11348,7 @@ export class SoTWysiwygView extends ItemView {
 		}
 		if (!caretRect) {
 			this.clearCurrentLineVisualOverlay();
-			this.caretEl.setCssStyles({ display: "none" });
+			setElementHidden(this.caretEl, true);
 			return;
 		}
 
@@ -11608,7 +11463,7 @@ export class SoTWysiwygView extends ItemView {
 			((this.overlayTextarea?.isImeVisible() ?? false) ||
 				(this.overlayFocused && this.pendingText.length > 0));
 		this.overlayTextarea?.setCaretVisible(showNativeCaret);
-		this.caretEl.style.display = showNativeCaret ? "none" : "";
+		setElementHidden(this.caretEl, showNativeCaret);
 		this.caretEl.style.left = `${caretLeft}px`;
 		if (isVertical) {
 			this.caretEl.style.top = `${caretTop}px`;
@@ -11853,7 +11708,7 @@ export class SoTWysiwygView extends ItemView {
 			return;
 		}
 		if (!this.caretEl) return;
-		if (this.caretEl.style.display === "none") return;
+		if (isElementHidden(this.caretEl)) return;
 		const rootRect = this.derivedRootEl.getBoundingClientRect();
 		this.scrollRectIntoView(this.caretEl.getBoundingClientRect(), rootRect);
 		if (this.shouldSuppressTypewriterFollow()) return;
@@ -11887,7 +11742,7 @@ export class SoTWysiwygView extends ItemView {
 
 	private applyTypewriterScrollToCaret(): void {
 		if (!this.derivedRootEl || !this.caretEl || !this.sotEditor) return;
-		if (this.caretEl.style.display === "none") return;
+		if (isElementHidden(this.caretEl)) return;
 		const writingMode = window.getComputedStyle(this.derivedRootEl).writingMode;
 		this.applyTypewriterScrollToCaretRect(
 			this.caretEl.getBoundingClientRect(),
@@ -13019,7 +12874,7 @@ export class SoTWysiwygView extends ItemView {
 			this.pendingSelectionLineStart = null;
 			this.pendingSelectionLineEnd = null;
 			if (this.pendingEl) {
-				this.pendingEl.setCssStyles({ display: "none" });
+				setElementHidden(this.pendingEl, true);
 			}
 			return;
 		}
@@ -13036,12 +12891,12 @@ export class SoTWysiwygView extends ItemView {
 		const content = text.length > 0 ? text : "";
 		this.pendingEl.textContent = content;
 		if (!this.showPendingOverlay) {
-			this.pendingEl.setCssStyles({ display: "none" });
+			setElementHidden(this.pendingEl, true);
 		} else if (this.overlayTextarea?.isImeVisible()) {
 			// IME変換中はpendingElを非表示（textareaで表示される）
-			this.pendingEl.setCssStyles({ display: "none" });
+			setElementHidden(this.pendingEl, true);
 		} else {
-			this.pendingEl.style.display = content.length > 0 ? "" : "none";
+			setElementHidden(this.pendingEl, content.length === 0);
 		}
 		this.scheduleCaretUpdate();
 	}
@@ -13449,14 +13304,6 @@ export class SoTWysiwygView extends ItemView {
 		this.pendingSpacerEl = null;
 		this.pendingLocalOffset = null;
 		this.pendingLineIndex = null;
-		// Overlay IME 入力中の pending 行が restorePendingLine で作り直された後、
-		// pendingText が空（= IME 入力終了 / ESC キャンセル）のときに限り、
-		// 縦書き列境界 nudge を再スケジュールする。IME 入力中（pendingText > 0）に
-		// 行が切り替わるパスでも本メソッドは呼ばれるため、その場合は probe を打たない。
-		// 多重防止は queueVerticalLayoutNudge 内部で処理される。
-		if (this.pendingText.length === 0) {
-			this.queueVerticalLayoutNudge();
-		}
 	}
 
 	private capturePendingSelection(): void {
@@ -13574,14 +13421,12 @@ export class SoTWysiwygView extends ItemView {
 		}
 		const start = this.pendingSelectionLineStart;
 		const end = this.pendingSelectionLineEnd;
-		let rerenderedCount = 0;
 		for (let i = start; i <= end; i += 1) {
 			const lineRange = this.lineRanges[i];
 			const lineEl = this.getLineElement(i);
 			if (!lineRange || !lineEl) continue;
 			lineEl.replaceChildren();
 			this.renderLine(lineEl, lineRange);
-			rerenderedCount += 1;
 		}
 		this.pendingSelectionFrom = null;
 		this.pendingSelectionTo = null;
@@ -13590,14 +13435,6 @@ export class SoTWysiwygView extends ItemView {
 		this.pendingSpacerEl = null;
 		this.pendingLineIndex = null;
 		this.pendingLocalOffset = null;
-		// Overlay IME の ESC キャンセル / 通常確定で pending text が解除された場合、
-		// pending 行は replaceChildren + renderLine で作り直しただけで rerenderLineRange を
-		// 経由していないため、縦書き列境界 nudge が再スケジュールされず崩れが残る。
-		// pendingText が空のとき（= IME 入力中ではない）のみ明示的に nudge を予約する。
-		// 多重防止は queueVerticalLayoutNudge 内部で処理される。
-		if (rerenderedCount > 0 && this.pendingText.length === 0) {
-			this.queueVerticalLayoutNudge();
-		}
 	}
 
 	private renderLine(

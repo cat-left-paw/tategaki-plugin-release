@@ -40,7 +40,7 @@ function getObsidianParseYaml(): ((yaml: string) => unknown) | null {
 function toDisplayString(value: unknown): string | undefined {
 	if (value === null || value === undefined) return undefined;
 	if (typeof value === "string") return value;
-	return String(value);
+	return String(value as string | number | boolean);
 }
 
 /**

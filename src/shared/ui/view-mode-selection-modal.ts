@@ -1,7 +1,7 @@
 import { App, Modal } from "obsidian";
 import { t } from "../i18n";
 // 起動モーダル用の拡張型（書籍モードを含む）
-export type ViewModeSelectionType = "edit" | "reading" | "compat";
+export type ViewModeSelectionType = "edit" | "reading" | "pm";
 
 export type ViewOpenPlacementType = "right" | "tab" | "window";
 
@@ -17,7 +17,7 @@ export class ViewModeSelectionModal extends Modal {
 		null;
 	private result: ViewModeSelectionResult;
 	private cancelled = false;
-	private showCompat = false;
+	private showPm = false;
 
 	constructor(
 		app: App,
@@ -26,7 +26,7 @@ export class ViewModeSelectionModal extends Modal {
 			openInNewWindow?: boolean;
 			openOnRightSide?: boolean;
 			placement?: ViewOpenPlacementType;
-			showCompat?: boolean;
+			showPm?: boolean;
 		} = {},
 	) {
 		super(app);
@@ -44,14 +44,14 @@ export class ViewModeSelectionModal extends Modal {
 			openOnRightSide: initialPlacement === "right",
 			placement: initialPlacement,
 		};
-		this.showCompat = options.showCompat ?? false;
+		this.showPm = options.showPm ?? false;
 		const mode =
 			options.defaultMode === "preview" ? "edit" : options.defaultMode;
-		if (mode === "compat" && !this.showCompat) {
+		if (mode === "pm" && !this.showPm) {
 			this.result.mode = "edit";
 			return;
 		}
-		if (mode === "edit" || mode === "reading" || mode === "compat") {
+		if (mode === "edit" || mode === "reading" || mode === "pm") {
 			this.result.mode = mode;
 		}
 	}
@@ -87,14 +87,8 @@ export class ViewModeSelectionModal extends Modal {
 			t("modal.viewMode.reading.title"),
 			t("modal.viewMode.reading.desc"),
 		);
-		if (this.showCompat) {
-			this.createModeButton(
-				optionsEl,
-				"compat",
-				t("modal.viewMode.compat.title"),
-				t("modal.viewMode.compat.desc"),
-			);
-		}
+
+		if (this.showPm) this.createModeButton(optionsEl, "pm", t("pm.settings.name"), t("pm.settings.desc"));
 
 		const actions = this.contentEl.createDiv("tategaki-view-mode-actions");
 
@@ -209,12 +203,12 @@ export class ViewModeSelectionModal extends Modal {
 			this.result.mode = mode;
 		});
 
-		const titleEl = buttonRow.createEl("div", {
+		const titleEl = buttonRow.createDiv({
 			cls: "tategaki-view-mode-card-title",
 		});
 		titleEl.setText(title);
 
-		const desc = wrapper.createEl("div", {
+		const desc = wrapper.createDiv({
 			cls: "tategaki-view-mode-card-desc",
 		});
 		desc.setText(description);

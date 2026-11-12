@@ -10,7 +10,7 @@
  * - "off": 何もしない（Obsidian のまま）。
  *
  * 各ビューの DOM には手を入れない。Tategaki のビューは leaf の `data-type` が `tategaki-` で始まることで見分け、
- * スクロールする要素は pointer の位置の要素から祖先へたどって見つける。
+ * スクロールする要素は pointer の位置の要素から祖先へたどって見つける（開いた shadow root の中も見る）。
  * ステータスバーは main window にだけあり（popout と mobile にはない）、ここも main window の document だけを見る。
  */
 
@@ -56,6 +56,30 @@ function contains(rect: Rect, x: number, y: number): boolean {
 
 function scrolls(overflow: string): boolean {
 	return overflow === "auto" || overflow === "scroll";
+}
+
+/** 開いた shadow root を持つビュー（新執筆モードなど）では、document は shadow host しか返さないので中へたどる。 */
+const MAX_SHADOW_DEPTH = 8;
+
+function deepestAt(hit: Element, x: number, y: number): Element {
+	let current = hit;
+	for (let depth = 0; depth < MAX_SHADOW_DEPTH; depth++) {
+		const shadow = current.shadowRoot;
+		if (!shadow) break;
+		const inner = shadow
+			.elementsFromPoint(x, y)
+			.find((el) => el !== current && shadow.contains(el));
+		if (!inner) break;
+		current = inner;
+	}
+	return current;
+}
+
+/** 親の要素。shadow root の直下では、その host へ出る。 */
+function parentAcrossShadow(el: Element): Element | null {
+	if (el.parentElement) return el.parentElement;
+	const root = el.getRootNode() as Node & { host?: Element };
+	return root.host ?? null;
 }
 
 export class StatusBarOverlapController {
@@ -143,9 +167,9 @@ export class StatusBarOverlapController {
 			const leaf = hit.closest(TATEGAKI_LEAF_SELECTOR);
 			if (!leaf) return false;
 			for (
-				let el: Element | null = hit;
+				let el: Element | null = deepestAt(hit, x, y);
 				el && el !== leaf.parentElement;
-				el = el.parentElement
+				el = parentAcrossShadow(el)
 			) {
 				if (this.inScrollbarBand(win, el, x, y)) return true;
 			}
@@ -244,6 +268,9 @@ export class StatusBarOverlapController {
 		// scrollbar-width: none の要素（書籍モードのページなど）は、見えるスクロールバーを持たない。
 		if (style.getPropertyValue("scrollbar-width") === "none") return false;
 		const rect = box.getBoundingClientRect();
+		// 祖先の transform: scale()（新執筆モードのページの拡大率など）の分。太さと枠は CSS px、rect は画面の px。
+		const scaleX = box.offsetWidth > 0 ? rect.width / box.offsetWidth : 1;
+		const scaleY = box.offsetHeight > 0 ? rect.height / box.offsetHeight : 1;
 		const borderTop = parseFloat(style.borderTopWidth) || 0;
 		const borderRight = parseFloat(style.borderRightWidth) || 0;
 		const borderBottom = parseFloat(style.borderBottomWidth) || 0;
@@ -251,8 +278,9 @@ export class StatusBarOverlapController {
 		if (scrollsX && scrolls(style.overflowX)) {
 			const thickness =
 				box.offsetHeight - box.clientHeight - borderTop - borderBottom;
-			const band = thickness > 0 ? thickness : OVERLAY_SCROLLBAR_BAND_PX;
-			const bottom = rect.bottom - borderBottom;
+			const band =
+				(thickness > 0 ? thickness : OVERLAY_SCROLLBAR_BAND_PX) * scaleY;
+			const bottom = rect.bottom - borderBottom * scaleY;
 			if (
 				y <= bottom &&
 				y >= bottom - band &&
@@ -265,8 +293,9 @@ export class StatusBarOverlapController {
 		if (scrollsY && scrolls(style.overflowY)) {
 			const thickness =
 				box.offsetWidth - box.clientWidth - borderLeft - borderRight;
-			const band = thickness > 0 ? thickness : OVERLAY_SCROLLBAR_BAND_PX;
-			const right = rect.right - borderRight;
+			const band =
+				(thickness > 0 ? thickness : OVERLAY_SCROLLBAR_BAND_PX) * scaleX;
+			const right = rect.right - borderRight * scaleX;
 			if (
 				x <= right &&
 				x >= right - band &&

@@ -20,7 +20,7 @@
 const FRAGMENT_PARSE_PREFIX = "<!DOCTYPE html><html><head></head><body>";
 
 function resolveDomParser(doc?: Document): typeof DOMParser | undefined {
-	const target = doc ?? (typeof document !== "undefined" ? document : undefined);
+	const target = doc ?? (typeof document !== "undefined" ? activeDocument : undefined);
 	return (
 		target?.defaultView?.DOMParser ??
 		(typeof DOMParser !== "undefined" ? DOMParser : undefined)
@@ -55,7 +55,7 @@ function createDomParser(doc: Document): DOMParser {
  */
 export function parseHtmlToInertContainer(
 	html: string,
-	doc: Document = document,
+	doc: Document = activeDocument,
 ): HTMLDivElement {
 	const parsed = createDomParser(doc).parseFromString(
 		FRAGMENT_PARSE_PREFIX + html,

@@ -112,7 +112,7 @@ export class LinkInputModal extends Modal {
 		}
 
 		// 初期フォーカス
-		setTimeout(() => {
+		window.setTimeout(() => {
 			this.urlInput?.inputEl.focus();
 			// "https://" の後ろにカーソルを移動
 			this.urlInput?.inputEl.setSelectionRange(8, 8);

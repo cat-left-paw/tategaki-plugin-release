@@ -1,4 +1,5 @@
 import { t } from "../../shared/i18n";
+import { setElementHidden } from "../../shared/element-visibility";
 
 type OutlineItem = {
 	line: number;
@@ -23,7 +24,7 @@ export class SoTOutlinePanel {
 	constructor(parent: HTMLElement, callbacks: OutlineCallbacks) {
 		this.callbacks = callbacks;
 		this.rootEl = parent.createDiv("tategaki-sot-outline-panel");
-		this.rootEl.setCssStyles({ display: "none" });
+		setElementHidden(this.rootEl, true);
 		this.rootEl.setAttribute("role", "dialog");
 		this.rootEl.setAttribute("aria-label", t("outline.title"));
 		this.rootEl.addEventListener("pointerdown", (event) => {
@@ -53,14 +54,14 @@ export class SoTOutlinePanel {
 
 	open(): void {
 		this.isOpen = true;
-		this.rootEl.setCssStyles({ display: "" });
+		setElementHidden(this.rootEl, false);
 		this.refresh();
 	}
 
 	close(): void {
 		if (!this.isOpen) return;
 		this.isOpen = false;
-		this.rootEl.setCssStyles({ display: "none" });
+		setElementHidden(this.rootEl, true);
 		this.listEl.replaceChildren();
 		this.callbacks.onClose?.();
 	}
